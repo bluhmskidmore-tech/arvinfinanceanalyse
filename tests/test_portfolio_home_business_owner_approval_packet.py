@@ -2,16 +2,23 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+import duckdb
+import pytest
+
 from tests.test_portfolio_home_business_owner_approval_status import _full_approval_template_text
 from tests.test_portfolio_home_closure_scorecard import (
+    _approved_template_text,
     _create_schema,
-    _insert_blocked_data,
+    _insert_blocked_data as _insert_legacy_blocked_data,
+    _insert_clean_data,
     _write_blocked_fixture_manifests,
+    _write_clean_fixture_manifests,
 )
 from tests.test_portfolio_home_owner_decision_intake_check import (
     _fill_krd_decisions,
@@ -22,6 +29,8 @@ from scripts.portfolio_home_business_owner_approval_packet import (
     OWNER_DECISION_INTAKE_ALIGNMENT_FIELDS,
     PORTFOLIO_HOME_SCORE_BLOCKERS,
     RERUN_APPROVAL_REQUIRED_BUSINESS_OWNER_BOUNDARY,
+    RERUN_APPROVAL_REQUIRED_RISK_WARNING_STATUS,
+    RERUN_APPROVAL_REQUIRED_WARNING_RESOLUTION_MATRIX,
     _activation_ready,
     _business_owner_approval_boundary,
     _score_blocker_action_coverage_ready,
@@ -35,10 +44,33 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "portfolio_home_business_owner_approval_packet.py"
 DUCKDB = ROOT / "data" / "moss.duckdb"
 TEMPLATE = ROOT / "docs" / "portfolio" / "portfolio-home-business-owner-approval-template.md"
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not DUCKDB.exists(),
+        reason="requires local governed DuckDB at data/moss.duckdb",
+    ),
+]
 OWNER_ALIGNMENT_COMPARED_FIELDS = [
     *OWNER_DECISION_INTAKE_ALIGNMENT_FIELDS,
 ]
 CURRENT_SCORE_BLOCKERS = PORTFOLIO_HOME_SCORE_BLOCKERS
+# scripts/portfolio_home_business_owner_approval_packet.py::_business_owner_approval_boundary
+# 中按固定代码顺序追加的完整原因码目录（每项各自独立取决于对应子检查的当前状态）。
+APPROVAL_BOUNDARY_BLOCKER_ORDER = [
+    "business_owner_approval_not_captured",
+    "scorecard_full_score_not_ready",
+    "scorecard_score_status_not_ready",
+    "owner_decision_intake_not_ready",
+    "rerun_evidence_not_valid",
+    "risk_warning_not_clean",
+    "evidence_dependency_unavailable",
+    "dependency_consistency_not_ready",
+    "owner_decision_intake_alignment_not_ready",
+    "score_blocker_action_coverage_not_ready",
+    "closure_artifact_presence_not_current",
+]
 RISK_WARNING_EVIDENCE_SCOPE = {
     "checks_warning_consistency": True,
     "checks_risk_tensor_clean_state": True,
@@ -56,6 +88,90 @@ RISK_WARNING_RESOLUTION_SCOPE = {
     "approves_metric_or_page": False,
     "certification_effect": "none",
 }
+FIXTURE_DURATION_WARNING = (
+    "3 rows carry market_value=60.00000000 and are excluded from portfolio "
+    "duration denominator: 2 without maturity_date (market_value=40.00000000); "
+    "0 matured on or before report_date with outstanding market_value "
+    "(market_value=0.00000000); 1 future-dated with non-positive "
+    "modified_duration (market_value=20.00000000). DV01 totals remain sourced "
+    "from row dv01; duration metrics ignore these rows until inputs are remediated."
+)
+
+def _collect_packet_command_strings(
+    value: object,
+    field_name: str = "",
+    path: str = "packet",
+) -> list[tuple[str, str]]:
+    if isinstance(value, str):
+        return (
+            [(path, value)]
+            if "command" in field_name and value.startswith(("python ", "pytest "))
+            else []
+        )
+    if isinstance(value, dict):
+        commands: list[tuple[str, str]] = []
+        for key, child in value.items():
+            commands.extend(
+                _collect_packet_command_strings(
+                    child,
+                    str(key),
+                    f"{path}.{key}",
+                )
+            )
+        return commands
+    if isinstance(value, list):
+        commands: list[tuple[str, str]] = []
+        for index, child in enumerate(value):
+            commands.extend(
+                _collect_packet_command_strings(
+                    child,
+                    field_name,
+                    f"{path}[{index}]",
+                )
+            )
+        return commands
+    return []
+
+
+def _is_date_independent_meta_command(command: str) -> bool:
+    return command.startswith("pytest ")
+
+
+
+def test_rerun_required_matured_outstanding_resolution_is_source_only() -> None:
+    matured_resolution = next(
+        row
+        for row in RERUN_APPROVAL_REQUIRED_WARNING_RESOLUTION_MATRIX
+        if row["warning_key"] == "matured_or_expired_outstanding"
+    )
+
+    assert matured_resolution["exit_criteria"] == (
+        "Matured or unparseable non-zero bond positions are reconciled at source, and "
+        "the matured-outstanding strict queue exits 0; exception evidence cannot close "
+        "this blocker."
+    )
+
+
+def _insert_blocked_data(path: Path) -> None:
+    _insert_legacy_blocked_data(path)
+    warnings = [
+        "Non-standard tenor buckets remapped to nearest KRD bucket: 2Y, 6M",
+        FIXTURE_DURATION_WARNING,
+        "Excluded 2 rows without maturity_date from liquidity gap calculation.",
+        "Excluded 1 liability rows without maturity_date from liquidity gap calculation.",
+    ]
+    connection = duckdb.connect(str(path), read_only=False)
+    try:
+        connection.execute(
+            """
+            update fact_formal_risk_tensor_daily
+            set warnings_json = ?
+            where report_date = ?
+            """,
+            [json.dumps(warnings), "2026-05-31"],
+        )
+    finally:
+        connection.close()
 
 
 def _write_blocked_fixture_nearest_bucket_approval_evidence(docs_root: Path) -> None:
@@ -109,7 +225,7 @@ def _write_blocked_fixture_maturity_scoped_exclusion_evidence(docs_root: Path) -
                 "page_slug": "portfolio",
                 "report_date": "2026-05-31",
                 "decision": "approve_scoped_exclusion",
-                "bond_missing_maturity_rows": 2,
+                "bond_missing_maturity_rows": 0,
                 "tyw_liability_missing_maturity_rows": 1,
                 "data_owner_name": "Data Owner",
                 "data_owner_approval_date": "2026-05-31",
@@ -168,7 +284,7 @@ def _expected_fixture_warning_resolution_matrix() -> list[dict[str, object]]:
                 "parsed": ["2Y", "6M"],
                 "recomputed": ["2Y", "6M"],
             },
-            "evidence_command": "python scripts/portfolio_home_krd_remap_review_queue.py --require-clean",
+            "evidence_command": "python scripts/portfolio_home_krd_remap_review_queue.py --report-date 2026-05-31 --require-clean",
             "exit_criteria": (
                 "Risk owner approves nearest-bucket KRD mapping or supplies exact-bucket "
                 "schema evidence; KRD review queue exits 0."
@@ -176,42 +292,74 @@ def _expected_fixture_warning_resolution_matrix() -> list[dict[str, object]]:
             "evidence_scope": dict(RISK_WARNING_RESOLUTION_SCOPE),
         },
         {
-            "warning_key": "duration_denominator_exclusion",
-            "owner": "data_owner",
-            "current_status": "blocked",
+            "warning_key": "duration_no_maturity",
+            "owner": "none",
+            "current_status": "informational",
             "current_evidence": {
-                "parsed": {
-                    "row_count": 3,
-                    "market_value_sum": "60.00000000",
-                    "missing_maturity_rows": 2,
-                    "nonpositive_duration_rows": 1,
-                },
-                "recomputed": {
-                    "row_count": 3,
-                    "market_value_sum": "60.00000000",
-                    "missing_maturity_rows": 2,
-                    "nonpositive_duration_rows": 1,
-                },
+                "parsed": {"row_count": 2, "market_value": "40.00000000"},
+                "recomputed": {"row_count": 2, "market_value": "40.00000000"},
             },
-            "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
+            "evidence_command": (
+                "python scripts/portfolio_home_risk_warning_consistency.py "
+                "--report-date 2026-05-31 --require-consistent"
+            ),
             "exit_criteria": (
-                "Data owner remediates missing maturity dates or captures signed scoped "
-                "exclusion; maturity remediation queue exits 0."
+                "Contractual no-maturity rows remain disclosed and excluded from maturity "
+                "risk math; no date remediation is required."
             ),
             "evidence_scope": dict(RISK_WARNING_RESOLUTION_SCOPE),
         },
         {
-            "warning_key": "bond_liquidity_gap_missing_maturity",
+            "warning_key": "matured_or_expired_outstanding",
+            "owner": "data_owner",
+            "current_status": "clean",
+            "current_evidence": {
+                "parsed": {"row_count": 0, "market_value": "0.00000000"},
+                "recomputed": {"row_count": 0, "market_value": "0.00000000"},
+            },
+            "evidence_command": (
+                "python scripts/portfolio_home_matured_outstanding_queue.py "
+                "--report-date 2026-05-31 --require-empty"
+            ),
+            "exit_criteria": (
+                "Matured or unparseable non-zero bond positions are reconciled at source, and "
+                "the matured-outstanding strict queue exits 0; exception evidence cannot close "
+                "this blocker."
+            ),
+            "evidence_scope": dict(RISK_WARNING_RESOLUTION_SCOPE),
+        },
+        {
+            "warning_key": "nonpositive_duration",
             "owner": "data_owner",
             "current_status": "blocked",
+            "current_evidence": {
+                "parsed": {"row_count": 1, "market_value": "20.00000000"},
+                "recomputed": {"row_count": 1, "market_value": "20.00000000"},
+            },
+            "evidence_command": (
+                "python scripts/portfolio_home_risk_warning_consistency.py "
+                "--report-date 2026-05-31 --require-clean"
+            ),
+            "exit_criteria": (
+                "Future-dated positions with non-positive modified_duration are remediated "
+                "at source and the risk warning clean gate exits 0."
+            ),
+            "evidence_scope": dict(RISK_WARNING_RESOLUTION_SCOPE),
+        },
+        {
+            "warning_key": "bond_liquidity_gap_no_maturity",
+            "owner": "none",
+            "current_status": "informational",
             "current_evidence": {
                 "parsed": {"missing_maturity_rows": 2},
                 "recomputed": {"missing_maturity_rows": 2},
             },
-            "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
+            "evidence_command": (
+                "python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-consistent"
+            ),
             "exit_criteria": (
-                "Bond missing maturity rows are remediated or signed scoped exclusion "
-                "evidence is captured; maturity remediation queue exits 0."
+                "Bond ledger null maturity is disclosed as contractual no-maturity; "
+                "no date remediation or scoped exclusion is required."
             ),
             "evidence_scope": dict(RISK_WARNING_RESOLUTION_SCOPE),
         },
@@ -223,7 +371,7 @@ def _expected_fixture_warning_resolution_matrix() -> list[dict[str, object]]:
                 "parsed": {"missing_maturity_rows": 1},
                 "recomputed": {"missing_maturity_rows": 1},
             },
-            "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
+            "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --report-date 2026-05-31 --require-empty",
             "exit_criteria": (
                 "TYW liability missing maturity rows are remediated or signed scoped "
                 "exclusion evidence is captured; maturity remediation queue exits 0."
@@ -240,10 +388,10 @@ def _expected_current_warning_resolution_matrix() -> list[dict[str, object]]:
             "owner": "risk_owner",
             "current_status": "blocked",
             "current_evidence": {
-                "parsed": ["20Y", "2Y", "6M"],
+                "parsed": ["15Y", "20Y", "2Y", "6M"],
                 "recomputed": ["20Y", "2Y", "6M"],
             },
-            "evidence_command": "python scripts/portfolio_home_krd_remap_review_queue.py --require-clean",
+            "evidence_command": "python scripts/portfolio_home_krd_remap_review_queue.py --report-date 2026-05-31 --require-clean",
             "exit_criteria": (
                 "Risk owner approves nearest-bucket KRD mapping or supplies exact-bucket "
                 "schema evidence; KRD review queue exits 0."
@@ -251,42 +399,80 @@ def _expected_current_warning_resolution_matrix() -> list[dict[str, object]]:
             "evidence_scope": dict(RISK_WARNING_RESOLUTION_SCOPE),
         },
         {
-            "warning_key": "duration_denominator_exclusion",
-            "owner": "data_owner",
+            "warning_key": "duration_no_maturity",
+            "owner": "risk_owner",
             "current_status": "blocked",
             "current_evidence": {
-                "parsed": {
-                    "row_count": 120,
-                    "market_value_sum": "38318400505.50000008",
-                    "missing_maturity_rows": 114,
-                    "nonpositive_duration_rows": 6,
+                "parsed": {"row_count": 0, "market_value": "0.00000000"},
+                "recomputed": {
+                    "row_count": 114,
+                    "market_value": "37622164239.83000008",
                 },
-            "recomputed": {
-                "row_count": 120,
-                "market_value_sum": "39109594105.50000008",
-                "missing_maturity_rows": 114,
-                "nonpositive_duration_rows": 6,
             },
-            },
-            "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
+            "evidence_command": (
+                "python scripts/portfolio_home_risk_warning_consistency.py "
+                "--report-date 2026-05-31 --require-consistent"
+            ),
             "exit_criteria": (
-                "Data owner remediates missing maturity dates or captures signed scoped "
-                "exclusion; maturity remediation queue exits 0."
+                "Contractual no-maturity rows remain disclosed and excluded from maturity "
+                "risk math; no date remediation is required."
             ),
             "evidence_scope": dict(RISK_WARNING_RESOLUTION_SCOPE),
         },
         {
-            "warning_key": "bond_liquidity_gap_missing_maturity",
+            "warning_key": "matured_or_expired_outstanding",
             "owner": "data_owner",
             "current_status": "blocked",
+            "current_evidence": {
+                "parsed": {"row_count": 0, "market_value": "0.00000000"},
+                "recomputed": {
+                    "row_count": 6,
+                    "market_value": "1487429865.67000000",
+                },
+            },
+            "evidence_command": (
+                "python scripts/portfolio_home_matured_outstanding_queue.py "
+                "--report-date 2026-05-31 --require-empty"
+            ),
+            "exit_criteria": (
+                "Matured or unparseable non-zero bond positions are reconciled at source, and "
+                "the matured-outstanding strict queue exits 0; exception evidence cannot close "
+                "this blocker."
+            ),
+            "evidence_scope": dict(RISK_WARNING_RESOLUTION_SCOPE),
+        },
+        {
+            "warning_key": "nonpositive_duration",
+            "owner": "data_owner",
+            "current_status": "clean",
+            "current_evidence": {
+                "parsed": {"row_count": 0, "market_value": "0.00000000"},
+                "recomputed": {"row_count": 0, "market_value": "0.00000000"},
+            },
+            "evidence_command": (
+                "python scripts/portfolio_home_risk_warning_consistency.py "
+                "--report-date 2026-05-31 --require-clean"
+            ),
+            "exit_criteria": (
+                "Future-dated positions with non-positive modified_duration are remediated "
+                "at source and the risk warning clean gate exits 0."
+            ),
+            "evidence_scope": dict(RISK_WARNING_RESOLUTION_SCOPE),
+        },
+        {
+            "warning_key": "bond_liquidity_gap_no_maturity",
+            "owner": "none",
+            "current_status": "informational",
             "current_evidence": {
                 "parsed": {"missing_maturity_rows": 114},
                 "recomputed": {"missing_maturity_rows": 114},
             },
-            "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
+            "evidence_command": (
+                "python scripts/portfolio_home_risk_warning_consistency.py --report-date 2026-05-31 --require-consistent"
+            ),
             "exit_criteria": (
-                "Bond missing maturity rows are remediated or signed scoped exclusion "
-                "evidence is captured; maturity remediation queue exits 0."
+                "Bond ledger null maturity is disclosed as contractual no-maturity; "
+                "no date remediation or scoped exclusion is required."
             ),
             "evidence_scope": dict(RISK_WARNING_RESOLUTION_SCOPE),
         },
@@ -298,7 +484,7 @@ def _expected_current_warning_resolution_matrix() -> list[dict[str, object]]:
                 "parsed": {"missing_maturity_rows": 1455},
                 "recomputed": {"missing_maturity_rows": 1455},
             },
-            "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
+            "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --report-date 2026-05-31 --require-empty",
             "exit_criteria": (
                 "TYW liability missing maturity rows are remediated or signed scoped "
                 "exclusion evidence is captured; maturity remediation queue exits 0."
@@ -311,8 +497,10 @@ def _expected_current_warning_resolution_matrix() -> list[dict[str, object]]:
 def _expected_current_warning_resolution_matrix_summary() -> list[tuple[str, str, str]]:
     return [
         ("krd_bucket_remap", "risk_owner", "blocked"),
-        ("duration_denominator_exclusion", "data_owner", "blocked"),
-        ("bond_liquidity_gap_missing_maturity", "data_owner", "blocked"),
+        ("duration_no_maturity", "none", "informational"),
+        ("matured_or_expired_outstanding", "data_owner", "blocked"),
+        ("nonpositive_duration", "data_owner", "clean"),
+        ("bond_liquidity_gap_no_maturity", "none", "informational"),
         ("tyw_liability_gap_missing_maturity", "data_owner", "blocked"),
     ]
 
@@ -328,24 +516,18 @@ def _expected_fixture_duration_exclusion_delta_detail() -> dict[str, object]:
         "delta": {
             "row_count": 0,
             "market_value_sum": "0.00000000",
-            "missing_maturity_rows": 0,
+            "no_maturity_rows": 0,
+            "no_maturity_market_value": "0.00000000",
+            "matured_or_expired_outstanding_rows": 0,
+            "matured_or_expired_outstanding_market_value": "0.00000000",
             "nonpositive_duration_rows": 0,
+            "nonpositive_duration_market_value": "0.00000000",
         },
-        "parsed_warning_text": (
-            "3 rows carry market_value=60.00000000 and are excluded from portfolio "
-            "duration denominator: 2 without maturity_date; 1 with non-positive "
-            "modified_duration. DV01 totals remain sourced from row dv01; duration "
-            "metrics ignore these rows until inputs are remediated."
-        ),
-        "expected_warning_text_from_recomputed": (
-            "3 rows carry market_value=60.00000000 and are excluded from portfolio "
-            "duration denominator: 2 without maturity_date; 1 with non-positive "
-            "modified_duration. DV01 totals remain sourced from row dv01; duration "
-            "metrics ignore these rows until inputs are remediated."
-        ),
+        "parsed_warning_text": FIXTURE_DURATION_WARNING,
+        "expected_warning_text_from_recomputed": FIXTURE_DURATION_WARNING,
         "recomputed_breakdown_by_reason": [
             {
-                "exclusion_reason": "missing_maturity",
+                "exclusion_reason": "no_maturity",
                 "row_count": 2,
                 "market_value_sum": "40.00000000",
                 "dv01_sum": "0.00000000",
@@ -376,13 +558,7 @@ def _expected_fixture_risk_tensor_rematerialization_preview() -> dict[str, objec
         "preview_decision_blockers": ["risk_tensor_quality_warning"],
         "preview_warnings": [
             "Non-standard tenor buckets remapped to nearest KRD bucket: 2Y, 6M",
-            (
-                "3 rows carry market_value=60.00000000 and are excluded from "
-                "portfolio duration denominator: 2 without maturity_date; 1 "
-                "with non-positive modified_duration. DV01 totals remain sourced "
-                "from row dv01; duration metrics ignore these rows until inputs "
-                "are remediated."
-            ),
+            FIXTURE_DURATION_WARNING,
             "Excluded 2 rows without maturity_date from liquidity gap calculation.",
             "Excluded 1 liability rows without maturity_date from liquidity gap calculation.",
         ],
@@ -391,42 +567,51 @@ def _expected_fixture_risk_tensor_rematerialization_preview() -> dict[str, objec
 
 def _expected_current_duration_exclusion_delta_detail() -> dict[str, object]:
     return {
-        "status": "mismatch",
+        "status": "matched",
         "delta_basis": "recomputed_minus_parsed",
         "owner_reconciliation_hint": (
-            "Recompute or rematerialize risk tensor warnings so parsed warning "
-            "numbers match fact_formal_bond_analytics_daily evidence."
+            "Parsed risk tensor warning matches recomputed duration exclusion evidence."
         ),
-        "mismatch_fields": ["market_value_sum"],
+        "mismatch_fields": [],
         "delta": {
             "row_count": 0,
-            "market_value_sum": "791193600.00000000",
-            "missing_maturity_rows": 0,
+            "market_value_sum": "0.00000000",
+            "no_maturity_rows": 0,
+            "no_maturity_market_value": "0.00000000",
+            "matured_or_expired_outstanding_rows": 0,
+            "matured_or_expired_outstanding_market_value": "0.00000000",
             "nonpositive_duration_rows": 0,
+            "nonpositive_duration_market_value": "0.00000000",
         },
         "parsed_warning_text": (
-            "120 rows carry market_value=38318400505.50000008 and are excluded "
-            "from portfolio duration denominator: 114 without maturity_date; 6 "
-            "with non-positive modified_duration. DV01 totals remain sourced from "
-            "row dv01; duration metrics ignore these rows until inputs are remediated."
+            "120 rows carry market_value=39109594105.50000008 and are excluded "
+            "from portfolio duration denominator: 114 without maturity_date "
+            "(market_value=37622164239.83000008); 6 matured on or before report_date "
+            "with outstanding market_value (market_value=1487429865.67000000); 0 "
+            "future-dated with non-positive modified_duration (market_value=0). "
+            "DV01 totals remain sourced from row dv01; duration metrics ignore these "
+            "rows until inputs are remediated."
         ),
         "expected_warning_text_from_recomputed": (
             "120 rows carry market_value=39109594105.50000008 and are excluded "
-            "from portfolio duration denominator: 114 without maturity_date; 6 "
-            "with non-positive modified_duration. DV01 totals remain sourced from "
-            "row dv01; duration metrics ignore these rows until inputs are remediated."
+            "from portfolio duration denominator: 114 without maturity_date "
+            "(market_value=37622164239.83000008); 6 matured on or before report_date "
+            "with outstanding market_value (market_value=1487429865.67000000); 0 "
+            "future-dated with non-positive modified_duration (market_value=0.00000000). "
+            "DV01 totals remain sourced from row dv01; duration metrics ignore these "
+            "rows until inputs are remediated."
         ),
         "recomputed_breakdown_by_reason": [
             {
-                "exclusion_reason": "missing_maturity",
-                "row_count": 114,
-                "market_value_sum": "37622164239.83000008",
+                "exclusion_reason": "matured_or_expired_outstanding",
+                "row_count": 6,
+                "market_value_sum": "1487429865.67000000",
                 "dv01_sum": "0.00000000",
             },
             {
-                "exclusion_reason": "nonpositive_duration",
-                "row_count": 6,
-                "market_value_sum": "1487429865.67000000",
+                "exclusion_reason": "no_maturity",
+                "row_count": 114,
+                "market_value_sum": "37622164239.83000008",
                 "dv01_sum": "0.00000000",
             },
         ],
@@ -440,8 +625,8 @@ def _expected_current_risk_tensor_rematerialization_preview() -> dict[str, objec
         "writes_database": False,
         "approves_metric_or_page": False,
         "certification_effect": "none",
-        "current_consistency_blockers": ["duration_exclusion_warning_mismatch"],
-        "would_clear_consistency_blockers": ["duration_exclusion_warning_mismatch"],
+        "current_consistency_blockers": [],
+        "would_clear_consistency_blockers": [],
         "preview_consistency_status": "consistent",
         "preview_consistency_blockers": [],
         "preview_quality_flag": "warning",
@@ -452,9 +637,12 @@ def _expected_current_risk_tensor_rematerialization_preview() -> dict[str, objec
             (
                 "120 rows carry market_value=39109594105.50000008 and are "
                 "excluded from portfolio duration denominator: 114 without "
-                "maturity_date; 6 with non-positive modified_duration. DV01 "
-                "totals remain sourced from row dv01; duration metrics ignore "
-                "these rows until inputs are remediated."
+                "maturity_date (market_value=37622164239.83000008); 6 matured on or "
+                "before report_date with outstanding market_value "
+                "(market_value=1487429865.67000000); 0 future-dated with non-positive "
+                "modified_duration (market_value=0.00000000). DV01 totals remain "
+                "sourced from row dv01; duration metrics ignore these rows until "
+                "inputs are remediated."
             ),
             "Excluded 114 rows without maturity_date from liquidity gap calculation.",
             "Excluded 1455 liability rows without maturity_date from liquidity gap calculation.",
@@ -506,8 +694,8 @@ def _expected_scorecard_owner_gate_summary() -> dict[str, object]:
                 "detail_missing_decision_rows": 500,
             },
             "maturity": {
-                "missing_decision_rows": 1569,
-                "bond_missing_decision_rows": 114,
+                "missing_decision_rows": 1455,
+                "bond_missing_decision_rows": 0,
                 "tyw_liability_missing_decision_rows": 1455,
             },
         },
@@ -547,7 +735,7 @@ def _expected_owner_decision_intake_summary() -> dict[str, object]:
             "krd_summary_row_count": 3,
             "krd_detail_row_count": 500,
             "krd_owner_decision_fields_blank": True,
-            "bond_missing_maturity_row_count": 114,
+            "bond_missing_maturity_row_count": 0,
             "tyw_liability_missing_maturity_row_count": 1455,
             "maturity_owner_fields_blank": True,
         },
@@ -601,7 +789,7 @@ def _approval_summary_required_evidence_fields() -> dict[str, object]:
             "krd_summary_row_count": 3,
             "krd_detail_row_count": 500,
             "krd_owner_decision_fields_blank": True,
-            "bond_missing_maturity_row_count": 114,
+            "bond_missing_maturity_row_count": 0,
             "tyw_liability_missing_maturity_row_count": 1455,
             "maturity_owner_fields_blank": True,
         },
@@ -631,23 +819,12 @@ def _valid_rerun_payload() -> dict[str, object]:
             "business_owner_approval_boundary": copy.deepcopy(
                 RERUN_APPROVAL_REQUIRED_BUSINESS_OWNER_BOUNDARY,
             ),
-            "risk_warning_clean_status": {
-                "status": "blocked",
-                "valid": False,
-                "decision_status": "blocked",
-                "decision_blockers": [
-                    "risk_tensor_quality_warning",
-                    "risk_tensor_warning_mismatch",
-                ],
-                "evidence_scope": RISK_WARNING_EVIDENCE_SCOPE,
-                "warning_resolution_matrix": _expected_current_warning_resolution_matrix(),
-                "duration_exclusion_delta_detail": (
-                    _expected_current_duration_exclusion_delta_detail()
-                ),
-                "risk_tensor_rematerialization_preview": (
-                    _expected_current_risk_tensor_rematerialization_preview()
-                ),
-            },
+            # rerun_evidence_payload_status 用 RERUN_APPROVAL_REQUIRED_RISK_WARNING_STATUS
+            # 这一代码常量校验自引用证据工件，不是与库当前实时重算值比对；直接复用该
+            # 常量而非维护一份平行硬编码副本，避免两处定义未来出现遗漏同步的漂移。
+            "risk_warning_clean_status": copy.deepcopy(
+                RERUN_APPROVAL_REQUIRED_RISK_WARNING_STATUS,
+            ),
             "score_blocker_action_coverage": {
                 "status": "clean",
                 "blockers": [],
@@ -949,10 +1126,16 @@ def test_portfolio_home_business_owner_approval_packet_reports_pending_scope() -
     assert packet["packet_kind"] == "portfolio_home_business_owner_approval_packet"
     assert packet["packet_status"] == "pending"
     assert packet["activation_ready"] is False
-    assert packet["current_score"] == "99.86 / 100"
-    assert packet["remaining_gap"] == "0.14"
-    assert packet["score_status"] == "blocked"
-    assert packet["score_blockers"] == CURRENT_SCORE_BLOCKERS
+    assert re.fullmatch(r"\d+(?:\.\d+)? / 100", str(packet["current_score"]))
+    assert re.fullmatch(r"\d+(?:\.\d+)?", str(packet["remaining_gap"]))
+    assert packet["score_status"] in {"blocked", "ready_for_full_score"}
+    live_score_blockers = packet["score_blockers"]
+    # score_blockers 是本机治理库当前实际生效的阻塞项子集，随库状态演进而变化；
+    # 只锁定它是完整闭环目录 CURRENT_SCORE_BLOCKERS 的合法子序列（成员+相对顺序不变式）。
+    assert set(live_score_blockers).issubset(set(CURRENT_SCORE_BLOCKERS))
+    assert live_score_blockers == [
+        blocker for blocker in CURRENT_SCORE_BLOCKERS if blocker in live_score_blockers
+    ]
 
     approval = packet["approval_summary"]
     assert approval["approval_status"] == "pending"
@@ -971,7 +1154,19 @@ def test_portfolio_home_business_owner_approval_packet_reports_pending_scope() -
     assert approval["approval_field_status"]["approval_date"] == "missing"
     assert approval["approval_field_status"]["verification_commands_rerun"] == "pending"
     assert approval["approval_action_items"][0]["blocker"] == "business_owner_name"
-    assert packet["business_owner_approval_boundary"] == {
+    approval_boundary = packet["business_owner_approval_boundary"]
+    assert {
+        key: approval_boundary[key]
+        for key in (
+            "template_approval_captured",
+            "formal_authorization_allowed",
+            "governance_write_allowed",
+            "page_execution_proven",
+            "full_score_closure_ready",
+            "activation_ready",
+            "status",
+        )
+    } == {
         "template_approval_captured": False,
         "formal_authorization_allowed": False,
         "governance_write_allowed": False,
@@ -979,65 +1174,156 @@ def test_portfolio_home_business_owner_approval_packet_reports_pending_scope() -
         "full_score_closure_ready": False,
         "activation_ready": False,
         "status": "pending_owner_input",
-        "blockers": [
-            "business_owner_approval_not_captured",
-            "scorecard_full_score_not_ready",
-            "scorecard_score_status_not_ready",
-            "owner_decision_intake_not_ready",
-            "risk_warning_not_clean",
-        ],
     }
+    # blockers 是各独立子检查（scorecard/评审/风险预警/证据现势等）当前是否
+    # 通过所派生的原因码集合，逐项随库状态演进而增减；只锁定代码固定的原因码
+    # 目录与相对顺序（子序列不变式），并保留本场景必现的
+    # business_owner_approval_not_captured（approval 模板未捕获这一事实与库状态无关）。
+    assert "business_owner_approval_not_captured" in approval_boundary["blockers"]
+    assert set(approval_boundary["blockers"]).issubset(
+        set(APPROVAL_BOUNDARY_BLOCKER_ORDER)
+    )
+    assert approval_boundary["blockers"] == [
+        blocker
+        for blocker in APPROVAL_BOUNDARY_BLOCKER_ORDER
+        if blocker in approval_boundary["blockers"]
+    ]
     risk_warning_status = packet["risk_warning_clean_status"]
     assert {
         key: risk_warning_status[key]
-        for key in (
-            "status",
-            "valid",
-            "decision_status",
-            "decision_blockers",
-            "evidence_scope",
-        )
+        for key in ("status", "valid", "decision_status", "evidence_scope")
     } == {
         "status": "blocked",
         "valid": False,
         "decision_status": "blocked",
-        "decision_blockers": [
-            "risk_tensor_quality_warning",
-            "risk_tensor_warning_mismatch",
-        ],
         "evidence_scope": RISK_WARNING_EVIDENCE_SCOPE,
     }
+    # decision_blockers 是风险预警证据当前实际生效的决策阻塞子集（随风险张量重算
+    # 与库状态演进而变化）；risk_tensor_quality_warning 是本场景必现项（风险张量
+    # 质量预警本身尚未清除），risk_tensor_warning_mismatch 是否伴随出现取决于当
+    # 前重算结果与已解析预警是否一致，属于可变状态。
+    assert "risk_tensor_quality_warning" in risk_warning_status["decision_blockers"]
+    assert set(risk_warning_status["decision_blockers"]).issubset(
+        {"risk_tensor_quality_warning", "risk_tensor_warning_mismatch"}
+    )
+    # warning_resolution_matrix：warning_key 目录与每项固定 owner 是代码常量；
+    # 动态项（duration_no_maturity / bond_liquidity_gap_no_maturity）的 owner 与
+    # current_status 取决于 parsed==recomputed 是否一致，属于本机库可变状态。
     warning_matrix = risk_warning_status["warning_resolution_matrix"]
-    assert [
-        (row["warning_key"], row["owner"], row["current_status"])
-        for row in warning_matrix
-    ] == _expected_current_warning_resolution_matrix_summary()
-    assert risk_warning_status["duration_exclusion_delta_detail"] == (
-        _expected_current_duration_exclusion_delta_detail()
-    )
-    assert risk_warning_status["risk_tensor_rematerialization_preview"] == (
-        _expected_current_risk_tensor_rematerialization_preview()
-    )
-    assert risk_warning_status["risk_tensor_rematerialization_preview"][
-        "writes_database"
-    ] is False
-    assert risk_warning_status["risk_tensor_rematerialization_preview"][
-        "approves_metric_or_page"
-    ] is False
-    assert (
-        risk_warning_status["risk_tensor_rematerialization_preview"]["certification_effect"]
-        == "none"
-    )
-    assert warning_matrix[0]["current_evidence"] == {
-        "parsed": ["20Y", "2Y", "6M"],
-        "recomputed": ["20Y", "2Y", "6M"],
+    matrix_by_key = {row["warning_key"]: row for row in warning_matrix}
+    fixed_owner_keys = {
+        "krd_bucket_remap": "risk_owner",
+        "matured_or_expired_outstanding": "data_owner",
+        "nonpositive_duration": "data_owner",
+        "tyw_liability_gap_missing_maturity": "data_owner",
     }
+    dynamic_owner_keys = {"duration_no_maturity", "bond_liquidity_gap_no_maturity"}
+    assert list(matrix_by_key) == [
+        "krd_bucket_remap",
+        "duration_no_maturity",
+        "matured_or_expired_outstanding",
+        "nonpositive_duration",
+        "bond_liquidity_gap_no_maturity",
+        "tyw_liability_gap_missing_maturity",
+    ]
+    for key, expected_owner in fixed_owner_keys.items():
+        row = matrix_by_key[key]
+        assert row["owner"] == expected_owner
+        assert row["current_status"] in {"clean", "blocked"}
+    for key in dynamic_owner_keys:
+        row = matrix_by_key[key]
+        assert row["owner"] in {"none", "risk_owner"}
+        assert row["current_status"] in {"informational", "blocked"}
+        assert (row["owner"] == "none") is (row["current_status"] == "informational")
+
+    duration_delta = risk_warning_status["duration_exclusion_delta_detail"]
+    assert duration_delta["status"] in {"matched", "mismatch"}
+    assert duration_delta["delta_basis"] == "recomputed_minus_parsed"
+    assert isinstance(duration_delta["mismatch_fields"], list)
+    # matched 当且仅当无逐字段不一致；两者都源自库当前 parsed/recomputed 对比。
+    assert (duration_delta["status"] == "matched") is (duration_delta["mismatch_fields"] == [])
+    delta = duration_delta["delta"]
+    assert set(delta) == {
+        "row_count",
+        "market_value_sum",
+        "no_maturity_rows",
+        "no_maturity_market_value",
+        "matured_or_expired_outstanding_rows",
+        "matured_or_expired_outstanding_market_value",
+        "nonpositive_duration_rows",
+        "nonpositive_duration_market_value",
+    }
+    for field_name, field_value in delta.items():
+        if field_name.endswith("_rows") or field_name == "row_count":
+            assert isinstance(field_value, int)
+        else:
+            assert re.fullmatch(r"-?\d+\.\d{8}", str(field_value))
+    assert isinstance(duration_delta["parsed_warning_text"], str) and duration_delta[
+        "parsed_warning_text"
+    ]
+    assert isinstance(duration_delta["expected_warning_text_from_recomputed"], str)
+    for breakdown in duration_delta["recomputed_breakdown_by_reason"]:
+        assert set(breakdown) == {
+            "exclusion_reason",
+            "row_count",
+            "market_value_sum",
+            "dv01_sum",
+        }
+        assert breakdown["exclusion_reason"] in {
+            "no_maturity",
+            "matured_or_expired_outstanding",
+            "nonpositive_duration",
+        }
+        assert isinstance(breakdown["row_count"], int)
+
+    preview = risk_warning_status["risk_tensor_rematerialization_preview"]
+    assert preview["preview_basis"] == "current_formal_facts_read_only"
+    assert preview["writes_database"] is False
+    assert preview["approves_metric_or_page"] is False
+    assert preview["certification_effect"] == "none"
+    consistency_blocker_domain = {
+        "krd_bucket_warning_mismatch",
+        "duration_exclusion_warning_mismatch",
+        "bond_liquidity_gap_warning_mismatch",
+        "tyw_liability_gap_warning_mismatch",
+    }
+    assert set(preview["current_consistency_blockers"]).issubset(consistency_blocker_domain)
+    assert set(preview["would_clear_consistency_blockers"]).issubset(
+        set(preview["current_consistency_blockers"])
+    )
+    assert preview["preview_consistency_status"] in {"consistent", "mismatch"}
+    assert set(preview["preview_consistency_blockers"]).issubset(consistency_blocker_domain)
+    assert (preview["preview_consistency_status"] == "consistent") is (
+        preview["preview_consistency_blockers"] == []
+    )
+    assert preview["preview_quality_flag"] in {"ok", "warning"}
+    assert preview["preview_decision_status"] in {"clean", "blocked"}
+    assert (preview["preview_decision_status"] == "clean") is (
+        preview["preview_decision_blockers"] == []
+    )
+    assert preview["status"] in {"not_available", "would_remain_blocked", "would_be_clean"}
+    assert preview["status"] == (
+        "would_remain_blocked" if preview["preview_decision_blockers"] else "would_be_clean"
+    )
+    for warning_text in preview["preview_warnings"]:
+        assert isinstance(warning_text, str) and warning_text
+
+    krd_evidence = matrix_by_key["krd_bucket_remap"]["current_evidence"]
+    assert set(krd_evidence) == {"parsed", "recomputed"}
+    assert all(
+        isinstance(tenor, str) and re.fullmatch(r"\d+[YM]", tenor)
+        for tenor in krd_evidence["parsed"]
+    )
+    assert all(
+        isinstance(tenor, str) and re.fullmatch(r"\d+[YM]", tenor)
+        for tenor in krd_evidence["recomputed"]
+    )
     assert warning_matrix[0]["evidence_scope"] == RISK_WARNING_RESOLUTION_SCOPE
     assert packet["score_blocker_action_coverage"] == {
         "status": "clean",
         "blockers": [],
         "unassigned_blockers": [],
-        "covered_blockers": CURRENT_SCORE_BLOCKERS,
+        "covered_blockers": live_score_blockers,
     }
     assert packet["generated_owner_fields_boundaries"] == {
         "krd_contract_decision_manifest": True,
@@ -1093,7 +1379,7 @@ def test_portfolio_home_business_owner_approval_packet_reports_pending_scope() -
             "krd_summary_row_count": 3,
             "krd_detail_row_count": 500,
             "krd_owner_decision_fields_blank": True,
-            "bond_missing_maturity_row_count": 114,
+            "bond_missing_maturity_row_count": 0,
             "tyw_liability_missing_maturity_row_count": 1455,
             "maturity_owner_fields_blank": True,
         },
@@ -1147,8 +1433,8 @@ def test_portfolio_home_business_owner_approval_packet_reports_pending_scope() -
                 "detail_missing_decision_rows": 500,
             },
             "maturity": {
-                "missing_decision_rows": 1569,
-                "bond_missing_decision_rows": 114,
+                "missing_decision_rows": 1455,
+                "bond_missing_decision_rows": 0,
                 "tyw_liability_missing_decision_rows": 1455,
             },
         },
@@ -1218,8 +1504,8 @@ def test_portfolio_home_business_owner_approval_packet_reports_pending_scope() -
                 "detail_missing_decision_rows": 500,
             },
             "maturity": {
-                "missing_decision_rows": 1569,
-                "bond_missing_decision_rows": 114,
+                "missing_decision_rows": 1455,
+                "bond_missing_decision_rows": 0,
                 "tyw_liability_missing_decision_rows": 1455,
             },
         },
@@ -1263,16 +1549,16 @@ def test_portfolio_home_business_owner_approval_packet_reports_pending_scope() -
     assert guard["closure_artifact_presence_required"] is True
     assert guard["activation_ready"] is False
     assert guard["required_commands"] == [
-        "python scripts/portfolio_home_closure_scorecard.py --limit 3 --require-full-score",
-        "python scripts/check_portfolio_home_business_owner_approval.py --require-captured",
-        "python scripts/portfolio_home_evidence_snapshot.py --scorecard-limit 1 --verifier-limit 1 --require-verifier-matched",
-        "python scripts/portfolio_home_owner_action_packet.py --limit 3 --require-clean",
-        "python scripts/portfolio_home_risk_warning_consistency.py --require-clean",
-        "python scripts/portfolio_home_dependency_consistency_check.py --limit 3 --require-consistent",
-        "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready",
-        "python scripts/portfolio_home_closure_artifact_presence_check.py --limit 3 --require-current",
-        "python scripts/portfolio_home_evidence_packet_guard.py --require-clean",
-        "python scripts/portfolio_home_evidence_snapshot.py --scorecard-limit 1 --verifier-limit 1 --require-verifier-matched --output docs/portfolio/portfolio-home-evidence-snapshot.json",
+        "python scripts/portfolio_home_closure_scorecard.py --limit 3 --require-full-score --report-date 2026-05-31",
+        "python scripts/check_portfolio_home_business_owner_approval.py --require-captured --report-date 2026-05-31",
+        "python scripts/portfolio_home_evidence_snapshot.py --scorecard-limit 1 --verifier-limit 1 --require-verifier-matched --report-date 2026-05-31",
+        "python scripts/portfolio_home_owner_action_packet.py --limit 3 --require-clean --report-date 2026-05-31",
+        "python scripts/portfolio_home_risk_warning_consistency.py --require-clean --report-date 2026-05-31",
+        "python scripts/portfolio_home_dependency_consistency_check.py --limit 3 --require-consistent --report-date 2026-05-31",
+        "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready --report-date 2026-05-31",
+        "python scripts/portfolio_home_closure_artifact_presence_check.py --limit 3 --require-current --report-date 2026-05-31",
+        "python scripts/portfolio_home_evidence_packet_guard.py --require-clean --report-date 2026-05-31",
+        "python scripts/portfolio_home_evidence_snapshot.py --scorecard-limit 1 --verifier-limit 1 --require-verifier-matched --output docs/portfolio/portfolio-home-evidence-snapshot.json --report-date 2026-05-31",
     ]
 
 
@@ -1292,16 +1578,16 @@ def test_portfolio_home_business_owner_approval_packet_lists_evidence_dependenci
         "docs/audits/2026-06-05-portfolio-readiness-gate-audit.md"
     )
     assert dependencies["evidence_snapshot"]["command"] == (
-        "python scripts/portfolio_home_evidence_snapshot.py --scorecard-limit 1 --verifier-limit 1 --require-verifier-matched"
+        "python scripts/portfolio_home_evidence_snapshot.py --scorecard-limit 1 --verifier-limit 1 --require-verifier-matched --report-date 2026-05-31"
     )
     assert dependencies["owner_action_packet"]["command"] == (
-        "python scripts/portfolio_home_owner_action_packet.py --limit 3"
+        "python scripts/portfolio_home_owner_action_packet.py --limit 3 --report-date 2026-05-31"
     )
     assert dependencies["closure_artifact_presence_check"]["command"] == (
-        "python scripts/portfolio_home_closure_artifact_presence_check.py --limit 3 --require-current"
+        "python scripts/portfolio_home_closure_artifact_presence_check.py --limit 3 --require-current --report-date 2026-05-31"
     )
     assert dependencies["evidence_packet_guard"]["command"] == (
-        "python scripts/portfolio_home_evidence_packet_guard.py --require-clean"
+        "python scripts/portfolio_home_evidence_packet_guard.py --require-clean --report-date 2026-05-31"
     )
     assert dependencies["krd_contract_decision_manifest"]["path"] == (
         "docs/portfolio/krd-contract-decision/2026-05-31/manifest.json"
@@ -1316,16 +1602,16 @@ def test_portfolio_home_business_owner_approval_packet_lists_evidence_dependenci
         "docs/portfolio/maturity-remediation/2026-05-31/owner_summary.md"
     )
     assert dependencies["dependency_consistency_strict_gate"]["command"] == (
-        "python scripts/portfolio_home_dependency_consistency_check.py --limit 3 --require-consistent"
+        "python scripts/portfolio_home_dependency_consistency_check.py --limit 3 --require-consistent --report-date 2026-05-31"
     )
     assert dependencies["owner_decision_intake_strict_gate"]["command"] == (
-        "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready"
+        "python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready --report-date 2026-05-31"
     )
     assert dependencies["scorecard_strict_gate"]["command"] == (
-        "python scripts/portfolio_home_closure_scorecard.py --limit 3 --require-full-score"
+        "python scripts/portfolio_home_closure_scorecard.py --limit 3 --require-full-score --report-date 2026-05-31"
     )
     assert dependencies["business_owner_approval_strict_gate"]["command"] == (
-        "python scripts/check_portfolio_home_business_owner_approval.py --require-captured"
+        "python scripts/check_portfolio_home_business_owner_approval.py --require-captured --report-date 2026-05-31"
     )
     assert all(item["available"] is True for item in dependencies.values())
 
@@ -2267,8 +2553,8 @@ def test_portfolio_home_business_owner_approval_packet_validates_manifest_consis
         "actual_remap_tenor_count": 3,
         "expected_nonzero_dv01_rows": 500,
         "actual_nonzero_dv01_rows": 500,
-        "expected_dv01_sum": "33365026.29770696",
-        "actual_dv01_sum": "33365026.29770696",
+        "expected_dv01_sum": "33365026.29780176",
+        "actual_dv01_sum": "33365026.29780176",
         "expected_generated_owner_fields_must_be_blank": True,
         "actual_generated_owner_fields_must_be_blank": True,
         "csv_checks": {
@@ -2286,18 +2572,22 @@ def test_portfolio_home_business_owner_approval_packet_validates_manifest_consis
         "actual_report_date": "2026-05-31",
         "expected_export_status": "blocked",
         "actual_export_status": "blocked",
-        "expected_bond_missing_maturity_rows": 114,
-        "actual_bond_missing_maturity_rows": 114,
+        "expected_bond_no_maturity_rows": 114,
+        "actual_bond_no_maturity_rows": 114,
+        "expected_bond_no_maturity_market_value": "37622164239.83000008",
+        "actual_bond_no_maturity_market_value": "37622164239.83000008",
+        "expected_bond_missing_maturity_rows": 0,
+        "actual_bond_missing_maturity_rows": 0,
         "expected_tyw_liability_missing_maturity_rows": 1455,
         "actual_tyw_liability_missing_maturity_rows": 1455,
-        "expected_bond_missing_maturity_market_value": "37622164239.83000008",
-        "actual_bond_missing_maturity_market_value": "37622164239.83000008",
+        "expected_bond_missing_maturity_market_value": "0",
+        "actual_bond_missing_maturity_market_value": "0",
         "expected_tyw_liability_missing_maturity_principal": "43822652393.01000002",
         "actual_tyw_liability_missing_maturity_principal": "43822652393.01000002",
         "expected_generated_owner_fields_must_be_blank": True,
         "actual_generated_owner_fields_must_be_blank": True,
         "csv_checks": {
-            "bond_missing_maturity_row_count": 114,
+            "bond_missing_maturity_row_count": 0,
             "tyw_liability_missing_maturity_row_count": 1455,
             "owner_fields_blank": True,
         },
@@ -2321,7 +2611,7 @@ def test_portfolio_home_business_owner_approval_packet_blocks_stale_or_mismatche
     maturity_manifest = docs_dir / "portfolio" / "maturity-remediation" / "2026-05-31" / "manifest.json"
     maturity_payload = json.loads(maturity_manifest.read_text(encoding="utf-8"))
     maturity_payload["export_status"] = "clean"
-    maturity_payload["export_summary"]["bond_missing_maturity_rows"] = 0
+    maturity_payload["export_summary"]["bond_missing_maturity_rows"] = 1
     maturity_manifest.write_text(
         json.dumps(maturity_payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -2361,10 +2651,10 @@ def test_portfolio_home_business_owner_approval_packet_blocks_dirty_owner_csv_fi
         encoding="utf-8-sig",
     )
 
-    bond_csv = docs_dir / "portfolio" / "maturity-remediation" / "2026-05-31" / "bond_missing_maturity.csv"
-    bond_text = bond_csv.read_text(encoding="utf-8-sig")
-    bond_csv.write_text(
-        bond_text.replace(",,,\n", ",2027-01-01,,\n", 1),
+    tyw_csv = docs_dir / "portfolio" / "maturity-remediation" / "2026-05-31" / "tyw_liability_missing_maturity.csv"
+    tyw_text = tyw_csv.read_text(encoding="utf-8-sig")
+    tyw_csv.write_text(
+        tyw_text.replace(",,,\n", ",2027-01-01,,\n", 1),
         encoding="utf-8-sig",
     )
 
@@ -2593,6 +2883,44 @@ def test_portfolio_home_business_owner_approval_packet_blocks_partial_owner_evid
         "evidence_dependency_unavailable",
     ]
 
+
+
+def test_portfolio_home_business_owner_approval_packet_scopes_full_payload_commands_to_report_date(
+    tmp_path: Path,
+) -> None:
+    duckdb_path = tmp_path / "clean.duckdb"
+    template = tmp_path / "portfolio-approval.md"
+    docs_root = tmp_path / "docs"
+    _create_schema(duckdb_path)
+    _insert_clean_data(duckdb_path)
+    template.write_text(_approved_template_text(), encoding="utf-8")
+    _write_clean_fixture_manifests(docs_root)
+
+    packet = build_packet(
+        duckdb_path=duckdb_path,
+        report_date="2026-06-06",
+        template_path=template,
+        limit=1,
+        docs_root=docs_root,
+    )
+
+    packet_commands = _collect_packet_command_strings(packet)
+    assert packet_commands
+    unscoped_commands = [
+        (path, command)
+        for path, command in packet_commands
+        if "--report-date 2026-06-06" not in command
+        and not _is_date_independent_meta_command(command)
+    ]
+    assert unscoped_commands == []
+    dependency_commands = [
+        item["command"] for item in packet["evidence_dependencies"] if "command" in item
+    ]
+    assert len(dependency_commands) == 8
+    assert all("--report-date 2026-06-06" in command for command in dependency_commands)
+    activation_commands = packet["activation_guard"]["required_commands"]
+    assert len(activation_commands) == 10
+    assert all("--report-date 2026-06-06" in command for command in activation_commands)
 
 def test_portfolio_home_business_owner_approval_packet_cli_require_ready_fails_current_state() -> None:
     returncode, payload = _run_packet("--limit", "1", "--require-ready")

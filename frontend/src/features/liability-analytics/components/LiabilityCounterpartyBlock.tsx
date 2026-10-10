@@ -1,17 +1,21 @@
-import { Card, Col, Row, Spin, Typography } from "antd";
 import { useMemo } from "react";
 
 import type { Numeric } from "../../../api/contracts";
-import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
-import { concentrationMetrics } from "../utils/concentration";
+import { ChartCard } from "../../../components/charts/ChartCard";
+import { CHART_CARD_HEIGHTS } from "../../../components/charts/chartCardScale";
+import { nocturneChartTheme } from "../../../components/charts/chartTheme";
+import { type EChartsOption } from "../../../lib/echarts";
+import { EM_DASH } from "../../../utils/format";
+import { counterpartyTypeLabel, unsignedNumericDisplay } from "../utils/labels";
 import { numericToYiNumeric, numericYuanRaw } from "../utils/money";
 
-const { Text } = Typography;
-
-const LIAB_RED = "#cf1322";
-const PIE_BANK = LIAB_RED;
-const PIE_NONBANK = "#10239e";
-const PIE_EXTRA = ["#13c2c2", "#fa8c16", "#52c41a", "#722ed1", "#eb2f96"];
+const CHART_PALETTE = nocturneChartTheme.palette;
+const CATEGORICAL = nocturneChartTheme.categoricalPalette;
+const BAR_COLOR = CHART_PALETTE[0];
+/** 银行扇区用分类色盘强调色，避免误用 palette 中的语义红。 */
+const PIE_BANK = CATEGORICAL[0];
+const PIE_NONBANK = CATEGORICAL[1] ?? CHART_PALETTE[1];
+const PIE_EXTRA = CATEGORICAL;
 
 export type LiabilityCpRow = {
   name: string;
@@ -26,31 +30,54 @@ export type LiabilityTypeRow = {
   value: Numeric | null;
 };
 
+/**
+ * Y 轴机构名截断保留尾部区分字段（如「…青岛分行」「…SPV管理项目」）：
+ * 同一集团多主体的差异多在尾部，仅截头会全部糊成同名；全名走 tooltip。
+ */
 function truncateName(value: string, max = 10): string {
-  return value.length > max ? `${value.slice(0, max)}...` : value;
+  if (value.length <= max) {
+    return value;
+  }
+  return `${value.slice(0, max - 5)}…${value.slice(-4)}`;
 }
 
-function rawYuanForChart(value: Numeric | null | undefined): number {
+/** 仅用于排序键；缺数按 0 参与排序，不进入图表系列（系列缺数保留 null）。 */
+function yuanSortValue(value: Numeric | null | undefined): number {
   return numericYuanRaw(value) ?? 0;
 }
 
+function populationSummary(populationCount: number | null | undefined, isTruncated: boolean): string {
+  if (populationCount === null || populationCount === undefined || populationCount < 0) {
+    return EM_DASH;
+  }
+  if (isTruncated && populationCount > 0) {
+    return `${populationCount} 个对手方（仅展示前十）`;
+  }
+  return `${populationCount} 个对手方`;
+}
+
 function bankNonBankFromByType(rows: LiabilityTypeRow[]): { name: string; value: number }[] {
-  const bankRow = rows.find((row) => row.name === "Bank");
-  const bank = rawYuanForChart(bankRow?.value);
-  const nonBank = rows.reduce(
-    (sum, row) => (row.name === "Bank" ? sum : sum + rawYuanForChart(row.value)),
-    0,
-  );
+  const bank = numericYuanRaw(rows.find((row) => row.name === "Bank")?.value);
+  const nonBankValues = rows
+    .filter((row) => row.name !== "Bank")
+    .map((row) => numericYuanRaw(row.value))
+    .filter((value): value is number => value !== null);
+  const nonBank = nonBankValues.length > 0 ? nonBankValues.reduce((sum, value) => sum + value, 0) : null;
+  // 缺数（null）不入饼图系列，避免画出假 0 扇区；两侧都缺时呈空态。
   return [
     { name: "银行", value: bank },
     { name: "非银行", value: nonBank },
-  ];
+  ].filter((item): item is { name: string; value: number } => item.value !== null);
 }
 
 export function LiabilityCounterpartyBlock({
   title = "资金来源依赖度（前十对手方）",
   subtitle = "口径：TYWL 负债端（对手方名称 × 余额；剔除“青岛银行股份有限公司”）。",
   totalValue,
+  authoritativeTop10Share,
+  authoritativeHhi,
+  populationCount = null,
+  isTruncated = false,
   counterpartyRows,
   barRankingRows,
   byType,
@@ -60,6 +87,10 @@ export function LiabilityCounterpartyBlock({
   title?: string;
   subtitle?: string;
   totalValue: Numeric | null;
+  authoritativeTop10Share: Numeric | null;
+  authoritativeHhi: Numeric | null;
+  populationCount?: number | null;
+  isTruncated?: boolean;
   counterpartyRows: LiabilityCpRow[];
   barRankingRows?: LiabilityCpRow[];
   byType: LiabilityTypeRow[];
@@ -67,7 +98,7 @@ export function LiabilityCounterpartyBlock({
   errorText: string | null;
 }) {
   const ranked = useMemo(
-    () => [...counterpartyRows].sort((a, b) => rawYuanForChart(b.value) - rawYuanForChart(a.value)),
+    () => [...counterpartyRows].sort((a, b) => yuanSortValue(b.value) - yuanSortValue(a.value)),
     [counterpartyRows],
   );
 
@@ -78,139 +109,143 @@ export function LiabilityCounterpartyBlock({
     return ranked.slice(0, 10);
   }, [barRankingRows, ranked]);
 
-  const { top10Share, hhiTimes10000 } = useMemo(() => {
-    const weights = counterpartyRows
-      .map((row) => numericYuanRaw(row.value))
-      .filter((value): value is number => value !== null && Number.isFinite(value));
-    return concentrationMetrics(weights);
-  }, [counterpartyRows]);
-
   const donut = useMemo(() => bankNonBankFromByType(byType), [byType]);
   const reversedTop10 = useMemo(() => [...top10Rows].reverse(), [top10Rows]);
 
   const barOption: EChartsOption = useMemo(
-    () => ({
-      grid: { left: 120, right: 24, top: 16, bottom: 16 },
-      tooltip: {
-        trigger: "axis",
-        axisPointer: { type: "shadow" },
-        formatter: (params: unknown) => {
-          const rows = params as { data: { row: LiabilityCpRow } }[];
-          const row = rows?.[0]?.data?.row;
-          if (!row) return "";
-          const balanceDisplay = numericToYiNumeric(row.value)?.display ?? "—";
-          const shareDisplay = row.share?.display ?? "—";
-          const weightedCostDisplay = row.weightedCost?.display ?? "—";
-          return `${row.name}<br/>余额：${balanceDisplay}<br/>占比：${shareDisplay}<br/>加权负债成本：${weightedCostDisplay}<br/>类型：${row.type || "—"}`;
+    () =>
+      nocturneChartTheme.createBarChartOption({
+        grid: { left: 120, right: 24, top: 8 },
+        tooltip: {
+          trigger: "axis",
+          axisPointer: { type: "shadow" },
+          formatter: (params: unknown) => {
+            const rows = params as { data: { row: LiabilityCpRow } }[];
+            const row = rows?.[0]?.data?.row;
+            if (!row) return "";
+            const balanceDisplay = numericToYiNumeric(row.value)?.display ?? EM_DASH;
+            const shareDisplay = row.share?.display ?? EM_DASH;
+            const weightedCostDisplay = unsignedNumericDisplay(row.weightedCost);
+            const content = document.createElement("div");
+            content.append(
+              row.name,
+              document.createElement("br"),
+              `余额：${balanceDisplay}`,
+              document.createElement("br"),
+              `占比：${shareDisplay}`,
+              document.createElement("br"),
+              `加权负债成本：${weightedCostDisplay}`,
+              document.createElement("br"),
+              `类型：${counterpartyTypeLabel(row.type) || EM_DASH}`,
+            );
+            return content;
+          },
         },
-      },
-      xAxis: { type: "value" },
-      yAxis: {
-        type: "category",
-        data: reversedTop10.map((row) => truncateName(row.name)),
-        axisLabel: { width: 110, overflow: "truncate" },
-      },
-      series: [
-        {
-          type: "bar",
-          data: reversedTop10.map((row) => ({
-            value: numericToYiNumeric(row.value)?.raw ?? 0,
-            row,
-          })),
-          itemStyle: { color: LIAB_RED, borderRadius: [0, 4, 4, 0] },
+        // 主题给柱图 xAxis 预置 boundaryGap: true（类目轴语义）；横向柱图的 x 是数值轴，
+        // 布尔值会触发 ECharts 警告并被当作 [0, 0]，这里显式写等价的数值轴写法。
+        xAxis: { type: "value", boundaryGap: [0, 0] },
+        yAxis: {
+          type: "category",
+          data: reversedTop10.map((row) => truncateName(row.name)),
+          axisLabel: { width: 110, overflow: "truncate" },
         },
-      ],
-    }),
+        series: [
+          {
+            type: "bar",
+            // 缺数（null）保留类目但不画柱；tooltip 分支已用 EM_DASH 兜底。
+            data: reversedTop10.map((row) => ({
+              value: numericToYiNumeric(row.value)?.raw ?? null,
+              row,
+            })),
+            itemStyle: { color: BAR_COLOR },
+          },
+        ],
+      }),
     [reversedTop10],
   );
 
   const pieOption: EChartsOption = useMemo(
-    () => ({
-      tooltip: {
-        trigger: "item",
-        formatter: (params: unknown) => {
-          const point = params as { name: string; value: number };
-          const total = numericYuanRaw(totalValue);
-          const pct =
-            total !== null && Number.isFinite(total) && total > 0
-              ? `${((point.value / total) * 100).toFixed(2)}%`
-              : "—";
-          return `${point.name}<br/>余额：${(point.value / 1e8).toFixed(2)} 亿<br/>占比：${pct}`;
+    () =>
+      nocturneChartTheme.createBaseChartOption({
+        tooltip: {
+          trigger: "item",
+          formatter: (params: unknown) => {
+            const point = params as { name: string; value: number };
+            const total = numericYuanRaw(totalValue);
+            const pct =
+              total !== null && Number.isFinite(total) && total > 0
+                ? `${((point.value / total) * 100).toFixed(2)}%`
+                : EM_DASH;
+            return `${point.name}<br/>余额：${(point.value / 1e8).toFixed(2)} 亿<br/>占比：${pct}`;
+          },
         },
-      },
-      series: [
-        {
-          type: "pie",
-          radius: ["40%", "65%"],
-          data: donut.map((item, index) => ({
-            ...item,
-            itemStyle: {
-              color:
-                donut.length <= 2
-                  ? index === 0
-                    ? PIE_BANK
-                    : PIE_NONBANK
-                  : PIE_EXTRA[index % PIE_EXTRA.length],
-            },
-          })),
-        },
-      ],
-    }),
+        series: [
+          {
+            type: "pie",
+            radius: ["40%", "65%"],
+            label: { show: false },
+            data: donut.map((item, index) => ({
+              ...item,
+              itemStyle: {
+                // 按名称取色：银行扇区可能因缺数被过滤，索引不再可靠。
+                color:
+                  donut.length <= 2
+                    ? item.name === "银行"
+                      ? PIE_BANK
+                      : PIE_NONBANK
+                    : PIE_EXTRA[index % PIE_EXTRA.length],
+              },
+            })),
+          },
+        ],
+      }),
     [donut, totalValue],
   );
 
+  /*
+   * 2026-09-02 迁入 ChartCard：Top10 横柱 hero 档（原 320），环形图 hero 档；四项权威读数
+   * 留在标题行动作区（窄列自动落到第二行），口径句进 footnote，行内错误保留红色语义放画布下方。
+   */
+  const cpStats = (
+    <div className="liability-cp-extra">
+      <span className="liability-cp-extra__line">
+        总规模：{numericToYiNumeric(totalValue)?.display ?? EM_DASH}
+      </span>
+      <span className="liability-cp-extra__line" data-testid="liability-cp-top10-share">
+        Top10 占比：{authoritativeTop10Share?.display ?? EM_DASH}
+      </span>
+      <span className="liability-cp-extra__line" data-testid="liability-cp-hhi">
+        HHI: {authoritativeHhi?.display ?? EM_DASH}
+      </span>
+      <span className="liability-cp-extra__line" data-testid="liability-cp-population">
+        样本覆盖：{populationSummary(populationCount, isTruncated)}
+      </span>
+    </div>
+  );
+
   return (
-    <Row gutter={[16, 16]}>
-      <Col xs={24} lg={16}>
-        <Card
-          size="small"
-          title={title}
-          extra={
-            <Text type="secondary">
-              总规模：{numericToYiNumeric(totalValue)?.display ?? "—"} · Top10 占比：{(top10Share * 100).toFixed(2)}% · HHI：
-              {" "}
-              {hhiTimes10000.toFixed(0)}
-            </Text>
-          }
-        >
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            {subtitle}
-          </Text>
-          {errorText ? (
-            <Text type="danger" style={{ display: "block", marginTop: 8 }}>
-              {errorText}
-            </Text>
-          ) : null}
-          <div style={{ height: 320, marginTop: 8 }}>
-            {loading ? (
-              <div style={{ padding: 48, textAlign: "center" }}>
-                <Spin />
-              </div>
-            ) : (
-              <ReactECharts option={barOption} style={{ height: 320 }} notMerge lazyUpdate />
-            )}
-          </div>
-        </Card>
-      </Col>
-      <Col xs={24} lg={8}>
-        <Card size="small" title="机构类型结构">
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            银行 vs 非银行（稳定性视角）。
-          </Text>
-          <div style={{ height: 280, marginTop: 8 }}>
-            {loading ? (
-              <div style={{ padding: 48, textAlign: "center" }}>
-                <Spin />
-              </div>
-            ) : (
-              <ReactECharts option={pieOption} style={{ height: 280 }} notMerge lazyUpdate />
-            )}
-          </div>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            银行占比越高，通常资金稳定性更强；非银行占比上升需关注期限错配与流动性压力。
-          </Text>
-        </Card>
-      </Col>
-    </Row>
+    <div className="liability-analytics-page__grid liability-analytics-page__grid--cp">
+      <ChartCard
+        title={title}
+        unit="亿元"
+        height={CHART_CARD_HEIGHTS.hero}
+        legend="none"
+        option={reversedTop10.length === 0 ? null : barOption}
+        state={loading ? "loading" : undefined}
+        actions={cpStats}
+        footnote={subtitle}
+      >
+        {errorText ? <p className="liability-inline-error">{errorText}</p> : null}
+      </ChartCard>
+      <ChartCard
+        title="机构类型结构"
+        question="银行 vs 非银行（稳定性视角）"
+        height={CHART_CARD_HEIGHTS.hero}
+        legendRows={1}
+        option={donut.length === 0 ? null : pieOption}
+        state={loading ? "loading" : undefined}
+        footnote="银行占比越高，通常资金稳定性更强；非银行占比上升需关注期限错配与流动性压力。"
+      />
+    </div>
   );
 }

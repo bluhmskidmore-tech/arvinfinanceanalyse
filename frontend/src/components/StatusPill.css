@@ -3,31 +3,87 @@
   align-items: center;
   padding: 2px 8px;
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
+  line-height: 1.35;
 }
 
 .status-pill[data-status="normal"] {
-  border-color: var(--moss-color-success-200);
-  background: var(--moss-color-success-50);
-  color: var(--moss-color-success-600);
+  border-color: transparent;
+  background: transparent;
+  color: var(--dh-api-muted, var(--moss-color-text-muted));
+  padding: 0;
 }
 
 .status-pill[data-status="caution"] {
-  border-color: var(--moss-color-warning-200);
-  background: var(--moss-color-warning-50);
-  color: var(--moss-color-warning-600);
+  border-color: transparent;
+  background: var(--dh-api-amber-soft, var(--moss-color-warning-50));
+  color: var(--dh-api-amber, var(--moss-color-warning-600));
 }
 
 .status-pill[data-status="warning"] {
-  border-color: var(--moss-color-warning-300);
-  background: var(--moss-color-warning-50);
-  color: var(--moss-color-warning-700);
+  border-color: transparent;
+  background: var(--dh-api-amber-soft, var(--moss-color-warning-50));
+  color: var(--dh-api-amber, var(--moss-color-warning-600));
 }
 
 .status-pill[data-status="danger"] {
-  border-color: var(--moss-color-danger-200);
-  background: var(--moss-color-danger-50);
-  color: var(--moss-color-danger-600);
+  border-color: transparent;
+  background: var(--dh-api-red-soft, var(--moss-color-danger-50));
+  color: var(--dh-api-red, var(--moss-color-danger-600));
+}
+
+.status-pill[data-status="neutral"] {
+  border-color: transparent;
+  background: transparent;
+  color: var(--dh-api-muted, var(--moss-color-text-muted));
+  padding: 0;
+}
+
+.diagnostic-disclosure {
+  border: 1px solid var(--moss-color-border-default);
+  border-radius: var(--moss-radius-sm);
+  background: var(--moss-color-card-bg);
+}
+
+.diagnostic-disclosure > summary {
+  display: flex;
+  cursor: pointer;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--moss-space-2);
+  min-height: 36px;
+  padding: 8px 12px;
+  color: var(--moss-color-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.diagnostic-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.diagnostic-disclosure > summary::after {
+  content: "+";
+  color: var(--moss-color-text-muted);
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+
+.diagnostic-disclosure[open] > summary::after {
+  content: "-";
+}
+
+.diagnostic-disclosure__body {
+  border-top: 1px solid var(--moss-color-border-default);
+  padding: 12px;
+}
+
+/* 表内状态保留文案与语义色，不增加填色标签。 */
+:where(table, [role="table"], [role="grid"]) .status-pill[data-status] {
+  padding: 0;
+  border: 0;
+  background: transparent;
 }

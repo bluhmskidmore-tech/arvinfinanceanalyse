@@ -4,10 +4,11 @@ import math
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict, cast
 
 import duckdb
 import pandas as pd
+
 from backend.app.core_finance.factor_screen_candidates import (
     MAX_CANDIDATES,
     MAX_CANDIDATES_PER_INDUSTRY,
@@ -20,9 +21,10 @@ from backend.app.core_finance.macro.equity_strategies import (
     _industry_neutralize_factors,
     compute_factors,
 )
+from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
 
-RULE_VERSION = "rv_macro_toolkit_shadow_portfolio_v1"
-TABLES_USED = ["choice_stock_daily_observation", "choice_stock_factor_snapshot"]
+RULE_VERSION = "rv_macro_toolkit_shadow_portfolio_v2"
+TABLES_USED = ["choice_stock_daily_observation", "choice_stock_factor_snapshot", "stock_adjustment_factor"]
 COST_BPS = [0, 10, 20, 50]
 FACTOR_INPUT_COLUMNS = [*REQUIRED_FACTOR_INPUTS, "industry"]
 ADMISSION_MIN_PERIODS = 12
@@ -59,6 +61,11 @@ class PortfolioSpec:
     turnover_cap: float | None = None
 
 
+class _BenchmarkResult(TypedDict):
+    period_returns: dict[tuple[str, str], float | None]
+    payload: dict[str, object]
+
+
 PORTFOLIOS = (
     PortfolioSpec(
         key="current_baseline",
@@ -81,7 +88,7 @@ def compute_equity_shadow_portfolio_report(
     *,
     latest_factor_snapshot: pd.DataFrame | None = None,
 ) -> dict[str, object]:
-    path = Path(duckdb_path)
+    path = Path(resolve_effective_read_path(duckdb_path))
     if not path.exists():
         return _unavailable_report(["DUCKDB_NOT_FOUND"])
 
@@ -122,6 +129,9 @@ def compute_equity_shadow_portfolio_report(
             period_payloads.extend(rows)
         latest_date = factor_dates[-1]
         warnings = ["READ_ONLY_SHADOW_NOT_PRODUCTION"]
+        incomplete_returns = any(values.empty or values.isna().any() for values in returns_by_period.values())
+        if incomplete_returns:
+            warnings.append("INCOMPLETE_ADJUSTED_RETURN_COVERAGE")
         if len(periods) < ADMISSION_MIN_PERIODS:
             warnings.append("SHORT_HISTORY")
         _attach_shadow_admissions(
@@ -130,7 +140,7 @@ def compute_equity_shadow_portfolio_report(
             warnings=warnings,
         )
         return {
-            "status": "complete",
+            "status": "partial" if incomplete_returns else "complete",
             "basis": "read_only_shadow",
             "label": "影子组合报告",
             "as_of_date": latest_date,
@@ -336,24 +346,29 @@ def _period_returns_by_period(
 def _benchmark_result(
     periods: list[tuple[str, str]],
     returns_by_period: dict[tuple[str, str], pd.Series],
-) -> dict[str, object]:
-    nav = 1.0
+) -> _BenchmarkResult:
+    nav: float | None = 1.0
     max_nav = 1.0
-    max_drawdown = 0.0
-    period_returns: dict[tuple[str, str], float] = {}
+    max_drawdown: float | None = 0.0
+    period_returns: dict[tuple[str, str], float | None] = {}
     for start_date, end_date in periods:
         returns = returns_by_period.get((start_date, end_date), pd.Series(dtype="float64"))
-        period_return = float(returns.mean()) if not returns.empty else 0.0
+        period_return = _complete_mean(returns)
         period_returns[(start_date, end_date)] = period_return
-        nav *= 1.0 + period_return
-        max_nav = max(max_nav, nav)
-        max_drawdown = min(max_drawdown, nav / max_nav - 1.0)
+        if period_return is None or nav is None:
+            nav = None
+            max_drawdown = None
+        else:
+            nav *= 1.0 + period_return
+            max_nav = max(max_nav, nav)
+            # NAV and drawdown are initialized together and invalidated together.
+            max_drawdown = min(cast(float, max_drawdown), nav / max_nav - 1.0)
     return {
         "period_returns": period_returns,
         "payload": {
             "key": "equal_weight_factor_universe",
             "label": "因子池等权基准",
-            "total_return": _round(nav - 1.0),
+            "total_return": _round(nav - 1.0) if nav is not None else None,
             "max_drawdown": _round(max_drawdown),
         },
     }
@@ -363,17 +378,17 @@ def _portfolio_result(
     periods: list[tuple[str, str]],
     factors_by_date: dict[str, pd.DataFrame],
     returns_by_period: dict[tuple[str, str], pd.Series],
-    benchmark_returns: dict[tuple[str, str], float],
+    benchmark_returns: dict[tuple[str, str], float | None],
     spec: PortfolioSpec,
 ) -> tuple[dict[str, object], list[dict[str, object]]]:
-    nav_by_cost = {cost_bps: 1.0 for cost_bps in COST_BPS}
+    nav_by_cost: dict[int, float | None] = {cost_bps: 1.0 for cost_bps in COST_BPS}
     max_nav_by_cost = {cost_bps: 1.0 for cost_bps in COST_BPS}
-    mdd_by_cost = {cost_bps: 0.0 for cost_bps in COST_BPS}
-    wins_by_cost = {cost_bps: 0 for cost_bps in COST_BPS}
+    mdd_by_cost: dict[int, float | None] = {cost_bps: 0.0 for cost_bps in COST_BPS}
+    wins_by_cost: dict[int, int | None] = {cost_bps: 0 for cost_bps in COST_BPS}
     previous_codes: set[str] | None = None
-    previous_weights_by_cost: dict[int, dict[str, float]] = {cost_bps: {} for cost_bps in COST_BPS}
+    previous_weights: dict[str, float] | None = {}
     name_turnovers: list[float] = []
-    traded_notional: list[float] = []
+    traded_notional: list[float | None] = []
     counts: list[int] = []
     pe_values: list[float] = []
     pb_values: list[float] = []
@@ -389,26 +404,31 @@ def _portfolio_result(
         selected = _select_with_caps(ranked, previous_codes=previous_codes, turnover_cap=spec.turnover_cap)
         selected_codes = list(selected.index)
         gross_return = _selection_return(returns_by_period, start_date, end_date, selected_codes)
-        benchmark_return = benchmark_returns.get((start_date, end_date), 0.0)
+        benchmark_return = benchmark_returns.get((start_date, end_date))
         new_weights = _equal_weights(selected_codes)
+        traded = _traded_notional(previous_weights, new_weights) if previous_weights is not None else None
+        traded_notional.append(traded)
         period_costs: list[dict[str, object]] = []
         if previous_codes is not None:
             name_turnovers.append(1.0 - len(previous_codes & set(selected_codes)) / max(len(previous_codes), 1))
         for cost_bps in COST_BPS:
-            previous_weights = previous_weights_by_cost[cost_bps]
-            traded = _traded_notional(previous_weights, new_weights)
-            if cost_bps == 0:
-                traded_notional.append(traded)
-            cost = traded * cost_bps / 10_000.0
-            net_return = (1.0 - cost) * (1.0 + gross_return) - 1.0
-            nav_by_cost[cost_bps] *= 1.0 + net_return
-            max_nav_by_cost[cost_bps] = max(max_nav_by_cost[cost_bps], nav_by_cost[cost_bps])
-            mdd_by_cost[cost_bps] = min(
-                mdd_by_cost[cost_bps],
-                nav_by_cost[cost_bps] / max_nav_by_cost[cost_bps] - 1.0,
-            )
-            wins_by_cost[cost_bps] += int(net_return > benchmark_return)
-            previous_weights_by_cost[cost_bps] = new_weights
+            cost = traded * cost_bps / 10_000.0 if traded is not None else (0.0 if cost_bps == 0 else None)
+            net_return = (1.0 - cost) * (1.0 + gross_return) - 1.0 if cost is not None and gross_return is not None else None
+            nav = nav_by_cost[cost_bps]
+            if net_return is None or nav is None:
+                nav_by_cost[cost_bps] = None
+                mdd_by_cost[cost_bps] = None
+            else:
+                nav *= 1.0 + net_return
+                nav_by_cost[cost_bps] = nav
+                max_nav_by_cost[cost_bps] = max(max_nav_by_cost[cost_bps], nav)
+                # This cost's NAV and drawdown can only become None together above.
+                mdd_by_cost[cost_bps] = min(cast(float, mdd_by_cost[cost_bps]), nav / max_nav_by_cost[cost_bps] - 1.0)
+            wins = wins_by_cost[cost_bps]
+            if net_return is None or benchmark_return is None or wins is None:
+                wins_by_cost[cost_bps] = None
+            else:
+                wins_by_cost[cost_bps] = wins + int(net_return > benchmark_return)
             period_costs.append(
                 {
                     "cost_bps": cost_bps,
@@ -427,23 +447,25 @@ def _portfolio_result(
                 "end_date": end_date,
                 "gross_return": _round(gross_return),
                 "benchmark_return": _round(benchmark_return),
-                "excess_return": _round(gross_return - benchmark_return),
+                "excess_return": _round(gross_return - benchmark_return) if gross_return is not None and benchmark_return is not None else None,
                 "selected_count": len(selected_codes),
+                "observed_return_count": int(_returns_for_codes(returns_by_period, start_date, end_date, selected_codes).notna().sum()),
                 "name_turnover": _round(name_turnovers[-1]) if name_turnovers and previous_codes is not None else None,
                 "traded_notional": _round(traded_notional[-1]) if traded_notional else None,
                 "cost_results": period_costs,
             }
         )
         previous_codes = set(selected_codes)
+        previous_weights = _closing_weights(new_weights, _returns_for_codes(returns_by_period, start_date, end_date, selected_codes))
 
-    benchmark_nav = math.prod(1.0 + benchmark_returns[period] for period in periods) if periods else 1.0
+    benchmark_nav = math.prod(1.0 + value for period in periods if (value := benchmark_returns[period]) is not None) if all(benchmark_returns.get(period) is not None for period in periods) else None
     cost_results = [
         {
             "cost_bps": cost_bps,
-            "total_return": _round(nav_by_cost[cost_bps] - 1.0),
-            "excess_return": _round(nav_by_cost[cost_bps] / benchmark_nav - 1.0 if benchmark_nav else 0.0),
+            "total_return": _round(cost_nav - 1.0) if (cost_nav := nav_by_cost[cost_bps]) is not None else None,
+            "excess_return": _round(cost_nav / benchmark_nav - 1.0) if benchmark_nav and cost_nav is not None else None,
             "max_drawdown": _round(mdd_by_cost[cost_bps]),
-            "win_rate": _round(wins_by_cost[cost_bps] / len(periods) if periods else 0.0),
+            "win_rate": _round(cost_wins / len(periods)) if periods and (cost_wins := wins_by_cost[cost_bps]) is not None else None,
         }
         for cost_bps in COST_BPS
     ]
@@ -467,7 +489,7 @@ def _portfolio_result(
             "max_drawdown": cost_results[0]["max_drawdown"],
             "win_rate": cost_results[0]["win_rate"],
             "average_turnover": _round(sum(name_turnovers) / len(name_turnovers)) if name_turnovers else None,
-            "average_traded_notional": _round(sum(traded_notional) / len(traded_notional)) if traded_notional else None,
+            "average_traded_notional": _round(sum(value for value in traded_notional if value is not None) / len(traded_notional)) if traded_notional and all(value is not None for value in traded_notional) else None,
             "average_count": _round(sum(counts) / len(counts)) if counts else 0,
             "average_pe": _round(sum(pe_values) / len(pe_values)) if pe_values else None,
             "average_pb": _round(sum(pb_values) / len(pb_values)) if pb_values else None,
@@ -568,9 +590,18 @@ def _selection_return(
     start_date: str,
     end_date: str,
     stock_codes: list[str],
-) -> float:
+) -> float | None:
+    if not stock_codes:
+        return 0.0  # An explicitly empty selection holds cash.
     returns = _returns_for_codes(returns_by_period, start_date, end_date, stock_codes)
-    return float(returns.mean()) if not returns.empty else 0.0
+    return _complete_mean(returns)
+
+
+def _complete_mean(returns: pd.Series) -> float | None:
+    returns = pd.to_numeric(returns, errors="coerce")
+    if returns.empty or returns.isna().any() or not all(math.isfinite(float(value)) for value in returns):
+        return None
+    return float(returns.mean())
 
 
 def _returns_for_codes(
@@ -582,9 +613,9 @@ def _returns_for_codes(
     if not stock_codes:
         return pd.Series(dtype="float64")
     returns = returns_by_period.get((start_date, end_date))
-    if returns is None or returns.empty:
-        return pd.Series(dtype="float64")
-    return returns.reindex(stock_codes).dropna()
+    if returns is None:
+        return pd.Series(index=stock_codes, dtype="float64")
+    return pd.to_numeric(returns.reindex(stock_codes), errors="coerce").replace([math.inf, -math.inf], math.nan)
 
 
 def _simple_returns(
@@ -611,14 +642,26 @@ def _period_boundary_price_frame(
 ) -> pd.DataFrame:
     if not trade_dates or not stock_codes:
         return pd.DataFrame(columns=["stock_code", "trade_date", "close_value"])
+    if "stock_adjustment_factor" not in {str(row[0]) for row in conn.execute("show tables").fetchall()}:
+        return pd.DataFrame(columns=["stock_code", "trade_date", "close_value"])
     return conn.execute(
         """
-        select stock_code, trade_date, close_value
-        from choice_stock_daily_observation
-        where trade_date = any(?)
-          and stock_code = any(?)
+        with factors as (
+          select stock_code, trade_date,
+                 case when count(*) = 1 and min(adj_factor) > 0 and isfinite(min(adj_factor))
+                      then min(adj_factor) end as adj_factor
+          from stock_adjustment_factor
+          where trade_date = any(?) and stock_code = any(?)
+          group by stock_code, trade_date
+        )
+        select o.stock_code, o.trade_date,
+               case when o.close_value > 0 and isfinite(o.close_value)
+                    then o.close_value * f.adj_factor end as close_value
+        from choice_stock_daily_observation o
+        left join factors f on f.stock_code = o.stock_code and f.trade_date = o.trade_date
+        where o.trade_date = any(?) and o.stock_code = any(?)
         """,
-        [trade_dates, stock_codes],
+        [trade_dates, stock_codes, trade_dates, stock_codes],
     ).df()
 
 
@@ -637,11 +680,11 @@ def _simple_returns_from_price_pivot(
     stock_codes: list[str],
 ) -> pd.Series:
     if not stock_codes or frame.empty:
-        return pd.Series(dtype="float64")
+        return pd.Series(index=stock_codes, dtype="float64")
     if start_date not in frame.columns or end_date not in frame.columns:
-        return pd.Series(dtype="float64")
+        return pd.Series(index=stock_codes, dtype="float64")
     returns = frame[end_date].reindex(stock_codes) / frame[start_date].reindex(stock_codes) - 1.0
-    return pd.to_numeric(returns, errors="coerce").replace([math.inf, -math.inf], pd.NA).dropna()
+    return pd.to_numeric(returns, errors="coerce").replace([math.inf, -math.inf], math.nan)
 
 
 def _equal_weights(stock_codes: list[str]) -> dict[str, float]:
@@ -656,6 +699,16 @@ def _traded_notional(previous_weights: dict[str, float], new_weights: dict[str, 
         abs(new_weights.get(stock_code, 0.0) - previous_weights.get(stock_code, 0.0))
         for stock_code in set(previous_weights) | set(new_weights)
     )
+
+
+def _closing_weights(weights: dict[str, float], returns: pd.Series) -> dict[str, float] | None:
+    if not weights:
+        return {}
+    if _complete_mean(returns) is None:
+        return None
+    values = {code: weight * (1.0 + float(returns.loc[code])) for code, weight in weights.items()}
+    total = sum(values.values())
+    return {code: value / total for code, value in values.items()} if total > 0 else None
 
 
 def _latest_holdings(selected: pd.DataFrame) -> list[dict[str, Any]]:
@@ -698,7 +751,10 @@ def _shadow_admission(
 ) -> dict[str, object]:
     cost_20 = _cost_gate(reference, candidate, 20)
     cost_50 = _cost_gate(reference, candidate, 50)
-    drawdown_floor = _round(float(reference.get("max_drawdown") or 0.0) - ADMISSION_DRAWDOWN_TOLERANCE)
+    reference_drawdown = reference.get("max_drawdown")
+    candidate_drawdown = candidate.get("max_drawdown")
+    # Portfolio numeric fields originate in _portfolio_result's rounded float values.
+    drawdown_floor = _round(float(cast(float, reference_drawdown)) - ADMISSION_DRAWDOWN_TOLERANCE) if reference_drawdown is not None else None
     blocking_warnings = [warning for warning in warnings if warning not in NON_BLOCKING_ADMISSION_WARNINGS]
     criteria = [
         _admission_criterion(
@@ -725,14 +781,14 @@ def _shadow_admission(
         _admission_criterion(
             "drawdown",
             "最大回撤",
-            float(candidate.get("max_drawdown") or 0.0) >= drawdown_floor,
+            candidate_drawdown is not None and drawdown_floor is not None and float(cast(float, candidate_drawdown)) >= drawdown_floor,
             candidate.get("max_drawdown"),
-            f">={drawdown_floor}",
+            f">={drawdown_floor}" if drawdown_floor is not None else "参照回撤缺失",
         ),
         _admission_criterion(
             "diversification",
             "持仓分散度",
-            float(candidate.get("average_count") or 0.0) >= ADMISSION_MIN_AVERAGE_COUNT,
+            float(cast(float, candidate.get("average_count") or 0.0)) >= ADMISSION_MIN_AVERAGE_COUNT,
             candidate.get("average_count"),
             f">={ADMISSION_MIN_AVERAGE_COUNT}",
         ),
@@ -748,7 +804,11 @@ def _shadow_admission(
     review_keys = {"history_length", "blocking_warnings"}
     hard_failed = bool(failed_keys - review_keys)
     needs_review = bool(failed_keys & review_keys)
-    if hard_failed:
+    if cost_20 is None or cost_50 is None or reference_drawdown is None or candidate_drawdown is None:
+        status = "needs_review"
+        label = "需复核"
+        summary = "收益证据不完整，先补齐验证"
+    elif hard_failed:
         status = "failed"
         label = "不通过"
         summary = "暂不进入正式候选"
@@ -773,10 +833,13 @@ def _cost_gate(reference: dict[str, object], candidate: dict[str, object], cost_
     candidate_cost = _cost_result(candidate, cost_bps)
     if reference_cost is None or candidate_cost is None:
         return None
-    reference_total = float(reference_cost.get("total_return") or 0.0)
-    reference_excess = float(reference_cost.get("excess_return") or 0.0)
-    candidate_total = float(candidate_cost.get("total_return") or 0.0)
-    candidate_excess = float(candidate_cost.get("excess_return") or 0.0)
+    if any(item.get(key) is None for item in (reference_cost, candidate_cost) for key in ("total_return", "excess_return")):
+        return None
+    # _portfolio_result builds these as rounded floats; all four None cases exited above.
+    reference_total = float(cast(float, reference_cost["total_return"]))
+    reference_excess = float(cast(float, reference_cost["excess_return"]))
+    candidate_total = float(cast(float, candidate_cost["total_return"]))
+    candidate_excess = float(cast(float, candidate_cost["excess_return"]))
     passed = candidate_total > reference_total and candidate_excess > reference_excess
     return {
         "passed": passed,
@@ -814,11 +877,11 @@ def _admission_criterion(
     }
 
 
-def _round(value: object, digits: int = 6) -> float:
+def _round(value: object, digits: int = 6) -> float | None:
     try:
         number = float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
-        return 0.0
+        return None
     if not math.isfinite(number):
-        return 0.0
+        return None
     return round(number, digits)

@@ -7,7 +7,7 @@
     "source_version": "sv_exec_dashboard_v1__sv_pc_a__sv_pc_b__sv_pc_c",
     "vendor_version": "vv_none",
     "rule_version": "rv_exec_dashboard_v1__rv_pc_a__rv_pc_b__rv_pc_c",
-    "cache_version": "cv_exec_dashboard_v1",
+    "cache_version": "cv_exec_dashboard_nim_percent_points_v2",
     "quality_flag": "ok",
     "vendor_status": "ok",
     "fallback_mode": "none",

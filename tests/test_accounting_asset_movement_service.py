@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import subprocess
+import sys
+from contextlib import nullcontext
 from decimal import Decimal
 from pathlib import Path
 from uuid import uuid4
@@ -12,6 +15,7 @@ from backend.app.governance.settings import Settings
 from backend.app.repositories.accounting_asset_movement_repo import (
     AccountingAssetMovementRepository,
 )
+from backend.app.repositories.duckdb_read_context import DuckDBReadSelection, duckdb_read_scope
 from backend.app.services.accounting_asset_movement_service import (
     accounting_asset_movement_dates_envelope,
     accounting_asset_movement_envelope,
@@ -19,6 +23,452 @@ from backend.app.services.accounting_asset_movement_service import (
 from backend.app.tasks.accounting_asset_movement import (
     materialize_accounting_asset_movement_on_connection,
 )
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_explicit_input_root_missing_fx_fails_closed_without_repository_or_vendor_fallback(tmp_path, monkeypatch):
+    from backend.app.tasks.fx_mid_materialize import resolve_fx_mid_csv_path
+
+    repo = tmp_path / "repo"
+    monkeypatch.setattr(movement_service, "__file__", str(repo / "backend/app/services/accounting_asset_movement_service.py"))
+    old_fx = repo / "data_input/fx/fx_daily_mid.csv"
+    old_fx.parent.mkdir(parents=True)
+    old_fx.write_bytes(b"synthetic old repository FX must not be selected")
+    external = tmp_path / "external-inputs"
+    settings = Settings(_env_file=None, environment="development", data_input_root=external, fx_official_source_path="", fx_mid_csv_path="")
+    selected = movement_service._resolve_refresh_fx_source_path(settings)
+    assert selected == str(external / "fx/fx_daily_mid.csv")
+    with pytest.raises(FileNotFoundError, match="FX official CSV not found"):
+        resolve_fx_mid_csv_path(official_csv_path=selected, explicit_csv_path="", data_input_root=external)
+
+
+def test_default_development_root_keeps_repository_fx_compatibility(tmp_path, monkeypatch):
+    import backend.app.governance.settings as settings_module
+
+    monkeypatch.delenv("MOSS_DATA_INPUT_ROOT", raising=False)
+    monkeypatch.delenv("RAW_FILES_DIR", raising=False)
+    repo = tmp_path / "repo"
+    monkeypatch.setattr(movement_service, "__file__", str(repo / "backend/app/services/accounting_asset_movement_service.py"))
+    monkeypatch.setattr(settings_module, "_REPO_ROOT", repo)
+    old_fx = repo / "data_input/fx/fx_daily_mid.csv"
+    old_fx.parent.mkdir(parents=True)
+    old_fx.write_bytes(b"synthetic default development FX")
+    (repo / "data_warehouse/raw_files").mkdir(parents=True)
+    settings = Settings(_env_file=None, environment="development", fx_official_source_path="", fx_mid_csv_path="")
+    assert settings._data_input_root_explicit is False
+    assert movement_service._resolve_refresh_fx_source_path(settings) == str(old_fx)
+
+
+def test_explicit_input_root_existing_fx_and_explicit_fx_override_remain_selected(tmp_path):
+    external = tmp_path / "external-inputs"
+    fx = external / "fx/fx_daily_mid.csv"
+    fx.parent.mkdir(parents=True)
+    fx.write_bytes(b"synthetic selected external FX")
+    settings = Settings(_env_file=None, environment="development", data_input_root=external, fx_official_source_path="", fx_mid_csv_path="")
+    assert movement_service._resolve_refresh_fx_source_path(settings) == str(fx)
+    settings.fx_official_source_path = str(tmp_path / "explicit-official.csv")
+    assert movement_service._resolve_refresh_fx_source_path(settings) == settings.fx_official_source_path
+
+
+def test_movement_service_import_does_not_load_tasks_modules() -> None:
+    """只读导入路径不得触达 backend.app.tasks（dramatiq broker/actor 注册）。"""
+    code = (
+        "import sys; "
+        "import backend.app.services.accounting_asset_movement_service; "
+        "loaded = sorted(m for m in sys.modules if m.startswith('backend.app.tasks')); "
+        "assert not loaded, loaded"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_movement_service_task_identity_constants_match_task_module() -> None:
+    import backend.app.tasks.accounting_asset_movement as movement_task
+
+    assert movement_service.RULE_VERSION == "rv_accounting_asset_movement_v4"
+    assert movement_service.JOB_NAME == movement_task.JOB_NAME
+    assert movement_service.RULE_VERSION == movement_task.RULE_VERSION
+    assert movement_service.CACHE_KEY == movement_task.CACHE_KEY
+    assert movement_service.PENDING_SOURCE_VERSION == movement_task.PENDING_SOURCE_VERSION
+    assert [
+        f"{prefix}%" for prefix in movement_task.EXCLUDED_GL_ACCOUNT_PREFIXES
+    ] == movement_service.EXCLUDED_CONTROLS
+
+
+def test_repository_never_reopens_duckdb_in_write_mode(monkeypatch):
+    calls: list[bool] = []
+
+    def fail_connect(_path: str, *, read_only: bool):
+        calls.append(read_only)
+        raise duckdb.IOException("different configuration")
+
+    monkeypatch.setattr(duckdb, "connect", fail_connect)
+
+    repo = AccountingAssetMovementRepository("movement.duckdb")
+    with pytest.raises(duckdb.IOException, match="different configuration"):
+        repo.list_report_dates()
+
+    assert calls == [True]
+
+
+def test_repository_does_not_disguise_operational_failure_as_empty(monkeypatch):
+    repo = AccountingAssetMovementRepository("movement.duckdb")
+    monkeypatch.setattr(
+        repo,
+        "_connect",
+        lambda: (_ for _ in ()).throw(duckdb.IOException("simulated I/O failure")),
+    )
+
+    with pytest.raises(duckdb.IOException, match="simulated I/O failure"):
+        repo.list_report_dates()
+
+
+@pytest.mark.parametrize("surface", ["dates", "detail"])
+def test_read_envelopes_translate_duckdb_errors_to_unavailable(
+    monkeypatch,
+    surface: str,
+) -> None:
+    storage_error = duckdb.IOException("simulated storage failure")
+
+    def fail_repository(_duckdb_path: str):
+        raise storage_error
+
+    monkeypatch.setattr(
+        movement_service,
+        "AccountingAssetMovementRepository",
+        fail_repository,
+    )
+
+    with pytest.raises(
+        movement_service.AccountingAssetMovementUnavailableError,
+        match="Balance movement data is temporarily unavailable.",
+    ) as caught:
+        if surface == "dates":
+            movement_service.accounting_asset_movement_dates_envelope("movement.duckdb")
+        else:
+            movement_service.accounting_asset_movement_envelope(
+                "movement.duckdb",
+                report_date="2026-02-28",
+            )
+
+    assert caught.value.__cause__ is storage_error
+
+
+def test_detail_envelope_preserves_read_model_not_found(monkeypatch) -> None:
+    class EmptyRepository:
+        def __init__(self, _duckdb_path: str) -> None:
+            pass
+
+        def scoped_connection(self):
+            return nullcontext()
+
+        def fetch_recent_rows(self, **_kwargs: object) -> list[dict[str, object]]:
+            return []
+
+        def fetch_rows(self, **_kwargs: object) -> list[dict[str, object]]:
+            raise AssertionError("detail must reuse the recent-row query for the current month")
+
+    monkeypatch.setattr(
+        movement_service,
+        "AccountingAssetMovementRepository",
+        EmptyRepository,
+    )
+
+    with pytest.raises(
+        movement_service.AccountingAssetMovementReadModelNotFoundError,
+        match="No balance movement rows",
+    ):
+        movement_service.accounting_asset_movement_envelope(
+            "movement.duckdb",
+            report_date="2026-02-28",
+        )
+
+
+def test_detail_envelope_runtime_cache_reuses_matching_payload_and_isolates_inputs(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb_path.write_bytes(b"v1")
+    cache = getattr(movement_service, "_ACCOUNTING_ASSET_MOVEMENT_ENVELOPE_CACHE", None)
+    if cache is not None:
+        cache.clear()
+    build_calls = 0
+
+    def build_envelope(_duckdb_path: str, *, report_date: str, currency_basis: str):
+        nonlocal build_calls
+        build_calls += 1
+        return {
+            "result_meta": {
+                "trace_id": f"tr_call_{build_calls}",
+                "result_kind": "balance-analysis.movement.detail",
+            },
+            "result": {
+                "report_date": report_date,
+                "currency_basis": currency_basis,
+                "call_index": build_calls,
+            },
+        }
+
+    monkeypatch.setattr(
+        movement_service,
+        "_accounting_asset_movement_envelope_unlocked",
+        build_envelope,
+    )
+
+    first = movement_service.accounting_asset_movement_envelope(
+        str(duckdb_path),
+        report_date="2026-02-28",
+        currency_basis="CNX",
+    )
+    second = movement_service.accounting_asset_movement_envelope(
+        str(duckdb_path),
+        report_date="2026-02-28",
+        currency_basis="CNX",
+    )
+    currency_variant = movement_service.accounting_asset_movement_envelope(
+        str(duckdb_path),
+        report_date="2026-02-28",
+        currency_basis="CNY",
+    )
+    duckdb_path.write_bytes(b"v2-storage-fingerprint")
+    fingerprint_variant = movement_service.accounting_asset_movement_envelope(
+        str(duckdb_path),
+        report_date="2026-02-28",
+        currency_basis="CNX",
+    )
+
+    assert first["result"] == second["result"]
+    assert first["result_meta"]["trace_id"] != second["result_meta"]["trace_id"]
+    assert currency_variant["result"]["currency_basis"] == "CNY"
+    assert fingerprint_variant["result"]["currency_basis"] == "CNX"
+    assert build_calls == 3
+
+
+def test_cold_detail_reuses_one_physical_read_connection(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "movement-connection-reuse.duckdb"
+    _seed_source_tables_and_materialize(duckdb_path)
+    expected = movement_service._build_accounting_asset_movement_envelope(
+        AccountingAssetMovementRepository(str(duckdb_path)),
+        report_date="2026-02-28",
+        currency_basis="CNX",
+    )
+    connect = duckdb.connect
+    opened_connections: list[duckdb.DuckDBPyConnection] = []
+
+    def track_connect(path, *args, **kwargs):
+        assert Path(path).resolve() == duckdb_path.resolve()
+        assert kwargs.get("read_only") is True
+        conn = connect(path, *args, **kwargs)
+        opened_connections.append(conn)
+        return conn
+
+    monkeypatch.setattr(duckdb, "connect", track_connect)
+    actual = movement_service._accounting_asset_movement_envelope_unlocked(
+        str(duckdb_path),
+        report_date="2026-02-28",
+        currency_basis="CNX",
+    )
+
+    assert len(opened_connections) == 1
+    assert actual["result"] == expected["result"]
+    assert actual["result_meta"]["quality_flag"] == expected["result_meta"]["quality_flag"]
+    with pytest.raises(duckdb.ConnectionException):
+        opened_connections[0].execute("select 1")
+
+
+def test_cold_detail_closes_scoped_connection_after_build_failure(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "movement-build-failure.duckdb"
+    duckdb.connect(str(duckdb_path), read_only=False).close()
+    connect = duckdb.connect
+    opened_connections: list[duckdb.DuckDBPyConnection] = []
+
+    def track_connect(path, *args, **kwargs):
+        assert kwargs.get("read_only") is True
+        conn = connect(path, *args, **kwargs)
+        opened_connections.append(conn)
+        return conn
+
+    def fail_build(*_args, **_kwargs):
+        raise RuntimeError("simulated detail build failure")
+
+    monkeypatch.setattr(duckdb, "connect", track_connect)
+    monkeypatch.setattr(movement_service, "_build_accounting_asset_movement_envelope", fail_build)
+
+    with pytest.raises(RuntimeError, match="simulated detail build failure"):
+        movement_service._accounting_asset_movement_envelope_unlocked(
+            str(duckdb_path),
+            report_date="2026-02-28",
+            currency_basis="CNX",
+        )
+
+    assert len(opened_connections) == 1
+    with pytest.raises(duckdb.ConnectionException):
+        opened_connections[0].execute("select 1")
+
+
+def test_movement_scoped_connection_keeps_pinned_database(tmp_path):
+    active_path = tmp_path / "active.duckdb"
+    snapshot_path = tmp_path / "snapshot.duckdb"
+    changed_snapshot_path = tmp_path / "changed-snapshot.duckdb"
+    for path in (snapshot_path, changed_snapshot_path):
+        duckdb.connect(str(path), read_only=False).close()
+    selection = DuckDBReadSelection(active_path, snapshot_path, "synthetic-generation")
+    changed_selection = DuckDBReadSelection(
+        active_path, changed_snapshot_path, "other-synthetic-generation"
+    )
+    repo = AccountingAssetMovementRepository(str(active_path))
+
+    with duckdb_read_scope(selection, required_online=True):
+        with repo.scoped_connection() as outer_connection:
+            first_cursor = repo._connect()
+            first_cursor.close()
+            # Closing a helper cursor must leave the request connection available.
+            second_cursor = repo._connect()
+            try:
+                assert second_cursor.execute("select 1").fetchone() == (1,)
+            finally:
+                second_cursor.close()
+            with duckdb_read_scope(changed_selection):
+                with pytest.raises(RuntimeError, match="read context changed"):
+                    repo._connect()
+
+    assert not active_path.exists()
+    with pytest.raises(duckdb.ConnectionException):
+        outer_connection.execute("select 1")
+
+
+@pytest.mark.parametrize("surface", ["dates", "detail"])
+def test_read_envelopes_do_not_translate_programming_errors(
+    monkeypatch,
+    surface: str,
+) -> None:
+    programming_error = TypeError("simulated programming error")
+
+    def fail_repository(_duckdb_path: str):
+        raise programming_error
+
+    monkeypatch.setattr(
+        movement_service,
+        "AccountingAssetMovementRepository",
+        fail_repository,
+    )
+
+    with pytest.raises(TypeError, match="simulated programming error") as caught:
+        if surface == "dates":
+            movement_service.accounting_asset_movement_dates_envelope("movement.duckdb")
+        else:
+            movement_service.accounting_asset_movement_envelope(
+                "movement.duckdb",
+                report_date="2026-02-28",
+            )
+
+    assert caught.value is programming_error
+
+
+def test_repository_keeps_missing_table_as_empty_state(tmp_path):
+    duckdb_path = tmp_path / "empty.duckdb"
+    duckdb.connect(str(duckdb_path), read_only=False).close()
+
+    repo = AccountingAssetMovementRepository(str(duckdb_path))
+
+    assert repo.list_report_dates() == []
+
+
+def test_repository_reuses_schema_metadata_within_one_read_request(tmp_path):
+    duckdb_path = tmp_path / "schema-metadata-cache.duckdb"
+    write_conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        write_conn.execute("create table sample_table (sample_column varchar)")
+    finally:
+        write_conn.close()
+
+    repo = AccountingAssetMovementRepository(str(duckdb_path))
+    read_conn = repo._connect()
+    execute_calls: list[str] = []
+
+    class CountingConnection:
+        def execute(self, query: str, params: list[str]):
+            execute_calls.append(query)
+            return read_conn.execute(query, params)
+
+    conn = CountingConnection()
+    try:
+        assert repo._table_exists_with_connection(conn, "sample_table")
+        assert repo._table_exists_with_connection(conn, "sample_table")
+        assert repo._column_exists(conn, "sample_table", "sample_column")
+        assert repo._column_exists(conn, "sample_table", "sample_column")
+    finally:
+        read_conn.close()
+
+    assert len(execute_calls) == 2
+
+
+def test_zqtz_drilldown_reports_missing_required_columns(tmp_path):
+    duckdb_path = tmp_path / "sparse-zqtz.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_zqtz_balance_daily (
+              report_date varchar,
+              currency_basis varchar,
+              bond_type varchar,
+              market_value_amount decimal(24, 8)
+            )
+            """
+        )
+    finally:
+        conn.close()
+
+    result = AccountingAssetMovementRepository(
+        str(duckdb_path)
+    ).fetch_zqtz_asset_drilldown_rows(
+        report_dates=["2026-02-28"],
+        currency_basis="CNX",
+    )
+
+    assert result == {
+        "status": "unsupported_missing_columns",
+        "missing_columns": ["position_scope"],
+        "zqtz_currency_basis": "CNY",
+        "rows": [],
+    }
+
+
+def test_recent_zqtz_business_rows_batch_matches_single_date_queries(tmp_path):
+    duckdb_path = tmp_path / "movement-zqtz-batch.duckdb"
+    _seed_source_tables_and_materialize(duckdb_path)
+    repo = AccountingAssetMovementRepository(str(duckdb_path))
+    report_dates = ["2026-02-28", "2026-01-31"]
+
+    conn = repo._connect()
+    try:
+        expected = [
+            row
+            for report_date in report_dates
+            for row in repo._fetch_zqtz_asset_rows(
+                conn,
+                report_date=report_date,
+                currency_basis="CNX",
+            )
+        ]
+        actual = repo._fetch_zqtz_asset_rows_for_dates(
+            conn,
+            report_dates=report_dates,
+            currency_basis="CNX",
+        )
+    finally:
+        conn.close()
+
+    assert actual == expected
 
 
 def test_refresh_service_queues_task_without_sync_materialization(monkeypatch):
@@ -79,10 +529,11 @@ def test_refresh_service_queues_task_without_sync_materialization(monkeypatch):
 
 
 def _legacy_refresh_rematerializes_stale_zqtz_formal_window_before_movement(
+    tmp_path,
     monkeypatch,
 ):
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -168,7 +619,7 @@ def _legacy_refresh_rematerializes_stale_zqtz_formal_window_before_movement(
                 "currency_basis": currency_basis,
                 "row_count": 3,
                 "source_version": "sv-new",
-                "rule_version": "rv_accounting_asset_movement_v2",
+                "rule_version": "rv_accounting_asset_movement_v4",
             }
             for report_date in report_dates
         }
@@ -231,9 +682,9 @@ def _legacy_refresh_rematerializes_stale_zqtz_formal_window_before_movement(
     ]
 
 
-def _legacy_refresh_materializes_missing_product_category_before_movement(monkeypatch):
+def _legacy_refresh_materializes_missing_product_category_before_movement(tmp_path, monkeypatch):
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -326,7 +777,7 @@ def _legacy_refresh_materializes_missing_product_category_before_movement(monkey
                 "currency_basis": currency_basis,
                 "row_count": 3,
                 "source_version": "sv-new",
-                "rule_version": "rv_accounting_asset_movement_v2",
+                "rule_version": "rv_accounting_asset_movement_v4",
             }
             for report_date in report_dates
         }
@@ -428,7 +879,7 @@ def _legacy_refresh_service_delegates_window_materialization_to_task_and_hides_i
                     "currency_basis": "CNX",
                     "row_count": 3,
                     "source_version": "sv-old",
-                    "rule_version": "rv_accounting_asset_movement_v2",
+                    "rule_version": "rv_accounting_asset_movement_v4",
                 },
                 "2026-02-28": {
                     "status": "completed",
@@ -437,7 +888,7 @@ def _legacy_refresh_service_delegates_window_materialization_to_task_and_hides_i
                     "currency_basis": "CNX",
                     "row_count": 4,
                     "source_version": "sv-new",
-                    "rule_version": "rv_accounting_asset_movement_v2",
+                    "rule_version": "rv_accounting_asset_movement_v4",
                 },
             },
             "movement_refreshed_dates": ["2026-01-31", "2026-02-28"],
@@ -475,7 +926,7 @@ def _legacy_refresh_service_delegates_window_materialization_to_task_and_hides_i
         "currency_basis": "CNX",
         "row_count": 4,
         "source_version": "sv-new",
-        "rule_version": "rv_accounting_asset_movement_v2",
+        "rule_version": "rv_accounting_asset_movement_v4",
         "product_category_refreshed_dates": ["2026-01-31"],
         "formal_balance_refreshed_dates": ["2026-02-28"],
         "movement_refreshed_dates": ["2026-01-31", "2026-02-28"],
@@ -561,8 +1012,8 @@ def _legacy_refresh_service_stops_before_task_when_formal_balance_refresh_fails(
     assert task_calls == []
 
 
-def test_refresh_zqtz_source_detection_requires_every_report_date():
-    data_root = Path("test_output") / "accounting_asset_movement" / uuid4().hex
+def test_refresh_zqtz_source_detection_requires_every_report_date(tmp_path):
+    data_root = tmp_path / "test_output" / "accounting_asset_movement" / uuid4().hex
     data_root.mkdir(parents=True, exist_ok=True)
     (data_root / "ZQTZSHOW-20250930.xls").write_bytes(b"placeholder")
 
@@ -579,9 +1030,9 @@ def test_refresh_zqtz_source_detection_requires_every_report_date():
     )
 
 
-def test_balance_movement_analysis_service_exposes_gl_control_rows():
+def test_balance_movement_analysis_service_exposes_gl_control_rows(tmp_path):
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -598,6 +1049,7 @@ def test_balance_movement_analysis_service_exposes_gl_control_rows():
 
     assert result["accounting_controls"] == ["141%", "142%", "143%", "1440101%"]
     assert result["excluded_controls"] == ["144020%"]
+    assert result["unmapped_gl_accounts"] == []
     assert Decimal(result["summary"]["current_balance_total"]) == Decimal("415.00000000")
     by_bucket = {row["basis_bucket"]: row for row in result["rows"]}
     assert Decimal(by_bucket["AC"]["current_balance"]) == Decimal("225.00000000")
@@ -636,15 +1088,30 @@ def test_balance_movement_analysis_service_exposes_gl_control_rows():
     assert Decimal(trend_ac["current_balance_pct"]).quantize(
         Decimal("0.000001")
     ) == Decimal("54.216867")
+    assert result["available_report_dates"] == ["2026-02-28", "2026-01-31"]
+    assert result["upstream_control_report_dates"] == [
+        "2026-02-28",
+        "2026-01-31",
+    ]
+    assert result["freshness_status"] == "fresh"
     assert envelope["result_meta"]["quality_flag"] == "ok"
     assert envelope["result_meta"]["result_kind"] == "balance-analysis.movement.detail"
+    assert envelope["result_meta"]["cache_key"] == "accounting_asset_movement.monthly"
+    assert envelope["result_meta"]["requested_report_date"] == "2026-02-28"
+    assert envelope["result_meta"]["resolved_report_date"] == "2026-02-28"
+    assert envelope["result_meta"]["as_of_date"] == "2026-02-28"
+    assert envelope["result_meta"]["date_basis"] == "month_end_report_date"
+    # 头寸源真的参与了对账，所以 ZQTZ 侧的 source/rule version 必须出现在血缘里。
     assert set(envelope["result_meta"]["source_version"].split("__")) == {
         "sv-gl",
         "sv-gl-prior",
         "sv-zqtz",
+        "sv-zqtz-cny",
         "sv-zqtz-prior",
     }
     assert set(envelope["result_meta"]["rule_version"].split("__")) == {
+        "rv_accounting_asset_movement_v4",
+        "rv-balance-cny",
         "rv-gl",
         "rv-gl-prior",
         "rv-zqtz",
@@ -653,9 +1120,71 @@ def test_balance_movement_analysis_service_exposes_gl_control_rows():
     assert envelope["result_meta"]["evidence_rows"] == 64
 
 
-def test_balance_movement_analysis_service_uses_cnx_diagnostic_and_ignores_cny_noise():
+def test_unmapped_144_family_is_disclosed_in_payload_without_entering_buckets(tmp_path):
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
+        / "accounting_asset_movement"
+        / f"{uuid4().hex}.duckdb"
+    )
+    duckdb_path.parent.mkdir(parents=True, exist_ok=True)
+    _seed_source_tables_and_materialize(duckdb_path)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            "insert into product_category_pnl_canonical_fact values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "2026-02-28",
+                "14403010001",
+                "CNX",
+                "unmapped 144 family",
+                "11",
+                "13",
+                "0",
+                "0",
+                "0",
+                28,
+                "sv-gl",
+                "rv-gl",
+            ),
+        )
+        rows = materialize_accounting_asset_movement_on_connection(
+            conn,
+            report_date="2026-02-28",
+            currency_basis="CNX",
+        )
+    finally:
+        conn.close()
+
+    by_bucket = {row.basis_bucket: row for row in rows}
+    assert by_bucket["OCI"].current_balance == Decimal("80")
+    assert by_bucket["AC"].current_balance == Decimal("225")
+    assert by_bucket["TPL"].current_balance == Decimal("110")
+
+    envelope = accounting_asset_movement_envelope(
+        str(duckdb_path),
+        report_date="2026-02-28",
+        currency_basis="CNX",
+    )
+    result = envelope["result"]
+    assert Decimal(result["summary"]["current_balance_total"]) == Decimal("415.00000000")
+    unmapped = result["unmapped_gl_accounts"]
+    assert [item["account_code"] for item in unmapped] == ["14403010001"]
+    assert Decimal(unmapped[0]["beginning_balance"]) == Decimal("11")
+    assert Decimal(unmapped[0]["ending_balance"]) == Decimal("13")
+    codes = {item["account_code"] for item in unmapped}
+    assert "14401010001" not in codes
+    assert "14402010001" not in codes
+
+
+def test_balance_movement_analysis_reconciles_cnx_ledger_against_zqtz_position_source(tmp_path):
+    """CNX 的对账对手方必须是 fact_formal_zqtz_balance_daily，不是总账自己。
+
+    回归：头寸侧曾经也从 product_category_pnl_canonical_fact 取数，
+    reconciliation_diff 恒为 0、status 恒为 matched，对账退化成自我比对。
+    只改头寸源、不动总账，对账列必须跟着变，列报余额必须不变。
+    """
+    duckdb_path = (
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -676,10 +1205,153 @@ def test_balance_movement_analysis_service_uses_cnx_diagnostic_and_ignores_cny_n
     assert by_bucket["TPL"]["reconciliation_status"] == "matched"
     assert envelope["result_meta"]["quality_flag"] == "ok"
 
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_formal_zqtz_balance_daily
+            set market_value_amount = market_value_amount + 25
+            where report_date = '2026-02-28'
+              and accounting_basis = 'FVTPL'
+              and bond_type = '国债'
+            """
+        )
+        materialize_accounting_asset_movement_on_connection(
+            conn,
+            report_date="2026-02-28",
+            currency_basis="CNX",
+        )
+    finally:
+        conn.close()
 
-def test_balance_movement_analysis_service_exposes_zqtz_asset_product_rows():
+    perturbed = accounting_asset_movement_envelope(
+        str(duckdb_path),
+        report_date="2026-02-28",
+        currency_basis="CNX",
+    )
+    perturbed_tpl = next(
+        row for row in perturbed["result"]["rows"] if row["basis_bucket"] == "TPL"
+    )
+    assert Decimal(perturbed_tpl["current_balance"]) == Decimal("110.00000000")
+    assert Decimal(perturbed_tpl["zqtz_amount"]) == Decimal("135.00000000")
+    assert Decimal(perturbed_tpl["reconciliation_diff"]) == Decimal("25.00000000")
+    assert perturbed_tpl["reconciliation_status"] == "mismatch"
+    assert perturbed["result_meta"]["quality_flag"] == "warning"
+
+
+def test_repository_exposes_reconciliation_and_chain_control_evidence(tmp_path):
+    """读模型侧的只读取证入口：不平的行、断裂的跨月衔接、头寸源覆盖情况。"""
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
+        / "accounting_asset_movement"
+        / f"{uuid4().hex}.duckdb"
+    )
+    duckdb_path.parent.mkdir(parents=True, exist_ok=True)
+    _seed_source_tables_and_materialize(duckdb_path)
+    repo = AccountingAssetMovementRepository(str(duckdb_path))
+
+    # 头寸源与总账对得平，且跨月衔接一致 —— 两个控制都应当是干净的。
+    assert repo.fetch_reconciliation_breaches(currency_basis="CNX") == []
+    assert repo.fetch_chain_continuity_gaps(currency_basis="CNX") == []
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_accounting_asset_movement_monthly
+            set reconciliation_status = 'mismatch',
+                reconciliation_diff = -25,
+                zqtz_amount = zqtz_amount - 25
+            where report_date = '2026-02-28' and basis_bucket = 'TPL'
+            """
+        )
+        conn.execute(
+            """
+            update fact_accounting_asset_movement_monthly
+            set previous_balance = previous_balance - 40
+            where report_date = '2026-02-28' and basis_bucket = 'AC'
+            """
+        )
+    finally:
+        conn.close()
+
+    breaches = repo.fetch_reconciliation_breaches(currency_basis="CNX")
+    assert [(row["report_date"], row["basis_bucket"]) for row in breaches] == [
+        ("2026-02-28", "TPL")
+    ]
+    assert breaches[0]["reconciliation_diff"] == Decimal("-25.00000000")
+
+    gaps = repo.fetch_chain_continuity_gaps(currency_basis="CNX")
+    assert [(row["report_date"], row["basis_bucket"]) for row in gaps] == [
+        ("2026-02-28", "AC")
+    ]
+    assert gaps[0]["prior_report_date"] == "2026-01-31"
+    assert gaps[0]["gap"] == Decimal("-40.00000000")
+
+
+def test_repository_reports_position_source_currency_basis_fallback(tmp_path):
+    """总账 CNX 在 ZQTZ 正式头寸表里对应 CNY；两个口径都没有行时必须报 None，
+    调用方不能把"没有对手方"当成"对平"。"""
+    duckdb_path = (
+        tmp_path / "test_output"
+        / "accounting_asset_movement"
+        / f"{uuid4().hex}.duckdb"
+    )
+    duckdb_path.parent.mkdir(parents=True, exist_ok=True)
+    _seed_source_tables_and_materialize(duckdb_path)
+    repo = AccountingAssetMovementRepository(str(duckdb_path))
+
+    coverage = repo.fetch_position_source_coverage(
+        report_dates=["2026-01-31", "2026-02-28", "2025-12-31"],
+        currency_basis="CNX",
+    )
+
+    assert coverage["2026-02-28"]["resolved_currency_basis"] == "CNY"
+    assert coverage["2026-02-28"]["row_count"] == 4
+    assert coverage["2026-01-31"]["resolved_currency_basis"] == "CNY"
+    assert coverage["2025-12-31"]["resolved_currency_basis"] is None
+    assert coverage["2025-12-31"]["row_count"] == 0
+    assert coverage["2025-12-31"]["candidates"] == ["CNX", "CNY"]
+
+
+def test_balance_movement_analysis_marks_reconciliation_mismatch_as_warning(tmp_path):
+    duckdb_path = (
+        tmp_path / "test_output"
+        / "accounting_asset_movement"
+        / f"{uuid4().hex}.duckdb"
+    )
+    duckdb_path.parent.mkdir(parents=True, exist_ok=True)
+    _seed_source_tables_and_materialize(duckdb_path)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_accounting_asset_movement_monthly
+            set reconciliation_status = 'mismatch',
+                reconciliation_diff = 1
+            where report_date = '2026-02-28'
+              and currency_basis = 'CNX'
+              and basis_bucket = 'AC'
+            """
+        )
+    finally:
+        conn.close()
+
+    envelope = accounting_asset_movement_envelope(
+        str(duckdb_path),
+        report_date="2026-02-28",
+        currency_basis="CNX",
+    )
+
+    assert envelope["result"]["summary"]["matched_bucket_count"] == 2
+    assert envelope["result_meta"]["quality_flag"] == "warning"
+    assert envelope["result_meta"]["requested_report_date"] == "2026-02-28"
+    assert "rv_accounting_asset_movement_v4" in envelope["result_meta"]["rule_version"]
+
+
+def test_balance_movement_analysis_service_exposes_zqtz_asset_product_rows(tmp_path):
+    duckdb_path = (
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -780,6 +1452,8 @@ def test_balance_movement_analysis_service_exposes_zqtz_asset_product_rows():
                 ("2026-02-28", "AC", "asset", "CNY", "资产支持证券", "A1", "资产支持证券A", "CNY", "7", "6", "sv-zqtz", "rv-zqtz"),
                 ("2026-02-28", "FVTPL", "asset", "CNY", "其他", "SA001", "公募基金A", "CNY", "8", "7", "sv-zqtz", "rv-zqtz"),
                 ("2026-02-28", "AC", "asset", "CNY", "其他", "HK0001155867", "GTJA foreign bond", "CNY", "2", "1", "sv-zqtz", "rv-zqtz"),
+                ("2026-02-28", "AC", "asset", "CNY", "其他", "292680026", "印尼主权债A", "CNY", "3", "3", "sv-zqtz", "rv-zqtz"),
+                ("2026-02-28", "AC", "asset", "CNY", "其他", "292680027", "印尼主权债B", "CNY", "4", "4", "sv-zqtz", "rv-zqtz"),
                 ("2026-02-28", "FVTPL", "asset", "CNY", "其他", "J02205260102", "J0 市值法A", "CNY", "9", "8", "sv-zqtz", "rv-zqtz"),
                 ("2026-02-28", "FVTPL", "asset", "CNY", "其他", "J02503280102", "J0 市值法B", "CNY", "5", "5", "sv-zqtz", "rv-zqtz"),
                 ("2026-02-28", "FVTPL", "asset", "CNY", "其他", "J099990001", "J0 成本法A", "CNY", "4", "4", "sv-zqtz", "rv-zqtz"),
@@ -807,10 +1481,11 @@ def test_balance_movement_analysis_service_exposes_zqtz_asset_product_rows():
     assert Decimal(business_rows["asset_zqtz_commercial_financial_bond"]["current_balance"]) == Decimal("59.00000000")
     assert Decimal(business_rows["asset_zqtz_interbank_cd"]["current_balance"]) == Decimal("17.00000000")
     assert Decimal(business_rows["asset_zqtz_nonfinancial_enterprise_bond"]["current_balance"]) == Decimal("79.00000000")
-    assert Decimal(business_rows["asset_zqtz_foreign_bond"]["current_balance"]) == Decimal("5.00000000")
+    assert Decimal(business_rows["asset_zqtz_foreign_bond"]["current_balance"]) == Decimal("12.00000000")
     assert Decimal(business_rows["asset_zqtz_public_fund"]["current_balance"]) == Decimal("8.00000000")
-    assert Decimal(business_rows["asset_zqtz_non_bottom_investment"]["current_balance"]) == Decimal("51.00000000")
-    assert Decimal(business_rows["asset_zqtz_detail_trust_plan"]["current_balance"]) == Decimal("12.00000000")
+    # G2 旧信托计划与 G0 一同归入信托，其中项不重复计入资产合计。
+    assert Decimal(business_rows["asset_zqtz_non_bottom_investment"]["current_balance"]) == Decimal("64.00000000")
+    assert Decimal(business_rows["asset_zqtz_detail_trust_plan"]["current_balance"]) == Decimal("25.00000000")
     assert Decimal(business_rows["asset_zqtz_detail_securities_asset_management_plan"]["current_balance"]) == Decimal("39.00000000")
     assert Decimal(business_rows["asset_zqtz_detail_structured_finance_broker"]["current_balance"]) == Decimal("11.00000000")
     assert Decimal(business_rows["asset_zqtz_detail_foreign_currency_delegated"]["current_balance"]) == Decimal("10.00000000")
@@ -818,12 +1493,12 @@ def test_balance_movement_analysis_service_exposes_zqtz_asset_product_rows():
     assert Decimal(business_rows["asset_zqtz_detail_local_currency_special_account_cost"]["current_balance"]) == Decimal("4.00000000")
     assert Decimal(business_rows["asset_zqtz_other_debt_financing"]["current_balance"]) == Decimal("14.00000000")
     assert Decimal(business_rows["asset_long_term_equity_investment"]["current_balance"]) == Decimal("4.00000000")
-    assert Decimal(business_month["asset_balance_total"]) == Decimal("309.00000000")
+    assert Decimal(business_month["asset_balance_total"]) == Decimal("329.00000000")
 
 
-def test_balance_movement_analysis_service_includes_accrued_interest_when_available():
+def test_balance_movement_analysis_service_includes_accrued_interest_when_available(tmp_path):
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -909,9 +1584,9 @@ def test_balance_movement_analysis_service_includes_accrued_interest_when_availa
     assert Decimal(business_rows["asset_zqtz_abs"]["current_balance"]) == Decimal("7.25000000")
 
 
-def test_balance_movement_analysis_service_builds_derived_diagnostics():
+def test_balance_movement_analysis_service_builds_derived_diagnostics(tmp_path):
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -1042,9 +1717,9 @@ def test_balance_movement_analysis_service_builds_derived_diagnostics():
     assert Decimal(waterfall["closing_check"]) == Decimal("0E-8")
 
 
-def test_balance_movement_analysis_service_builds_drilldown_payloads():
+def test_balance_movement_analysis_service_builds_drilldown_payloads(tmp_path):
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -1330,9 +2005,9 @@ def test_zqtz_rating_concentration_defaults_interest_rate_bonds_to_aaa():
     assert Decimal(rating_items["未映射"]["current_amount"]) == Decimal("10.00000000")
 
 
-def test_difference_attribution_inputs_tolerate_sparse_voucher_schema():
+def test_difference_attribution_inputs_tolerate_sparse_voucher_schema(tmp_path):
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -1396,9 +2071,9 @@ def test_difference_attribution_inputs_tolerate_sparse_voucher_schema():
     assert inputs["formal_voucher_accrued_interest"] == Decimal("0")
 
 
-def test_difference_attribution_inputs_use_face_value_for_voucher_treasury_cost_basis():
+def test_difference_attribution_inputs_use_face_value_for_voucher_treasury_cost_basis(tmp_path):
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -1470,9 +2145,9 @@ def test_difference_attribution_inputs_use_face_value_for_voucher_treasury_cost_
     assert inputs["formal_voucher_accrued_interest"] == Decimal("3.00000000")
 
 
-def test_balance_movement_dates_only_advertise_materialized_read_model_dates():
+def test_balance_movement_dates_only_advertise_materialized_read_model_dates(tmp_path):
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -1550,6 +2225,7 @@ def test_balance_movement_dates_only_advertise_materialized_read_model_dates():
     assert envelope["result"]["report_dates"] == ["2026-01-31"]
     assert envelope["result"]["latest_read_model_report_date"] == "2026-01-31"
     assert envelope["result"]["latest_upstream_control_report_date"] == "2026-02-28"
+    assert envelope["result"]["upstream_control_report_dates"] == ["2026-02-28"]
     assert envelope["result"]["freshness_status"] == "read_model_lagging"
     assert envelope["result_meta"]["tables_used"] == [
         "fact_accounting_asset_movement_monthly",
@@ -1557,9 +2233,93 @@ def test_balance_movement_dates_only_advertise_materialized_read_model_dates():
     ]
 
 
-def test_balance_movement_dates_source_version_is_currency_scoped():
+def test_balance_movement_dates_detect_an_interior_control_date_gap(tmp_path):
     duckdb_path = (
-        Path("test_output")
+        tmp_path / "test_output"
+        / "accounting_asset_movement"
+        / f"{uuid4().hex}.duckdb"
+    )
+    duckdb_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_accounting_asset_movement_monthly (
+              report_date varchar,
+              currency_basis varchar,
+              sort_order integer,
+              source_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table product_category_pnl_canonical_fact (
+              report_date varchar,
+              account_code varchar,
+              currency varchar
+            )
+            """
+        )
+        conn.executemany(
+            "insert into fact_accounting_asset_movement_monthly values (?, 'CNX', 1, 'sv-read')",
+            [("2026-01-31",), ("2026-03-31",)],
+        )
+        conn.executemany(
+            "insert into product_category_pnl_canonical_fact values (?, '1410001', 'CNX')",
+            [("2026-01-31",), ("2026-02-28",), ("2026-03-31",)],
+        )
+    finally:
+        conn.close()
+
+    envelope = accounting_asset_movement_dates_envelope(
+        str(duckdb_path),
+        currency_basis="CNX",
+    )
+
+    assert envelope["result"]["latest_read_model_report_date"] == "2026-03-31"
+    assert envelope["result"]["latest_upstream_control_report_date"] == "2026-03-31"
+    assert envelope["result"]["freshness_status"] == "read_model_lagging"
+    assert envelope["result_meta"]["quality_flag"] == "stale"
+    assert envelope["result_meta"]["cache_key"] == "accounting_asset_movement.monthly"
+
+
+def test_refresh_window_includes_missing_interior_upstream_dates(tmp_path):
+    duckdb_path = tmp_path / "refresh-interior-gap.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            "create table fact_accounting_asset_movement_monthly "
+            "(report_date varchar, currency_basis varchar)"
+        )
+        conn.execute(
+            "create table product_category_pnl_canonical_fact "
+            "(report_date varchar, account_code varchar, currency varchar)"
+        )
+        conn.executemany(
+            "insert into fact_accounting_asset_movement_monthly values (?, 'CNX')",
+            [("2026-01-31",), ("2026-03-31",)],
+        )
+        conn.executemany(
+            "insert into product_category_pnl_canonical_fact values (?, '1410001', 'CNX')",
+            [("2026-01-31",), ("2026-02-28",), ("2026-03-31",)],
+        )
+    finally:
+        conn.close()
+
+    report_dates = movement_service._recent_report_dates_for_refresh(
+        str(duckdb_path),
+        report_date="2026-03-31",
+        currency_basis="CNX",
+        month_count=2,
+    )
+
+    assert report_dates == ["2026-01-31", "2026-02-28", "2026-03-31"]
+
+
+def test_balance_movement_dates_source_version_is_currency_scoped(tmp_path):
+    duckdb_path = (
+        tmp_path / "test_output"
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
@@ -1646,6 +2406,95 @@ def test_balance_movement_dates_source_version_is_currency_scoped():
     assert envelope["result_meta"]["filters_applied"] == {"currency_basis": "CNX"}
 
 
+def test_balance_movement_detail_marks_upstream_date_gap_as_stale_and_exposes_dates(tmp_path):
+    duckdb_path = (
+        tmp_path / "test_output"
+        / "accounting_asset_movement"
+        / f"{uuid4().hex}.duckdb"
+    )
+    duckdb_path.parent.mkdir(parents=True, exist_ok=True)
+    _seed_source_tables_and_materialize(duckdb_path)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into product_category_pnl_canonical_fact values (
+              '2026-03-31', '14101010001', 'CNX', 'TPL',
+              110, 120, 0, 0, 0, 31, 'sv-gl-newer', 'rv-gl-newer'
+            )
+            """
+        )
+    finally:
+        conn.close()
+
+    envelope = accounting_asset_movement_envelope(
+        str(duckdb_path),
+        report_date="2026-02-28",
+        currency_basis="CNX",
+    )
+
+    assert envelope["result"]["summary"]["matched_bucket_count"] == 3
+    assert envelope["result"]["available_report_dates"] == [
+        "2026-02-28",
+        "2026-01-31",
+    ]
+    assert envelope["result"]["upstream_control_report_dates"] == [
+        "2026-03-31",
+        "2026-02-28",
+        "2026-01-31",
+    ]
+    assert envelope["result"]["freshness_status"] == "read_model_lagging"
+    assert envelope["result_meta"]["quality_flag"] == "stale"
+
+    dates_envelope = accounting_asset_movement_dates_envelope(
+        str(duckdb_path),
+        currency_basis="CNX",
+    )
+    assert dates_envelope["result"]["report_dates"] == envelope["result"][
+        "available_report_dates"
+    ]
+    assert dates_envelope["result"]["upstream_control_report_dates"] == envelope[
+        "result"
+    ]["upstream_control_report_dates"]
+    assert dates_envelope["result"]["freshness_status"] == envelope["result"][
+        "freshness_status"
+    ]
+    assert dates_envelope["result_meta"]["quality_flag"] == "stale"
+
+
+def test_balance_movement_detail_warns_when_requested_date_has_no_control_row(tmp_path):
+    duckdb_path = (
+        tmp_path / "test_output"
+        / "accounting_asset_movement"
+        / f"{uuid4().hex}.duckdb"
+    )
+    duckdb_path.parent.mkdir(parents=True, exist_ok=True)
+    _seed_source_tables_and_materialize(duckdb_path)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            "delete from product_category_pnl_canonical_fact "
+            "where report_date = '2026-02-28' and currency = 'CNX'"
+        )
+    finally:
+        conn.close()
+
+    envelope = accounting_asset_movement_envelope(
+        str(duckdb_path),
+        report_date="2026-02-28",
+        currency_basis="CNX",
+    )
+
+    assert envelope["result"]["summary"]["matched_bucket_count"] == 3
+    assert envelope["result"]["available_report_dates"] == [
+        "2026-02-28",
+        "2026-01-31",
+    ]
+    assert envelope["result"]["upstream_control_report_dates"] == ["2026-01-31"]
+    assert envelope["result"]["freshness_status"] == "fresh"
+    assert envelope["result_meta"]["quality_flag"] == "warning"
+
+
 def _seed_source_tables_and_materialize(
     duckdb_path: Path,
 ) -> list[object]:
@@ -1655,6 +2504,10 @@ def _seed_source_tables_and_materialize(
             """
             create table fact_formal_zqtz_balance_daily (
               report_date varchar,
+              instrument_code varchar,
+              portfolio_name varchar,
+              cost_center varchar,
+              maturity_date varchar,
               accounting_basis varchar,
               position_scope varchar,
               currency_basis varchar,
@@ -1685,14 +2538,27 @@ def _seed_source_tables_and_materialize(
             )
             """
         )
+        # CNX 总账口径在 ZQTZ 侧对应 currency_basis='CNY'（外币持仓已折人民币）。
+        # 这些头寸行必须与下面的总账控制科目对得平：
+        # 2026-01-31 TPL=100 / AC=205 / OCI=70，2026-02-28 TPL=110 / AC=225 / OCI=80。
         conn.executemany(
-            "insert into fact_formal_zqtz_balance_daily values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            """
+            insert into fact_formal_zqtz_balance_daily (
+              report_date, instrument_code, portfolio_name, cost_center, maturity_date,
+              accounting_basis, position_scope, currency_basis, bond_type,
+              business_type_primary, market_value_amount, amortized_cost_amount,
+              source_version, rule_version
+            ) values (?, ?, 'TEST_PORTFOLIO', 'TEST_COST_CENTER', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
             [
-                ("2026-01-31", "FVTPL", "asset", "CNY", "其他债券", "同业存单", "12", "12", "sv-zqtz-prior", "rv-zqtz-prior"),
-                ("2026-02-28", "FVTPL", "asset", "CNY", "其他债券", "同业存单", "18", "18", "sv-zqtz", "rv-zqtz"),
-                ("2026-02-28", "FVTPL", "asset", "CNY", "国债", "国债", "999", "999", "sv-zqtz-cny", "rv-balance-cny"),
-                ("2026-02-28", "AC", "asset", "CNY", "国债", "国债", "999", "999", "sv-zqtz-cny", "rv-balance-cny"),
-                ("2026-02-28", "FVOCI", "asset", "CNY", "国债", "国债", "999", "999", "sv-zqtz-cny", "rv-balance-cny"),
+                ("2026-01-31", "TEST-NCD-001", "FVTPL", "asset", "CNY", "其他债券", "同业存单", "12", "12", "sv-zqtz-prior", "rv-zqtz-prior"),
+                ("2026-01-31", "TEST-CGB-001", "FVTPL", "asset", "CNY", "国债", "国债", "88", "0", "sv-zqtz-prior", "rv-zqtz-prior"),
+                ("2026-01-31", "TEST-CGB-001", "AC", "asset", "CNY", "国债", "国债", "0", "205", "sv-zqtz-prior", "rv-zqtz-prior"),
+                ("2026-01-31", "TEST-CGB-001", "FVOCI", "asset", "CNY", "国债", "国债", "70", "0", "sv-zqtz-prior", "rv-zqtz-prior"),
+                ("2026-02-28", "TEST-NCD-001", "FVTPL", "asset", "CNY", "其他债券", "同业存单", "18", "18", "sv-zqtz", "rv-zqtz"),
+                ("2026-02-28", "TEST-CGB-001", "FVTPL", "asset", "CNY", "国债", "国债", "92", "0", "sv-zqtz-cny", "rv-balance-cny"),
+                ("2026-02-28", "TEST-CGB-001", "AC", "asset", "CNY", "国债", "国债", "0", "225", "sv-zqtz-cny", "rv-balance-cny"),
+                ("2026-02-28", "TEST-CGB-001", "FVOCI", "asset", "CNY", "国债", "国债", "80", "0", "sv-zqtz-cny", "rv-balance-cny"),
             ],
         )
         conn.executemany(

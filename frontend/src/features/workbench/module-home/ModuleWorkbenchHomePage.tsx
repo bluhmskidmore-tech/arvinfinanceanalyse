@@ -3,7 +3,24 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
-import { buildModuleHomeView, type ModuleHomeDetailPanel, type ModuleHomeTone } from "./moduleHomeModel";
+import {
+  DataTable,
+  SECTION_HEAD_STACK_CLASSNAME,
+  SectionHead,
+  StateSurface,
+  type DataTableColumn,
+  type SectionMetaField,
+  type SectionState,
+  type SectionStateTone,
+  type SurfaceStatus,
+} from "../../../components/layout";
+import {
+  buildModuleHomeView,
+  type ModuleHomeDataState,
+  type ModuleHomeDetailPanel,
+  type ModuleHomeDetailRow,
+  type ModuleHomeTone,
+} from "./moduleHomeModel";
 import {
   moduleWorkbenchHomeConfigs,
   type ModuleWorkbenchHomeKind,
@@ -40,31 +57,45 @@ function statePillClassName(tone: ModuleHomeTone) {
   return styles.pill;
 }
 
+function pageStateTone(
+  dataState: ModuleHomeDataState | undefined,
+  stateLabel: string,
+): ModuleHomeTone {
+  if (dataState === "error" || stateLabel === "读取失败") return "error";
+  if (
+    dataState === "empty" ||
+    dataState === "partial" ||
+    dataState === "stale" ||
+    stateLabel === "部分失败" ||
+    stateLabel === "部分无权限"
+  ) {
+    return "watch";
+  }
+  if (dataState === "loading" || stateLabel === "读取中") return "muted";
+  return "ok";
+}
+
+function performanceStateMessage(status: SurfaceStatus) {
+  if (status === "loading") return "正在读取绩效工作台";
+  if (status === "empty") return "本年暂无可展示绩效数据";
+  if (status === "error") return "绩效数据读取失败";
+  if (status === "partial") return "绩效数据部分可用";
+  if (status === "stale") return "绩效数据已经过期";
+  return "绩效数据已就绪";
+}
+
 function currentYear() {
   return new Date().getFullYear();
 }
 
-function riskDetailPanelTestId(panelKey: string) {
-  if (panelKey === "risk-tensor-detail") {
-    return "module-home-risk-tensor";
-  }
-  if (panelKey === "cashflow-projection-detail") {
-    return "module-home-cashflow";
-  }
-  return "module-home-detail-panels";
-}
-
-function performanceDetailPanelTestId(panelKey: string) {
+/** detail panel key → 页面既有 testid（kind 无关映射，/performance 与 /reports 共用）。 */
+function detailPanelTestId(panelKey: string) {
   if (panelKey === "kpi-metric-detail") {
     return "module-home-kpi-detail";
   }
   if (panelKey === "business-pnl-detail") {
     return "module-home-business-pnl";
   }
-  return "module-home-detail-panels";
-}
-
-function governanceDetailPanelTestId(panelKey: string) {
   if (panelKey === "source-status") {
     return "module-home-source-status";
   }
@@ -77,51 +108,119 @@ function governanceDetailPanelTestId(panelKey: string) {
   return "module-home-detail-panels";
 }
 
-function DetailPanelBody({
-  panel,
-  variant = "nested",
+/**
+ * 长读数降号防截断（首页 compact 先例的长度判据）：nowrap + ellipsis 下
+ * 被截断的数字会被读成另一个数字，比降号更危险。中文状态词（读取失败等）
+ * 通常 ≤6 字不触发，保持 §3 主值 20px 下限。
+ */
+function isCompactKpiValue(value: string) {
+  return value.length >= 9;
+}
+
+/**
+ * 分区状态：页面的四档 tone 里只有 ok 在原语的 SectionState 词表外——原语把
+ * ready 定义成「不渲染状态位」，没有「绿色的已就绪徽标」这一档。为了不丢掉
+ * 面板头上那句状态读数（§6 状态即内容），ok 档改由 meta 承载文案，只有颜色
+ * 语义从绿降为中性；其余三档逐档同色（红 / 琥珀 / 中性）。
+ */
+const PANEL_STATE_TONE: Record<ModuleHomeTone, SectionStateTone | null> = {
+  ok: null,
+  watch: "partial",
+  error: "error",
+  muted: "loading",
+};
+
+function panelSectionState(panel: ModuleHomeDetailPanel): SectionState {
+  const tone = PANEL_STATE_TONE[panel.tone];
+  if (tone === null || !panel.stateLabel) return null;
+  return { label: panel.stateLabel, tone };
+}
+
+/**
+ * 面板 meta 是「标签 值」形状的展示串（如 `来源 kpi`）；这里只做一次拆分，
+ * "·" 配额与竖线分栏交给 SectionHead 内部按字段数推导。ok 档的状态读数作为
+ * 第一个字段并入，保证迁移前后没有任何一句文案从页面上消失。
+ */
+function panelSectionMeta(panel: ModuleHomeDetailPanel): SectionMetaField[] {
+  const fields: SectionMetaField[] = [];
+  if (PANEL_STATE_TONE[panel.tone] === null && panel.stateLabel) {
+    fields.push({ label: "状态", value: panel.stateLabel, title: panel.stateDetail });
+  }
+  if (panel.meta) {
+    const separator = panel.meta.indexOf(" ");
+    fields.push(
+      separator < 0
+        ? { label: panel.meta, value: "" }
+        : { label: panel.meta.slice(0, separator), value: panel.meta.slice(separator + 1) },
+    );
+  }
+  return fields;
+}
+
+/*
+ * 明细表列。读数列此前靠 `.detailValue` 的 nowrap + ellipsis 单行省略，对应
+ * DataTable 的 `ellipsis`（它会把整表切到 table-layout: fixed，与原来
+ * `.detailTable { table-layout: fixed }` 一致）；日期列 88px 宽度保持不变。
+ */
+const DETAIL_COLUMNS: readonly DataTableColumn<ModuleHomeDetailRow>[] = [
+  { key: "label", title: "字段" },
+  {
+    key: "value",
+    title: "读数",
+    align: "numeric",
+    ellipsis: true,
+    render: (row) => <span className={toneClassName(row.tone)}>{row.value}</span>,
+  },
+  { key: "tradeDate", title: "日期", align: "numeric", width: 88 },
+  { key: "source", title: "来源" },
+];
+
+function DetailRowsTable({
+  rows,
+  ariaLabel,
 }: {
-  panel: ModuleHomeDetailPanel;
-  variant?: "nested" | "standalone";
+  rows: ModuleHomeDetailPanel["rows"];
+  ariaLabel: string;
 }) {
   return (
-    <article className={styles.detailPanel}>
-      {variant === "nested" ? (
-        <>
-          <div className={styles.detailHead}>
-            <span className={styles.detailTitle}>{panel.title}</span>
-            <span className={`${styles.detailState} ${toneClassName(panel.tone)}`}>
-              {panel.stateLabel}
-            </span>
-          </div>
-          <span className={styles.detailMeta}>{panel.meta}</span>
-        </>
-      ) : (
-        <div className={styles.detailHead}>
-          <span className={`${styles.detailState} ${toneClassName(panel.tone)}`}>
-            {panel.stateLabel}
-          </span>
-        </div>
-      )}
-      {panel.rows.length > 0 ? (
-        <ul className={styles.detailList}>
-          {panel.rows.map((row) => (
-            <li className={styles.detailRow} key={row.key}>
-              <div className={styles.detailRowTop}>
-                <span className={styles.detailLabel}>{row.label}</span>
-                <span className={`${styles.detailValue} ${styles.num} ${toneClassName(row.tone)}`}>
-                  {row.value}
-                </span>
-                <span className={`${styles.detailDate} ${styles.num}`}>{row.tradeDate}</span>
-              </div>
-              <span className={styles.detailSource}>{row.source}</span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className={`${styles.detailEmpty} ${toneClassName(panel.tone)}`}>{panel.stateDetail}</p>
-      )}
-    </article>
+    <DataTable<ModuleHomeDetailRow>
+      rows={rows}
+      rowKey="key"
+      columns={DETAIL_COLUMNS}
+      emptyPolicy="collapse"
+      ariaLabel={ariaLabel}
+    />
+  );
+}
+
+function DetailPanelBody({ panel }: { panel: ModuleHomeDetailPanel }) {
+  const sections = panel.sections?.filter((section) => section.rows.length > 0) ?? [];
+
+  if (sections.length > 0) {
+    return (
+      <div className={styles.detailSections}>
+        {sections.map((section) => (
+          <section className={styles.detailSection} key={section.key}>
+            <div className={styles.detailSectionHeader}>
+              <span className={styles.detailSectionTitle}>{section.title}</span>
+              {section.subtitle ? (
+                <span className={styles.detailSectionMeta}>{section.subtitle}</span>
+              ) : null}
+            </div>
+            <DetailRowsTable
+              rows={section.rows}
+              ariaLabel={`${panel.title} · ${section.title}`}
+            />
+          </section>
+        ))}
+      </div>
+    );
+  }
+  if (panel.rows.length > 0) {
+    return <DetailRowsTable rows={panel.rows} ariaLabel={panel.title} />;
+  }
+  return (
+    <p className={`${styles.detailEmpty} ${toneClassName(panel.tone)}`}>{panel.stateDetail}</p>
   );
 }
 
@@ -233,94 +332,163 @@ export default function ModuleWorkbenchHomePage({
     staleTime: 60_000,
   });
 
-  const queries = {
-    choiceLatest: choiceLatestQuery,
-    marketRates: marketRatesQuery,
-    marketCatalog: marketCatalogQuery,
-    riskDates: riskDatesQuery,
-    riskTensor: riskTensorQuery,
-    cashflow: cashflowQuery,
-    kpiOwners: kpiOwnersQuery,
-    kpiSummary: kpiSummaryQuery,
-    pnlYtd: pnlYtdQuery,
-    healthLive: healthLiveQuery,
-    healthSummary: healthSummaryQuery,
-    sourceFoundation: sourceFoundationQuery,
-    cubeDimensions: cubeDimensionsQuery,
-  };
+  // queries 对象包进 useMemo：只有任一 query 结果变化才更新引用，
+  // 让下方 view 的 useMemo 能直接依赖 queries 本身（可静态校验）。
+  const queries = useMemo(
+    () => ({
+      choiceLatest: choiceLatestQuery,
+      marketRates: marketRatesQuery,
+      marketCatalog: marketCatalogQuery,
+      riskDates: riskDatesQuery,
+      riskTensor: riskTensorQuery,
+      cashflow: cashflowQuery,
+      kpiOwners: kpiOwnersQuery,
+      kpiSummary: kpiSummaryQuery,
+      pnlYtd: pnlYtdQuery,
+      healthLive: healthLiveQuery,
+      healthSummary: healthSummaryQuery,
+      sourceFoundation: sourceFoundationQuery,
+      cubeDimensions: cubeDimensionsQuery,
+    }),
+    [
+      choiceLatestQuery,
+      marketRatesQuery,
+      marketCatalogQuery,
+      riskDatesQuery,
+      riskTensorQuery,
+      cashflowQuery,
+      kpiOwnersQuery,
+      kpiSummaryQuery,
+      pnlYtdQuery,
+      healthLiveQuery,
+      healthSummaryQuery,
+      sourceFoundationQuery,
+      cubeDimensionsQuery,
+    ],
+  );
   const config = moduleWorkbenchHomeConfigs[kind];
-  const view = buildModuleHomeView(kind, client, queries);
-  const stateTone =
-    view.stateLabel === "读取失败"
-      ? "error"
-      : view.stateLabel === "部分失败"
-        ? "watch"
-      : view.stateLabel === "读取中"
-        ? "muted"
-        : "ok";
+  const view = useMemo(
+    () => buildModuleHomeView(kind, client, queries),
+    [kind, client, queries],
+  );
+  const hasFailedQuery = Object.values(queries).some((query) => query.isError);
+  const retryFailedQueries = () => {
+    for (const query of Object.values(queries)) {
+      if (query.isError) {
+        void query.refetch();
+      }
+    }
+  };
+  const stateTone = pageStateTone(view.dataState, view.stateLabel);
+  const performanceState = kind === "performance" ? view.dataState : undefined;
+  const performanceBlockingState =
+    performanceState === "loading" ||
+    performanceState === "empty" ||
+    performanceState === "error"
+      ? performanceState
+      : undefined;
+  const performanceAdvisoryState =
+    performanceState === "partial" || performanceState === "stale"
+      ? performanceState
+      : undefined;
 
   return (
-    <section className={styles.moduleHome} data-testid="module-workbench-home">
-      <header className={styles.topbar}>
-        <div className={styles.titleBlock}>
-          <div className={styles.titleRow}>
-            <span className={styles.titleBar} aria-hidden="true" />
-            <h1 className={styles.title}>{view.title}</h1>
-            <span className={statePillClassName(stateTone)}>{view.stateLabel}</span>
+    <section
+      className={`${styles.moduleHome} theme-dh-api`}
+      data-moss-theme-scope="module-workbench-home"
+      data-state={view.dataState}
+      data-testid="module-workbench-home"
+    >
+      {/* 工具栏 — 首页 dhTopbar 语言：左标题 + 一问副题与状态说明，右来源/状态胶囊 */}
+      <header className={styles.topbar} data-testid="module-home-toolbar">
+        <div className={styles.topbarLeft}>
+          <h1 className={styles.pageTitle}>{view.title}</h1>
+          <div className={styles.topbarMeta}>
+            <span title={view.question}>{view.question}</span>
+            <span title={view.stateDetail}>{view.stateDetail}</span>
+            {/* 口径边界声明是业务文案（§6），保持可见，不收进 tooltip。 */}
+            <span title={view.summary}>{view.summary}</span>
           </div>
-          <p className={styles.question}>{view.question}</p>
-          <p className={styles.summary}>{view.summary}</p>
         </div>
-        <div className={styles.topMeta}>
-          <div className={styles.credibilityStrip}>
-            <span className={styles.credibilityLabel}>来源</span>
-            <span className={styles.pill}>{view.sourceScope}</span>
-          </div>
-          <div className={styles.credibilityStrip}>
-            <span className={styles.credibilityLabel}>状态</span>
-            <span className={statePillClassName(stateTone)}>{view.stateDetail}</span>
-          </div>
+        <div className={styles.topbarRight}>
+          <span className={styles.pill} title={view.sourceScope}>
+            来源 {view.sourceScope}
+          </span>
+          <span className={statePillClassName(stateTone)} title={view.stateDetail}>
+            <i aria-hidden="true" />
+            {view.stateLabel}
+          </span>
+          {hasFailedQuery ? (
+            <button
+              type="button"
+              className={styles.pill}
+              // 复用状态胶囊样式的一次性按钮化重置（非重复布局块）
+              style={{ background: "transparent", cursor: "pointer" }}
+              onClick={retryFailedQueries}
+              data-testid="module-home-retry"
+            >
+              重试
+            </button>
+          ) : null}
         </div>
       </header>
 
-      {view.decision ? (
-        <section className={styles.decisionBand} data-testid="module-home-decision">
-          <div className={styles.decisionMain}>
-            <span className={`${styles.decisionKicker} ${toneClassName(view.decision.tone)}`}>
-              {view.decision.title}
-            </span>
-            <strong className={`${styles.decisionConclusion} ${toneClassName(view.decision.tone)}`}>
-              {view.decision.conclusion}
-            </strong>
-            <span className={styles.decisionDetail}>{view.decision.detail}</span>
-          </div>
-          <div className={styles.decisionFacts}>
-            {view.decision.facts.map((fact) => (
-              <span className={styles.decisionFact} key={fact.label}>
-                <span>{fact.label}</span>
-                <strong className={`${styles.num} ${toneClassName(fact.tone)}`}>{fact.value}</strong>
-              </span>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
       <div className={styles.layout}>
-        <main className={styles.main}>
+        {/* 一个 stack 容器 = 一个独立编号域：01 主结论区与 02+ 明细区块的序号
+            由 SectionHead 的 CSS counter 按 DOM 顺序生成，页面不再手写 index。 */}
+        <main className={`${styles.main} ${SECTION_HEAD_STACK_CLASSNAME}`}>
+          {performanceBlockingState ? (
+            <StateSurface
+              status={performanceBlockingState}
+              message={performanceStateMessage(performanceBlockingState)}
+              reason={performanceBlockingState === "loading" ? undefined : view.stateDetail}
+              minHeight={performanceBlockingState === "loading" ? 224 : undefined}
+              testId="module-home-primary-state"
+              actions={
+                performanceBlockingState === "empty" ? (
+                  <Link className={styles.stateAction} to="/kpi">
+                    前往绩效考核核验配置
+                  </Link>
+                ) : undefined
+              }
+            />
+          ) : (
+            <>
+              {performanceAdvisoryState ? (
+                <StateSurface
+                  status={performanceAdvisoryState}
+                  message={performanceStateMessage(performanceAdvisoryState)}
+                  reason={view.stateDetail}
+                  density="compact"
+                  testId="module-home-primary-state"
+                />
+              ) : null}
+          {/* KPI 单框横带（首页 kpiRail 语言：等高分格 + 发丝竖缝 + 等宽数字） */}
           <section className={styles.kpiStrip} data-testid="module-home-kpi-strip">
             {view.kpis.map((item) => (
-              <article className={styles.kpi} key={item.key}>
-                <span className={styles.kpiLabel}>{item.label}</span>
+              <article
+                className={styles.kpi}
+                data-compact-value={isCompactKpiValue(item.value) ? "true" : undefined}
+                key={item.key}
+              >
+                <span className={styles.kpiLabel} title={item.label}>
+                  {item.label}
+                </span>
                 <strong
                   className={`${styles.kpiValue} ${styles.num} ${toneClassName(item.tone)}`}
+                  title={item.value}
                 >
                   {item.value}
                 </strong>
-                <span className={styles.kpiDetail}>{item.detail}</span>
+                {/* 端点/函数名等证据引用收 tooltip（§7），正文保持中文业务语言 */}
+                <span className={styles.kpiDetail} title={item.detailTitle ?? item.detail}>
+                  {item.detail}
+                </span>
               </article>
             ))}
           </section>
 
+          {/* 读链路状态条带（首页产品分类摘要条语言：单框分格 + 语义状态位） */}
           <section className={styles.statusStrip} data-testid="module-home-status-strip">
             {view.statuses.map((item) => (
               <article className={styles.statusItem} key={item.key}>
@@ -332,22 +500,21 @@ export default function ModuleWorkbenchHomePage({
                     {item.value}
                   </strong>
                 </div>
-                <span className={styles.statusDetail}>{item.detail}</span>
+                <span className={styles.statusDetail} title={item.detail}>
+                  {item.detail}
+                </span>
               </article>
             ))}
           </section>
 
+          {/* 01 主结论区 */}
           <section className={styles.card} data-testid="module-home-briefing">
-            <div className={styles.sectionTitle}>
-              <span>主结论区</span>
-            </div>
+            <SectionHead title="主结论区" />
             <div className={styles.briefGrid}>
               {view.briefings.map((item) => (
                 <article className={styles.brief} key={item.title}>
                   <span className={styles.briefTitle}>{item.title}</span>
-                  <strong
-                    className={`${styles.briefConclusion} ${styles.num} ${toneClassName(item.tone)}`}
-                  >
+                  <strong className={`${styles.briefConclusion} ${toneClassName(item.tone)}`}>
                     {item.conclusion}
                   </strong>
                   <span className={styles.briefEvidence}>{item.evidence}</span>
@@ -356,149 +523,60 @@ export default function ModuleWorkbenchHomePage({
             </div>
           </section>
 
-          {view.distributionPanels && view.distributionPanels.length > 0 ? (
-            <section className={styles.card} data-testid="module-home-holdings-structure">
-              <div className={styles.sectionTitle}>
-                <span>持仓结构</span>
-                <span className={styles.sectionMeta}>{view.distributionPanels[0]?.meta}</span>
-              </div>
-              <div className={styles.distributionGrid}>
-                {view.distributionPanels.map((panel) => (
-                  <article className={styles.distributionPanel} key={panel.key}>
-                    <div className={styles.distributionHead}>
-                      <span className={styles.distributionTitle}>{panel.title}</span>
-                      <span className={`${styles.distributionState} ${toneClassName(panel.tone)}`}>
-                        {panel.stateLabel}
-                      </span>
-                    </div>
-                    <span className={styles.distributionMeta}>{panel.meta}</span>
-                    {panel.rows.length > 0 ? (
-                      <ul className={styles.distributionList}>
-                        {panel.rows.map((row) => (
-                          <li className={styles.distributionRow} key={row.key}>
-                            <div className={styles.distributionRowTop}>
-                              <span className={styles.distributionLabel}>{row.label}</span>
-                              <span className={`${styles.distributionValue} ${styles.num}`}>
-                                {row.marketValue}
-                              </span>
-                              <span className={`${styles.distributionShare} ${styles.num}`}>
-                                {row.share}
-                              </span>
-                            </div>
-                            <div className={styles.distBarTrack} aria-hidden="true">
-                              <div
-                                className={styles.distBarFill}
-                                style={{ width: `${row.barPct}%` }}
-                              />
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className={`${styles.distributionEmpty} ${toneClassName(panel.tone)}`}>
-                        {panel.stateDetail}
-                      </p>
-                    )}
-                  </article>
-                ))}
-              </div>
+          {/* 02+ 明细区块（performance：KPI 指标明细 / 业务种类损益；
+              governance：数据源状态 / Cube 维度与度量 / 健康检查明细） */}
+          {(view.detailPanels ?? []).map((panel) => (
+            <section
+              className={styles.card}
+              data-testid={detailPanelTestId(panel.key)}
+              key={panel.key}
+            >
+              <SectionHead
+                title={panel.title}
+                state={panelSectionState(panel)}
+                meta={panelSectionMeta(panel)}
+              />
+              <DetailPanelBody panel={panel} />
             </section>
-          ) : null}
-
-          {view.detailPanels && view.detailPanels.length > 0 ? (
-            view.kind === "risk" ? (
-              <section className={styles.card} data-testid="module-home-risk-evidence">
-                <div className={styles.sectionTitle}>
-                  <span>风险证据面板</span>
-                  <span className={styles.sectionMeta}>字段级读数，不在首页补算</span>
-                </div>
-                <div className={styles.detailGrid}>
-                  {view.detailPanels.map((panel) => (
-                    <div data-testid={riskDetailPanelTestId(panel.key)} key={panel.key}>
-                      <DetailPanelBody panel={panel} />
-                    </div>
-                  ))}
-                </div>
-              </section>
-            ) : view.kind === "performance" ? (
-              view.detailPanels.map((panel) => (
-                <section
-                  className={styles.card}
-                  data-testid={performanceDetailPanelTestId(panel.key)}
-                  key={panel.key}
-                >
-                  <div className={styles.sectionTitle}>
-                    <span>{panel.title}</span>
-                    <span className={styles.sectionMeta}>{panel.meta}</span>
-                  </div>
-                  <DetailPanelBody panel={panel} variant="standalone" />
-                </section>
-              ))
-            ) : view.kind === "governance" ? (
-              view.detailPanels.map((panel) => (
-                <section
-                  className={styles.card}
-                  data-testid={governanceDetailPanelTestId(panel.key)}
-                  key={panel.key}
-                >
-                  <div className={styles.sectionTitle}>
-                    <span>{panel.title}</span>
-                    <span className={styles.sectionMeta}>{panel.meta}</span>
-                  </div>
-                  <DetailPanelBody panel={panel} variant="standalone" />
-                </section>
-              ))
-            ) : (
-              <section
-                className={styles.card}
-                data-testid={
-                  view.kind === "market" ? "module-home-rate-snapshot" : "module-home-detail-panels"
-                }
-              >
-                <div className={styles.sectionTitle}>
-                  <span>市场数据</span>
-                  <span className={styles.sectionMeta}>{view.detailPanels[0]?.meta}</span>
-                </div>
-                <div className={styles.detailGrid}>
-                  {view.detailPanels.map((panel) => (
-                    <DetailPanelBody panel={panel} key={panel.key} />
-                  ))}
-                </div>
-              </section>
-            )
-          ) : null}
+          ))}
+            </>
+          )}
         </main>
 
         <aside className={styles.rail}>
           <section className={styles.railCard} data-testid="module-home-drilldowns">
-            <div className={styles.sectionTitle}>
+            <div className={styles.railCardHeader}>
               <span>下钻入口</span>
             </div>
-            <p className={styles.railLead}>
-              首页只做摘要和状态聚合，明细解释进入对应页面继续看。
-            </p>
-            <div className={styles.drillList}>
-              {config.drilldowns.map((item) => (
-                <Link className={styles.drill} to={item.path} key={item.key}>
-                  <span className={styles.drillHead}>
-                    <strong className={styles.drillTitle}>{item.label}</strong>
-                    <span className={styles.drillBadge}>{item.statusLabel}</span>
-                  </span>
-                  <span className={styles.drillDesc}>{item.description}</span>
-                </Link>
-              ))}
+            <div className={styles.railCardBody}>
+              <p className={styles.railLead}>
+                首页只做摘要和状态聚合，明细解释进入对应页面继续看。
+              </p>
+              <div className={styles.drillList}>
+                {config.drilldowns.map((item) => (
+                  <Link className={styles.drill} to={item.path} key={item.key}>
+                    <span className={styles.drillHead}>
+                      <strong className={styles.drillTitle}>{item.label}</strong>
+                      <span className={styles.drillBadge}>{item.statusLabel}</span>
+                    </span>
+                    <span className={styles.drillDesc}>{item.description}</span>
+                  </Link>
+                ))}
+              </div>
             </div>
           </section>
 
           <section className={styles.railCard} data-testid="module-home-data-note">
-            <div className={styles.sectionTitle}>
+            <div className={styles.railCardHeader}>
               <span>{view.dataNote.title}</span>
             </div>
-            <ul className={styles.dataNote}>
-              {view.dataNote.lines.map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </ul>
+            <div className={styles.railCardBody}>
+              <ul className={styles.dataNote}>
+                {view.dataNote.lines.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            </div>
           </section>
         </aside>
       </div>

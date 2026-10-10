@@ -6,7 +6,8 @@ import logging
 import re
 from datetime import UTC, datetime
 from html.parser import HTMLParser
-from typing import Any
+from time import sleep as _sleep
+from typing import Any, Literal, overload
 from urllib.parse import urljoin
 
 import requests
@@ -23,6 +24,10 @@ ADBC_POLICY_BANK_INDEX = "https://www.adbc.com.cn/n5/n15/index.html"
 CHINABOND_POLICY_BANK_VENDOR = "chinabond_policy_bank"
 CHINABOND_POLICY_BANK_SOURCE_FAMILY = "research_calendar"
 CHINABOND_HOME = "https://www.chinabond.com.cn/"
+
+HTTP_TIMEOUT_SECONDS = 20
+HTTP_MAX_ATTEMPTS = 3
+HTTP_BACKOFF_BASE_SECONDS = 1.0
 
 _TITLE_PATTERN = re.compile(r'ArticleTitle"\s+content="([^"]+)"')
 _PUBDATE_PATTERN = re.compile(r'PubDate"\s+content="([^"]+)"')
@@ -77,18 +82,34 @@ def _clean_html_text(html: str) -> str:
 
 
 def _fetch_text(url: str) -> str:
-    response = requests.get(
-        url,
-        timeout=20,
-        headers={
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36"
-            ),
-            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-        },
-    )
-    response.raise_for_status()
+    for attempt in range(1, HTTP_MAX_ATTEMPTS + 1):
+        try:
+            response = requests.get(
+                url,
+                timeout=HTTP_TIMEOUT_SECONDS,
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36"
+                    ),
+                    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+                },
+            )
+            response.raise_for_status()
+            break
+        except requests.RequestException:
+            if attempt >= HTTP_MAX_ATTEMPTS:
+                raise
+            delay_seconds = HTTP_BACKOFF_BASE_SECONDS * (2 ** (attempt - 1))
+            logger.warning(
+                "Upstream HTTP request failed for %s on attempt %s/%s; retrying in %.1fs",
+                url,
+                attempt,
+                HTTP_MAX_ATTEMPTS,
+                delay_seconds,
+                exc_info=True,
+            )
+            _sleep(delay_seconds)
     apparent_encoding = getattr(response, "apparent_encoding", None)
     if apparent_encoding:
         try:
@@ -341,76 +362,194 @@ def _parse_chinabond_policy_bank_detail(url: str, title_hint: str) -> dict[str, 
     }
 
 
+@overload
 def fetch_mof_treasury_supply_auction_rows(
     *,
     page_count: int = 2,
     max_items: int = 20,
-) -> list[dict[str, Any]]:
+    include_status: Literal[True],
+) -> dict[str, Any]: ...
+
+
+@overload
+def fetch_mof_treasury_supply_auction_rows(
+    *,
+    page_count: int = 2,
+    max_items: int = 20,
+    include_status: Literal[False] = False,
+) -> list[dict[str, Any]]: ...
+
+
+@overload
+def fetch_mof_treasury_supply_auction_rows(
+    *,
+    page_count: int = 2,
+    max_items: int = 20,
+    include_status: bool,
+) -> list[dict[str, Any]] | dict[str, Any]: ...
+
+
+def fetch_mof_treasury_supply_auction_rows(
+    *,
+    page_count: int = 2,
+    max_items: int = 20,
+    include_status: bool = False,
+) -> list[dict[str, Any]] | dict[str, Any]:
     rows: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    listing_success_count = 0
     for listing_url in _iter_listing_urls(page_count):
         try:
             listing_html = _fetch_text(listing_url)
-        except Exception:
-            logger.debug("MOF listing fetch failed for %s, skipping", listing_url, exc_info=True)
+            listing_success_count += 1
+        except requests.RequestException:
+            warning = f"MOF listing fetch failed for {listing_url}"
+            warnings.append(warning)
+            logger.warning("%s, skipping", warning, exc_info=True)
             continue
         for detail_url, title_hint in _extract_notice_links(listing_html):
-            parsed = _parse_detail(detail_url, title_hint)
+            try:
+                parsed = _parse_detail(detail_url, title_hint)
+            except (requests.RequestException, ValueError):
+                warning = f"MOF detail fetch failed for {detail_url}"
+                warnings.append(warning)
+                logger.warning("%s, skipping", warning, exc_info=True)
+                continue
             if parsed is None:
                 continue
             rows.append(parsed)
             if len(rows) >= max_items:
-                return rows
-    return rows
+                break
+        if len(rows) >= max_items:
+            break
+    status = "failed" if listing_success_count == 0 else ("partial" if warnings else "success")
+    result = {"rows": rows, "status": status, "warnings": warnings}
+    return result if include_status else rows
+
+
+@overload
+def fetch_adbc_policy_bank_supply_auction_rows(
+    *,
+    page_count: int = 1,
+    max_items: int = 20,
+    include_status: Literal[True],
+) -> dict[str, Any]: ...
+
+
+@overload
+def fetch_adbc_policy_bank_supply_auction_rows(
+    *,
+    page_count: int = 1,
+    max_items: int = 20,
+    include_status: Literal[False] = False,
+) -> list[dict[str, Any]]: ...
+
+
+@overload
+def fetch_adbc_policy_bank_supply_auction_rows(
+    *,
+    page_count: int = 1,
+    max_items: int = 20,
+    include_status: bool,
+) -> list[dict[str, Any]] | dict[str, Any]: ...
 
 
 def fetch_adbc_policy_bank_supply_auction_rows(
     *,
     page_count: int = 1,
     max_items: int = 20,
-) -> list[dict[str, Any]]:
+    include_status: bool = False,
+) -> list[dict[str, Any]] | dict[str, Any]:
     rows: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    listing_success_count = 0
     for listing_url in _iter_adbc_listing_urls(page_count):
         try:
             listing_html = _fetch_text(listing_url)
-        except Exception:
-            logger.debug("ADBC listing fetch failed for %s, skipping", listing_url, exc_info=True)
+            listing_success_count += 1
+        except requests.RequestException:
+            warning = f"ADBC listing fetch failed for {listing_url}"
+            warnings.append(warning)
+            logger.warning("%s, skipping", warning, exc_info=True)
             continue
         for detail_url, title_hint in _extract_adbc_notice_links(listing_html, listing_url):
             try:
                 parsed = _parse_adbc_detail(detail_url, title_hint)
-            except Exception:
-                logger.debug("ADBC detail parse failed for %s, skipping", detail_url, exc_info=True)
+            except (requests.RequestException, ValueError):
+                warning = f"ADBC detail fetch failed for {detail_url}"
+                warnings.append(warning)
+                logger.warning("%s, skipping", warning, exc_info=True)
                 continue
             if parsed is None:
                 continue
             rows.append(parsed)
             if len(rows) >= max_items:
-                return rows
-    return rows
+                break
+        if len(rows) >= max_items:
+            break
+    status = "failed" if listing_success_count == 0 else ("partial" if warnings else "success")
+    result = {"rows": rows, "status": status, "warnings": warnings}
+    return result if include_status else rows
+
+
+@overload
+def fetch_chinabond_policy_bank_supply_auction_rows(
+    *,
+    max_items: int = 20,
+    include_status: Literal[True],
+) -> dict[str, Any]: ...
+
+
+@overload
+def fetch_chinabond_policy_bank_supply_auction_rows(
+    *,
+    max_items: int = 20,
+    include_status: Literal[False] = False,
+) -> list[dict[str, Any]]: ...
+
+
+@overload
+def fetch_chinabond_policy_bank_supply_auction_rows(
+    *,
+    max_items: int = 20,
+    include_status: bool,
+) -> list[dict[str, Any]] | dict[str, Any]: ...
 
 
 def fetch_chinabond_policy_bank_supply_auction_rows(
     *,
     max_items: int = 20,
-) -> list[dict[str, Any]]:
+    include_status: bool = False,
+) -> list[dict[str, Any]] | dict[str, Any]:
     rows: list[dict[str, Any]] = []
+    warnings: list[str] = []
     try:
         homepage_html = _fetch_text(CHINABOND_HOME)
-    except Exception:
-        logger.warning("Chinabond homepage fetch failed, returning empty", exc_info=True)
-        return rows
+    except requests.RequestException:
+        warning = "Chinabond homepage fetch failed"
+        warnings.append(warning)
+        logger.warning("%s, returning empty", warning, exc_info=True)
+        result = {"rows": rows, "status": "failed", "warnings": warnings}
+        return result if include_status else rows
     for detail_url, title_hint in _extract_chinabond_policy_bank_links(homepage_html):
         try:
             parsed = _parse_chinabond_policy_bank_detail(detail_url, title_hint)
-        except Exception:
-            logger.debug("Chinabond detail parse failed for %s, skipping", detail_url, exc_info=True)
+        except (requests.RequestException, ValueError):
+            warning = f"Chinabond detail fetch failed for {detail_url}"
+            warnings.append(warning)
+            logger.warning("%s, skipping", warning, exc_info=True)
             continue
         if parsed is None:
             continue
         rows.append(parsed)
         if len(rows) >= max_items:
-            return rows
-    return rows
+            break
+    result = {
+        "rows": rows,
+        "status": "partial" if warnings else "success",
+        "warnings": warnings,
+    }
+    return result if include_status else rows
 
 
 def archive_mof_treasury_supply_auction_raw(
@@ -420,11 +559,18 @@ def archive_mof_treasury_supply_auction_raw(
     page_count: int = 2,
     max_items: int = 20,
 ) -> dict[str, object]:
-    rows = fetch_mof_treasury_supply_auction_rows(page_count=page_count, max_items=max_items)
+    fetch_result = fetch_mof_treasury_supply_auction_rows(
+        page_count=page_count,
+        max_items=max_items,
+        include_status=True,
+    )
+    rows = fetch_result["rows"]
     payload = {
         "vendor_kind": "research_calendar",
         "source": MOF_TREASURY_VENDOR,
         "fetched_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        "status": fetch_result["status"],
+        "warnings": fetch_result["warnings"],
         "rows": rows,
     }
     filename = "supply_auction_calendar.json"
@@ -437,9 +583,41 @@ def archive_mof_treasury_supply_auction_raw(
     return {
         "raw_zone_path": str(archived["raw_zone_path"]),
         "row_count": len(rows),
+        "status": fetch_result["status"],
+        "warnings": fetch_result["warnings"],
         "sha256": archived["sha256"],
         "payload": payload,
     }
+
+
+@overload
+def fetch_research_calendar_supply_auction_rows(
+    *,
+    mof_page_count: int = 2,
+    adbc_page_count: int = 1,
+    max_items: int = 20,
+    include_status: Literal[True],
+) -> dict[str, Any]: ...
+
+
+@overload
+def fetch_research_calendar_supply_auction_rows(
+    *,
+    mof_page_count: int = 2,
+    adbc_page_count: int = 1,
+    max_items: int = 20,
+    include_status: Literal[False] = False,
+) -> list[dict[str, Any]]: ...
+
+
+@overload
+def fetch_research_calendar_supply_auction_rows(
+    *,
+    mof_page_count: int = 2,
+    adbc_page_count: int = 1,
+    max_items: int = 20,
+    include_status: bool,
+) -> list[dict[str, Any]] | dict[str, Any]: ...
 
 
 def fetch_research_calendar_supply_auction_rows(
@@ -447,23 +625,62 @@ def fetch_research_calendar_supply_auction_rows(
     mof_page_count: int = 2,
     adbc_page_count: int = 1,
     max_items: int = 20,
-) -> list[dict[str, Any]]:
+    include_status: bool = False,
+) -> list[dict[str, Any]] | dict[str, Any]:
     rows: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for fetched in (
-        fetch_mof_treasury_supply_auction_rows(page_count=mof_page_count, max_items=max_items),
-        fetch_adbc_policy_bank_supply_auction_rows(page_count=adbc_page_count, max_items=max_items),
-        fetch_chinabond_policy_bank_supply_auction_rows(max_items=max_items),
+    source_statuses: dict[str, dict[str, Any]] = {}
+    warnings: list[str] = []
+    for source, fetched in (
+        (
+            MOF_TREASURY_VENDOR,
+            fetch_mof_treasury_supply_auction_rows(
+                page_count=mof_page_count,
+                max_items=max_items,
+                include_status=True,
+            ),
+        ),
+        (
+            ADBC_POLICY_BANK_VENDOR,
+            fetch_adbc_policy_bank_supply_auction_rows(
+                page_count=adbc_page_count,
+                max_items=max_items,
+                include_status=True,
+            ),
+        ),
+        (
+            CHINABOND_POLICY_BANK_VENDOR,
+            fetch_chinabond_policy_bank_supply_auction_rows(max_items=max_items, include_status=True),
+        ),
     ):
-        for row in fetched:
+        fetched_rows = fetched["rows"]
+        source_warnings = list(fetched["warnings"])
+        source_statuses[source] = {
+            "status": fetched["status"],
+            "warnings": source_warnings,
+        }
+        warnings.extend(source_warnings)
+        for row in fetched_rows:
             event_id = str(row.get("event_id", "")).strip()
             if not event_id or event_id in seen:
                 continue
             seen.add(event_id)
             rows.append(row)
             if len(rows) >= max_items:
-                return rows
-    return rows
+                break
+        if len(rows) >= max_items:
+            break
+    statuses = [source_result["status"] for source_result in source_statuses.values()]
+    status = "failed" if statuses and all(item == "failed" for item in statuses) else (
+        "partial" if any(item != "success" for item in statuses) else "success"
+    )
+    result = {
+        "rows": rows,
+        "status": status,
+        "warnings": warnings,
+        "source_statuses": source_statuses,
+    }
+    return result if include_status else rows
 
 
 def archive_research_calendar_supply_auction_raw(
@@ -473,16 +690,21 @@ def archive_research_calendar_supply_auction_raw(
     page_count: int = 2,
     max_items: int = 20,
 ) -> dict[str, object]:
-    rows = fetch_research_calendar_supply_auction_rows(
+    fetch_result = fetch_research_calendar_supply_auction_rows(
         mof_page_count=page_count,
         adbc_page_count=1,
         max_items=max_items,
+        include_status=True,
     )
+    rows = fetch_result["rows"]
     payload = {
         "vendor_kind": "research_calendar",
         "source": "research_calendar_upstream",
         "sources": [MOF_TREASURY_VENDOR, ADBC_POLICY_BANK_VENDOR, CHINABOND_POLICY_BANK_VENDOR],
         "fetched_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        "status": fetch_result["status"],
+        "warnings": fetch_result["warnings"],
+        "source_statuses": fetch_result["source_statuses"],
         "rows": rows,
     }
     filename = "supply_auction_calendar.json"
@@ -495,6 +717,9 @@ def archive_research_calendar_supply_auction_raw(
     return {
         "raw_zone_path": str(archived["raw_zone_path"]),
         "row_count": len(rows),
+        "status": fetch_result["status"],
+        "warnings": fetch_result["warnings"],
+        "source_statuses": fetch_result["source_statuses"],
         "sha256": archived["sha256"],
         "payload": payload,
     }

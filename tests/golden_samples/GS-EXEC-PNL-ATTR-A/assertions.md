@@ -15,7 +15,7 @@
 - `result_meta.result_kind == "executive.pnl-attribution"`.
 - `result_meta.source_version == "sv_exec_dashboard_v1__sv_pc_a__sv_pc_b__sv_pc_c"`.
 - `result_meta.rule_version == "rv_exec_dashboard_v1__rv_pc_a__rv_pc_b__rv_pc_c"`.
-- `result_meta.cache_version == "cv_exec_dashboard_v1"`.
+- `result_meta.cache_version == "cv_exec_dashboard_nim_percent_points_v2"`.
 - `result.title == "经营贡献拆解"`.
 - `MTR-EXEC-101 == "+1.75 亿"`.
 - Segment ids include:

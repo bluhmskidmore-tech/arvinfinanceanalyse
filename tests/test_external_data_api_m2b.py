@@ -12,6 +12,7 @@ from backend.app.repositories.external_data_catalog_repo import (
 from backend.app.repositories.external_data_migrations_extra import (
     ensure_std_external_macro_schema,
 )
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.schemas.external_data import ExternalDataCatalogEntry
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
@@ -72,7 +73,8 @@ def _seed_tushare_like(tmp_path) -> str:
             created_at="2026-01-01T00:00:00+00:00",
         )
         repo = ExternalDataCatalogRepository(conn=conn)
-        repo.register(ent)
+        with repository_task_write_scope("backend.app.tasks.external_data_catalog_seed_test"):
+            repo.register(ent)
     finally:
         conn.close()
     return p

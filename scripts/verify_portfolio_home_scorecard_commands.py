@@ -109,6 +109,28 @@ DOCS_ROOT_AWARE_SCRIPTS = {
     "scripts/portfolio_home_owner_handoff_packet.py",
     "scripts/portfolio_home_score_blocker_consistency_check.py",
 }
+DUCKDB_PATH_AWARE_SCRIPTS = {
+    "scripts/portfolio_home_full_closure_evidence.py",
+    "scripts/portfolio_home_risk_warning_consistency.py",
+    "scripts/portfolio_home_krd_remap_review_queue.py",
+    "scripts/portfolio_home_krd_contract_decision_export.py",
+    "scripts/portfolio_home_maturity_remediation_queue.py",
+    "scripts/portfolio_home_matured_outstanding_queue.py",
+    "scripts/portfolio_home_maturity_remediation_export.py",
+    "scripts/portfolio_home_closure_artifact_presence_check.py",
+    "scripts/portfolio_home_evidence_packet_guard.py",
+    "scripts/portfolio_home_closure_scorecard.py",
+    "scripts/portfolio_home_owner_action_packet.py",
+    "scripts/portfolio_home_owner_handoff_packet.py",
+    "scripts/portfolio_home_owner_handoff_completeness_check.py",
+    "scripts/portfolio_home_evidence_snapshot.py",
+    "scripts/portfolio_home_owner_input_needed_summary.py",
+    "scripts/portfolio_home_business_owner_approval_packet.py",
+    "scripts/portfolio_home_dependency_consistency_check.py",
+    "scripts/portfolio_home_owner_decision_intake_check.py",
+    "scripts/portfolio_home_blocker_closure_matrix_check.py",
+    "scripts/portfolio_home_score_blocker_consistency_check.py",
+}
 
 
 def _non_negative_limit(value: str) -> int:
@@ -177,7 +199,9 @@ def _output_tail(value: str) -> str:
     return value[-OUTPUT_TAIL_CHARS:]
 
 
-def _command_argv(command: str, *, docs_root: Path | None = None) -> list[str]:
+def _command_argv(
+    command: str, *, docs_root: Path | None = None, duckdb_path: Path | None = None,
+) -> list[str]:
     argv = ALLOWED_COMMANDS.get(command)
     if argv is None:
         raise ValueError(f"Command is not in the portfolio-home verification allowlist: {command}")
@@ -217,11 +241,15 @@ def _command_argv(command: str, *, docs_root: Path | None = None) -> list[str]:
         argv = [*argv, "--snapshot", str(docs_root / EVIDENCE_SNAPSHOT_OUTPUT)]
     if docs_root is not None and len(argv) > 1 and argv[1] in EXPORT_OUTPUT_DIRS:
         argv = _rewrite_output_dir(argv, docs_root / EXPORT_OUTPUT_DIRS[argv[1]])
+    if duckdb_path is not None and len(argv) > 1 and argv[1] in DUCKDB_PATH_AWARE_SCRIPTS:
+        argv = [*argv, "--duckdb-path", str(Path(duckdb_path).resolve())]
     return argv
 
 
-def _run_command(command: str, *, docs_root: Path | None = None) -> subprocess.CompletedProcess[str]:
-    argv = _command_argv(command, docs_root=docs_root)
+def _run_command(
+    command: str, *, docs_root: Path | None = None, duckdb_path: Path | None = None,
+) -> subprocess.CompletedProcess[str]:
+    argv = _command_argv(command, docs_root=docs_root, duckdb_path=duckdb_path)
     return subprocess.run(
         argv,
         cwd=ROOT,
@@ -245,6 +273,7 @@ def build_report(
     limit: int | None = None,
     expected_state: str = "blocked",
     docs_root: Path | None = None,
+    duckdb_path: Path | None = None,
 ) -> dict[str, object]:
     limit = _validated_limit(limit)
     docs_root = _resolved_docs_root(docs_root)
@@ -256,8 +285,8 @@ def build_report(
     results = []
     for item in commands:
         command = item["command"]
-        argv = _command_argv(command, docs_root=docs_root)
-        completed = _run_command(command, docs_root=docs_root)
+        argv = _command_argv(command, docs_root=docs_root, duckdb_path=duckdb_path)
+        completed = _run_command(command, docs_root=docs_root, duckdb_path=duckdb_path)
         expected = item[expectation_key]
         matched = _matches_expectation(completed.returncode, expected)
         result = {
@@ -284,6 +313,7 @@ def build_report(
         "page_id": "PAGE-PORTFOLIO-HOME-001",
         "page_slug": "portfolio",
         "docs_root": str(docs_root) if docs_root is not None else None,
+        **({"duckdb_path": str(Path(duckdb_path).resolve())} if duckdb_path is not None else {}),
         "expected_state": expected_state,
         "verification_status": (
             f"matched_expected_{expected_state}_state"
@@ -326,12 +356,19 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Optional docs root used when running docs-root-aware verification commands.",
     )
+    parser.add_argument(
+        "--duckdb-path",
+        type=Path,
+        default=None,
+        help="Optional explicit database passed only to commands supporting --duckdb-path.",
+    )
     args = parser.parse_args(argv)
 
     report = build_report(
         limit=args.limit,
         expected_state=args.expected_state,
         docs_root=args.docs_root,
+        duckdb_path=args.duckdb_path,
     )
     print(json.dumps(report, ensure_ascii=False, indent=2))
     if args.require_matched and not report["all_matched_expected_exit"]:

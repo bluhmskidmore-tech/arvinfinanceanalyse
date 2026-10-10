@@ -1,0 +1,76 @@
+/*
+ * /positions 债券侧分区专属样式（评级/行业分布卡）。
+ * 颜色一律走 --dh-api-* / --nct-* 变量链（Nocturne scope 见 tokens.css）；
+ * 圆角制度 var(--dh-api-radius)，色点例外用允许清单内的 50%。
+ */
+
+/* echarts-for-react 无 style 时注入 inline height:300px，需 !important 收敛
+   到设计高度（ProductCategoryPnlPage.css 图表画布同款先例）。 */
+.positions-bonds-dist__chart {
+  width: 100%;
+}
+
+.positions-bonds-dist__chart--rating {
+  height: 190px !important;
+}
+
+.positions-bonds-dist__chart--industry {
+  height: 220px !important;
+}
+
+/* 图例单元：色点 + 名称。色点序号与两张卡 TS 侧 SERIES_PALETTE 同序同色，
+   canvas 用 designSystem.ts 的 nocturneTokens 常量，DOM 侧走变量链。 */
+.positions-bonds-dist__legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.positions-bonds-dist__legend-label {
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.positions-bonds-dist__dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.positions-bonds-dist__dot--p0 {
+  background: var(--dh-api-blue);
+}
+
+.positions-bonds-dist__dot--p1 {
+  background: var(--dh-api-green);
+}
+
+.positions-bonds-dist__dot--p2 {
+  background: var(--dh-api-amber);
+}
+
+.positions-bonds-dist__dot--p3 {
+  background: var(--nct-accent-400, var(--dh-api-blue));
+}
+
+.positions-bonds-dist__dot--p4 {
+  background: var(--dh-api-soft);
+}
+
+.positions-bonds-dist__dot--p5 {
+  background: var(--nct-accent-300, var(--dh-api-blue));
+}
+
+/* 违约与 B 档及以下的风险警戒色，不参与色板轮换。 */
+.positions-bonds-dist__dot--neg {
+  background: var(--dh-api-red);
+}
+
+/* 未评级/未知档中性灰（bond-dashboard 同制度）：不伪装评级档位也不当警戒。 */
+.positions-bonds-dist__dot--unrated {
+  background: var(--dh-api-muted);
+}

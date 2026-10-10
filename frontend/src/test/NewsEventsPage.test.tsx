@@ -1,3 +1,4 @@
+import { MemoryRouter } from "react-router-dom";
 import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -11,7 +12,7 @@ import NewsEventsPage from "../features/news-events/NewsEventsPage";
 
 const PAGE_SIZE = 50;
 
-function renderNewsPage(client: ApiClient) {
+function renderNewsPage(client: ApiClient, initialEntry = "/news-events") {
   function Wrapper({ children }: { children: ReactNode }) {
     const [queryClient] = useState(
       () =>
@@ -31,7 +32,7 @@ function renderNewsPage(client: ApiClient) {
 
   return render(
     <Wrapper>
-      <NewsEventsPage />
+      <MemoryRouter initialEntries={[initialEntry]}><NewsEventsPage /></MemoryRouter>
     </Wrapper>,
   );
 }
@@ -71,7 +72,69 @@ function makeEvent(partial: Partial<ChoiceNewsEvent> & Pick<ChoiceNewsEvent, "ev
   };
 }
 
+function makeComparePayload() {
+  return {
+    basis: "analytical" as const,
+    rule_version: "rv_research_radar_mapping_registry_v1b",
+    same_direction: [
+      {
+        event_family: "rates",
+        factor_tags: ["rate", "duration"],
+        event_count: 1,
+        source_event_ids: ["ev-1"],
+        summary: "rates 相关事件按同一规则命中，需人工判断方向是否一致。",
+      },
+    ],
+    conflicting: [
+      {
+        conflict_type: "multi_factor_review",
+        review_reason: "同一批事件命中多个风险因子，需要人工判断是否同向、对冲或互相冲突。",
+      },
+    ],
+    review_needed: [
+      {
+        event_family: "rates",
+        source_event_ids: ["ev-1"],
+        review_reason: "候选映射只表示需要复核，不代表正式风险结论或情景执行。",
+      },
+    ],
+    candidate_scenarios: [
+      {
+        event_family: "rates",
+        match_rule: "topic_or_text_contains_rates_terms",
+        factor_tags: ["rate", "duration"],
+        scenario_template_id: "candidate_rate_path_review",
+        default_shocks: ["parallel_up_25bp_candidate"],
+        rule_version: "rv_research_radar_mapping_registry_v1b",
+        human_review_required: true,
+        mapping_rule_id: "rv_research_radar_mapping_registry_v1b:rates",
+        source_event_ids: ["ev-1"],
+      },
+    ],
+  };
+}
+
 describe("NewsEventsPage", () => {
+  it("preserves market source topic and exact received bounds in the request", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getChoiceNewsEvents = vi.fn(base.getChoiceNewsEvents);
+    const from = "2026-09-03T10:00:00+08:00";
+    const to = "2026-09-04T10:00:00+08:00";
+    const search = new URLSearchParams({ origin: "market-overview", return_section: "events", topic_code: "EXACT_SOURCE", received_from: from, received_to: to });
+    renderNewsPage({ ...base, getChoiceNewsEvents }, `/news-events?${search}`);
+    await waitFor(() => expect(getChoiceNewsEvents).toHaveBeenCalledWith(expect.objectContaining({ topicCode: "EXACT_SOURCE", receivedFrom: from, receivedTo: to, offset: 0 })));
+    expect(screen.getByRole("link", { name: "返回市场总览" })).toHaveAttribute("href", "/market-overview#market-overview-evidence");
+    expect(screen.getByRole("combobox")).toHaveValue("EXACT_SOURCE");
+  });
+
+  it("rejects invalid source windows without broadening to an unfiltered request", () => {
+    const base = createApiClient({ mode: "mock" });
+    const getChoiceNewsEvents = vi.fn(base.getChoiceNewsEvents);
+    renderNewsPage({ ...base, getChoiceNewsEvents }, "/news-events?origin=market-overview&received_from=not-a-date");
+    expect(screen.getByRole("alert")).toHaveTextContent("未执行新闻查询");
+    expect(getChoiceNewsEvents).not.toHaveBeenCalled();
+  });
+
   it("renders filters, table rows, resets page on topic change, and paginates", async () => {
     const user = userEvent.setup();
     const base = createApiClient({ mode: "mock" });
@@ -86,6 +149,9 @@ describe("NewsEventsPage", () => {
             total_rows: 75,
             limit: options.limit,
             offset: options.offset,
+            as_of_date: "2026-04-24",
+            excluded_future_rows: 0,
+            compare: makeComparePayload(),
             events: page1
               ? [
                   makeEvent({
@@ -118,6 +184,11 @@ describe("NewsEventsPage", () => {
 
     expect(await screen.findByTestId("news-events-page-title")).toHaveTextContent("新闻事件");
     expect(screen.getByText("事件概览")).toBeInTheDocument();
+    expect(await screen.findByTestId("news-events-compare")).toHaveTextContent("跨篇对比");
+    expect(screen.getByText("同向线索")).toBeInTheDocument();
+    expect(screen.getByText("冲突线索")).toBeInTheDocument();
+    expect(screen.getByText("待复核")).toBeInTheDocument();
+    expect(screen.getByText(/需人工复核：是/)).toBeInTheDocument();
     expect(screen.getByText("筛选与事件列表")).toBeInTheDocument();
     expect(screen.getByLabelText("news-events-topic-code")).toBeInTheDocument();
     expect(screen.getByLabelText("news-events-error-only")).toBeInTheDocument();
@@ -181,6 +252,9 @@ describe("NewsEventsPage", () => {
         total_rows: 1,
         limit: PAGE_SIZE,
         offset: 0,
+        as_of_date: "2026-04-24",
+        excluded_future_rows: 0,
+        compare: makeComparePayload(),
         events: [
           makeEvent({
             event_key: "ev-boundary",
@@ -199,20 +273,51 @@ describe("NewsEventsPage", () => {
     const boundary = await screen.findByTestId("news-events-analytical-boundary");
     expect(boundary).toHaveTextContent("PAGE-CONTRACT-PENDING:/news-events");
     expect(boundary).toHaveTextContent("GAP-NEWS-EVENTS-PAGE");
-    expect(boundary).toHaveTextContent("analytical temporary-exception");
-    expect(boundary).toHaveTextContent("not business truth");
-    expect(boundary).toHaveTextContent("not trading instruction");
-    expect(boundary).toHaveTextContent("not source data-quality approval");
+    expect(boundary).toHaveTextContent("分析读面临时例外");
+    expect(boundary).toHaveTextContent("非业务事实");
+    expect(boundary).toHaveTextContent("非交易指令");
+    expect(boundary).toHaveTextContent("不构成来源数据质量审批");
 
     const meta = screen.getByTestId("news-events-result-meta");
-    expect(meta).toHaveTextContent("basis=analytical");
-    expect(meta).toHaveTextContent("formal_use_allowed=false");
-    expect(meta).toHaveTextContent("result_kind=news.choice.latest");
-    expect(meta).toHaveTextContent("source_surface=choice_news");
-    expect(meta).toHaveTextContent("source_version=sv_news_test");
-    expect(meta).toHaveTextContent("rule_version=rv_news_test");
-    expect(meta).toHaveTextContent("cache_version=cv_news_test");
-    expect(meta).toHaveTextContent("tables_used=choice_news_event");
-    expect(meta).toHaveTextContent("generated_at=2026-04-12T08:00:00Z");
+    expect(meta).toHaveTextContent("口径=分析口径");
+    expect(meta).toHaveTextContent("正式可用=否");
+    expect(meta).toHaveTextContent("质量=ok");
+    expect(meta).toHaveTextContent("降级=none");
+    expect(meta).toHaveTextContent("请求日=—");
+    expect(meta).toHaveTextContent("实际日=—");
+    expect(meta).toHaveTextContent("结果类型=news.choice.latest");
+    expect(meta).toHaveTextContent("来源面=choice_news");
+    expect(meta).toHaveTextContent("来源版本=sv_news_test");
+    expect(meta).toHaveTextContent("规则版本=rv_news_test");
+    expect(meta).toHaveTextContent("缓存版本=cv_news_test");
+    expect(meta).toHaveTextContent("数据表=choice_news_event");
+    expect(meta).toHaveTextContent("生成时间=2026-04-12T08:00:00Z");
+  });
+
+  it("renders the compare section when the live payload omits rule_version instead of crashing the route", async () => {
+    // 2026-09-02 线上形态：build_choice_news_compare_payload 只返回四个桶，没有 basis / rule_version。
+    // 此前 SectionHead 对 undefined 调 .includes 抛错，整页落到「页面加载失败」。
+    const { basis: _basis, rule_version: _ruleVersion, ...liveCompare } = makeComparePayload();
+    const base = createApiClient({ mode: "mock" });
+    const getChoiceNewsEvents = vi.fn(async () => ({
+      result_meta: buildMeta("news.choice.latest", "tr_news_live_compare"),
+      result: {
+        total_rows: 1,
+        limit: PAGE_SIZE,
+        offset: 0,
+        as_of_date: "2026-09-01",
+        excluded_future_rows: 0,
+        compare: liveCompare,
+        events: [makeEvent({ event_key: "ev-live", payload_text: "Live compare payload" })],
+      },
+    }));
+
+    renderNewsPage({ ...base, getChoiceNewsEvents });
+
+    const compare = await screen.findByTestId("news-events-compare");
+    expect(compare).toHaveTextContent("跨篇对比");
+    expect(compare).toHaveTextContent("规则版本 —");
+    expect(screen.getByText("同向线索")).toBeInTheDocument();
+    expect(screen.queryByText("页面加载失败")).not.toBeInTheDocument();
   });
 });

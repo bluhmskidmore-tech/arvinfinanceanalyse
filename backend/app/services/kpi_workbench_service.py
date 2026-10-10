@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, date, datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Any
 
 from backend.app.models.kpi import KpiMetric, KpiMetricValue, KpiOwner
 from backend.app.repositories.kpi_repo import KpiRepository
-from sqlalchemy import select
+from sqlalchemy import false, select
+
+logger = logging.getLogger(__name__)
+
+KPI_STORAGE_UNAVAILABLE_MESSAGE = "KPI storage unavailable"
 
 
 class KpiWorkbenchError(RuntimeError):
@@ -24,6 +30,13 @@ class KpiStorageError(KpiWorkbenchError):
     """Raised when storage access fails."""
 
 
+def _storage_error(operation: str) -> KpiStorageError:
+    # Called inside an except block: the original SQLAlchemy error (SQL text, bind
+    # params, DSN host) goes to the log only and never reaches the API client.
+    logger.exception("KPI storage access failed during %s", operation)
+    return KpiStorageError(KPI_STORAGE_UNAVAILABLE_MESSAGE)
+
+
 def _parse_decimal(value: object | None) -> Decimal | None:
     if value in (None, ""):
         return None
@@ -34,7 +47,7 @@ def _decimal_text(value: object | None, *, default: str | None = None) -> str | 
     dec = _parse_decimal(value)
     if dec is None:
         return default
-    return format(dec.quantize(Decimal("0.000001")), "f")
+    return format(dec.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP), "f")
 
 
 def _parse_as_of_date(as_of_date: str) -> date:
@@ -55,7 +68,8 @@ def _compute_completion_ratio(
         return progress
     actual = _parse_decimal(actual_value)
     target = _parse_decimal(target_value)
-    if actual is None or target in (None, Decimal("0")):
+    # Equivalent to `target in (None, Decimal("0"))`: only None equals None.
+    if actual is None or target is None or target == Decimal("0"):
         return None
     return (actual / target) * Decimal("100")
 
@@ -193,7 +207,7 @@ def list_metrics(
         metrics = [_metric_to_dict(row) for row in rows]
         return {"metrics": metrics, "total": len(metrics)}
     except Exception as exc:
-        raise KpiStorageError(str(exc)) from exc
+        raise _storage_error("list_metrics") from exc
 
 
 def get_metric(*, dsn: str, metric_id: int) -> dict[str, object]:
@@ -207,10 +221,10 @@ def get_metric(*, dsn: str, metric_id: int) -> dict[str, object]:
     except KpiWorkbenchError:
         raise
     except Exception as exc:
-        raise KpiStorageError(str(exc)) from exc
+        raise _storage_error("get_metric") from exc
 
 
-def create_metric(*, dsn: str, data: dict[str, object]) -> dict[str, object]:
+def create_metric(*, dsn: str, data: dict[str, Any]) -> dict[str, object]:
     try:
         repo = _repo(dsn)
         now = datetime.now(UTC)
@@ -239,10 +253,10 @@ def create_metric(*, dsn: str, data: dict[str, object]) -> dict[str, object]:
             session.refresh(metric)
             return _metric_to_dict(metric)
     except Exception as exc:
-        raise KpiStorageError(str(exc)) from exc
+        raise _storage_error("create_metric") from exc
 
 
-def update_metric(*, dsn: str, metric_id: int, data: dict[str, object]) -> dict[str, object]:
+def update_metric(*, dsn: str, metric_id: int, data: dict[str, Any]) -> dict[str, object]:
     try:
         repo = _repo(dsn)
         with repo.session() as session:
@@ -270,7 +284,7 @@ def update_metric(*, dsn: str, metric_id: int, data: dict[str, object]) -> dict[
     except KpiWorkbenchError:
         raise
     except Exception as exc:
-        raise KpiStorageError(str(exc)) from exc
+        raise _storage_error("update_metric") from exc
 
 
 def delete_metric(*, dsn: str, metric_id: int) -> None:
@@ -285,7 +299,7 @@ def delete_metric(*, dsn: str, metric_id: int) -> None:
     except KpiWorkbenchError:
         raise
     except Exception as exc:
-        raise KpiStorageError(str(exc)) from exc
+        raise _storage_error("delete_metric") from exc
 
 
 def get_values(*, dsn: str, owner_id: int, as_of_date: str, include_trace: bool) -> dict[str, object]:
@@ -306,7 +320,8 @@ def get_values(*, dsn: str, owner_id: int, as_of_date: str, include_trace: bool)
             metric_ids = [metric.metric_id for metric in metrics]
             values_rows = session.execute(
                 select(KpiMetricValue)
-                .where(KpiMetricValue.metric_id.in_(metric_ids) if metric_ids else False)
+                # false() is the explicit form of the boolean-False coercion SQLAlchemy applies.
+                .where(KpiMetricValue.metric_id.in_(metric_ids) if metric_ids else false())
                 .where(KpiMetricValue.as_of_date == target_date)
                 .order_by(KpiMetricValue.metric_id.asc(), KpiMetricValue.updated_at.desc())
             ).scalars().all()
@@ -347,10 +362,10 @@ def get_values(*, dsn: str, owner_id: int, as_of_date: str, include_trace: bool)
     except KpiWorkbenchError:
         raise
     except Exception as exc:
-        raise KpiStorageError(str(exc)) from exc
+        raise _storage_error("get_values") from exc
 
 
-def create_value(*, dsn: str, data: dict[str, object]) -> dict[str, object]:
+def create_value(*, dsn: str, data: dict[str, Any]) -> dict[str, object]:
     target_date = _parse_as_of_date(str(data["as_of_date"]))
     try:
         repo = _repo(dsn)
@@ -388,10 +403,10 @@ def create_value(*, dsn: str, data: dict[str, object]) -> dict[str, object]:
     except KpiWorkbenchError:
         raise
     except Exception as exc:
-        raise KpiStorageError(str(exc)) from exc
+        raise _storage_error("create_value") from exc
 
 
-def update_value(*, dsn: str, value_id: int, data: dict[str, object]) -> dict[str, object]:
+def update_value(*, dsn: str, value_id: int, data: dict[str, Any]) -> dict[str, object]:
     try:
         repo = _repo(dsn)
         with repo.session() as session:
@@ -417,10 +432,10 @@ def update_value(*, dsn: str, value_id: int, data: dict[str, object]) -> dict[st
     except KpiWorkbenchError:
         raise
     except Exception as exc:
-        raise KpiStorageError(str(exc)) from exc
+        raise _storage_error("update_value") from exc
 
 
-def batch_update_values(*, dsn: str, as_of_date: str, items: list[dict[str, object]]) -> dict[str, object]:
+def batch_update_values(*, dsn: str, as_of_date: str, items: list[dict[str, Any]]) -> dict[str, object]:
     target_date = _parse_as_of_date(as_of_date)
     try:
         repo = _repo(dsn)
@@ -466,7 +481,7 @@ def batch_update_values(*, dsn: str, as_of_date: str, items: list[dict[str, obje
     except KpiWorkbenchError:
         raise
     except Exception as exc:
-        raise KpiStorageError(str(exc)) from exc
+        raise _storage_error("batch_update_values") from exc
 
 
 def fetch_and_recalc(
@@ -497,7 +512,8 @@ def fetch_and_recalc(
             metric_id_list = [metric.metric_id for metric in metrics]
             values = session.execute(
                 select(KpiMetricValue)
-                .where(KpiMetricValue.metric_id.in_(metric_id_list) if metric_id_list else False)
+                # false() is the explicit form of the boolean-False coercion SQLAlchemy applies.
+                .where(KpiMetricValue.metric_id.in_(metric_id_list) if metric_id_list else false())
                 .where(KpiMetricValue.as_of_date == target_date)
                 .order_by(KpiMetricValue.metric_id.asc(), KpiMetricValue.updated_at.desc())
             ).scalars().all()
@@ -567,7 +583,7 @@ def fetch_and_recalc(
     except KpiWorkbenchError:
         raise
     except Exception as exc:
-        raise KpiStorageError(str(exc)) from exc
+        raise _storage_error("fetch_and_recalc") from exc
 
 
 def build_report(
@@ -594,7 +610,8 @@ def build_report(
             metric_ids = [metric.metric_id for metric in metrics]
             values_rows = session.execute(
                 select(KpiMetricValue)
-                .where(KpiMetricValue.metric_id.in_(metric_ids) if metric_ids else False)
+                # false() is the explicit form of the boolean-False coercion SQLAlchemy applies.
+                .where(KpiMetricValue.metric_id.in_(metric_ids) if metric_ids else false())
                 .where(KpiMetricValue.as_of_date <= target_date)
                 .order_by(KpiMetricValue.metric_id.asc(), KpiMetricValue.as_of_date.desc(), KpiMetricValue.updated_at.desc())
             ).scalars().all()
@@ -641,4 +658,4 @@ def build_report(
     except KpiWorkbenchError:
         raise
     except Exception as exc:
-        raise KpiStorageError(str(exc)) from exc
+        raise _storage_error("build_report") from exc

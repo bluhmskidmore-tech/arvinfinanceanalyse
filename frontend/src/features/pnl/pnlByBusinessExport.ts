@@ -2,15 +2,22 @@ import writeExcelFile from "write-excel-file/browser";
 import type { Sheet, SheetData } from "write-excel-file/browser";
 
 import type {
+  PnlByBusinessBalanceQualityIssue,
   PnlByBusinessMonthlyBucket,
   PnlByBusinessMonthlyItem,
   PnlByBusinessRow,
   PnlByBusinessYtdItem,
+  PnlByBusinessYtdSummary,
   PnlByBusinessManualAdjustmentPayload,
   PnlByBusinessAnalysisRow,
   PnlByBusinessAnalysisDimension,
+  PnlByBusinessAnalysisPayload,
+  PnlByBusinessYtdUnallocatedBreakdownRow,
+  PnlByBusinessYtdUnallocatedItem,
 } from "../../api/contracts";
+import type { PnlByBusinessSummary } from "../../api/pnlByBusinessContracts";
 import { inclusiveCalendarDays } from "./pnlByBusinessAnnualizedYield";
+import { buildNegativeFtpList } from "./pnlByBusinessPageModel";
 
 type SheetAoA = SheetData;
 export type PnlByBusinessExportSheet = Sheet<Blob>;
@@ -68,9 +75,10 @@ const ANALYSIS_DIM_LABELS: Record<PnlByBusinessAnalysisDimension, string> = {
   monthly: "月份",
   portfolio: "组合",
   accounting: "会计分类",
+  currency: "原币种",
   cost_center: "成本中心",
   instrument: "资产明细",
-  bond_bucket: "债券四类",
+  bond_bucket: "投资资产四类",
   bond_bucket_monthly: "四类月度",
 };
 
@@ -81,11 +89,22 @@ export type PnlByBusinessExcelExportArgs = {
   periodStart?: string | null;
   periodEnd?: string | null;
   periodLabel?: string | null;
+  balanceQualityIssues?: PnlByBusinessBalanceQualityIssue[];
+  ytdQuality?: ExportBalanceQuality;
+  bondBucketQuality?: ExportBalanceQuality;
+  bondBucketMonthlyQuality?: ExportBalanceQuality;
+  negativeFtpQuality?: ExportBalanceQuality;
+  analysisQuality?: ExportBalanceQuality;
   /** YTD 主表（年累计视图） */
   ytdRows: PnlByBusinessYtdItem[];
+  ytdSummary?: PnlByBusinessYtdSummary;
+  unallocatedBreakdown?: PnlByBusinessYtdUnallocatedBreakdownRow[];
+  unallocatedItems?: PnlByBusinessYtdUnallocatedItem[];
   adbAvgByBusinessType: Map<string, number>;
   /** formal 主表（primary 对账视图） */
   formalRows: PnlByBusinessRow[];
+  /** formal 全表合计：与页面 tfoot 同源的后端 summary，导出不再逐行累加。 */
+  formalSummary?: PnlByBusinessSummary;
   months: PnlByBusinessMonthlyBucket[];
   adjustments: PnlByBusinessManualAdjustmentPayload[];
   adjustmentEvents: PnlByBusinessManualAdjustmentPayload[];
@@ -97,6 +116,40 @@ export type PnlByBusinessExcelExportArgs = {
   selectedBusinessLabel?: string | null;
 };
 
+type ExportBalanceQuality = Pick<PnlByBusinessAnalysisPayload,
+  "coverage_days" | "expected_days" | "sample_filled" | "balance_quality_issues">;
+
+function balanceQualityNote(quality?: ExportBalanceQuality): string {
+  const observed = quality?.coverage_days;
+  const expected = quality?.expected_days;
+  const coverage = `余额覆盖 ${observed ?? "未返回"}/${expected ?? "未返回"} 天`;
+  const incomplete = typeof observed === "number" && typeof expected === "number" && observed < expected;
+  const sourceIssues = quality?.balance_quality_issues ?? [];
+  const pending = incomplete || sourceIssues.length > 0;
+  return [
+    coverage,
+    incomplete ? "观测日均；年化收益率、FTP 成本及 FTP 后结果待核对，暂不作为汇报结论" : "",
+    sourceIssues.length > 0 ? `余额来源待核实：${sourceIssues.map((issue) => `${issue.report_date} ${issue.reason}`).join("；")}；日均、收益率及 FTP 为暂列值` : "",
+    quality?.sample_filled ? "样本填充" : "",
+    !pending && (observed === undefined || expected === undefined) ? "覆盖状态未返回，完整性待核对" : "",
+  ].filter(Boolean).join("；");
+}
+
+/** 将质量状态附在数值同行，单独复制明细也不会丢失覆盖限制。 */
+function appendBalanceQuality(
+  sheet: PnlByBusinessExportSheet,
+  headerIndex: number,
+  noteForRow: (row: SheetAoA[number], dataIndex: number) => string,
+): void {
+  sheet.data = sheet.data.map((row, index) => index < headerIndex ? row
+    : [...row, index === headerIndex ? "余额及收益率质量" : noteForRow(row, index - headerIndex - 1)]);
+}
+
+const UNALLOCATED_REASON_LABELS = {
+  no_business_rule_match: "未命中业务分类规则",
+  detail_only_business_rule_match: "仅命中其中项，未命中父级分类",
+} as const;
+
 function appendSheet(sheets: PnlByBusinessExportSheet[], name: string, aoa: SheetAoA) {
   if (aoa.length === 0) {
     return;
@@ -106,6 +159,7 @@ function appendSheet(sheets: PnlByBusinessExportSheet[], name: string, aoa: Shee
 
 function buildYtdMainSheet(
   rows: PnlByBusinessYtdItem[],
+  summary: PnlByBusinessYtdSummary | undefined,
   _adbMap: Map<string, number>,
   _ytdCalendarDays: number | null,
 ): SheetAoA {
@@ -141,52 +195,175 @@ function buildYtdMainSheet(
       row.assets_count,
     ]);
   }
-  if (parentRows.length > 0) {
-    let interest = 0;
-    let fairValue = 0;
-    let capital = 0;
-    let manual = 0;
-    let totalPnl = 0;
-    let assets = 0;
-    let adbSum = 0;
-    let hasAnyAdb = false;
-    let ftpNetPnl = 0;
-    let hasAnyFtpNetPnl = false;
-    for (const row of parentRows) {
-      interest += num(row.interest_income) ?? 0;
-      fairValue += num(row.fair_value_change) ?? 0;
-      capital += num(row.capital_gain) ?? 0;
-      manual += num(row.manual_adjustment) ?? 0;
-      totalPnl += num(row.total_pnl) ?? 0;
-      assets += row.assets_count;
-      const adb = num(row.avg_balance);
-      if (adb !== null) {
-        hasAnyAdb = true;
-        adbSum += adb;
-      }
-      const ftpNet = num(row.ftp_net_pnl);
-      if (ftpNet !== null) {
-        hasAnyFtpNetPnl = true;
-        ftpNetPnl += ftpNet;
-      }
-    }
+  if (summary) {
     data.push([
       "父级汇总",
-      hasAnyAdb ? adbSum / YUAN_PER_YI : null,
-      interest / YUAN_PER_WAN,
-      fairValue / YUAN_PER_WAN,
-      capital / YUAN_PER_WAN,
-      manual / YUAN_PER_WAN,
-      totalPnl / YUAN_PER_WAN,
-      null,
-      hasAnyFtpNetPnl ? ftpNetPnl / YUAN_PER_WAN : null,
-      null,
-      null,
-      assets,
+      yiFromYuan(summary.avg_balance),
+      wanFromYuan(summary.interest_income),
+      wanFromYuan(summary.fair_value_change),
+      wanFromYuan(summary.capital_gain),
+      wanFromYuan(summary.manual_adjustment),
+      wanFromYuan(summary.total_pnl),
+      num(summary.annualized_yield_pct),
+      wanFromYuan(summary.ftp_net_pnl),
+      num(summary.ftp_net_annualized_yield_pct),
+      num(summary.proportion),
+      summary.assets_count,
     ]);
   }
   return data;
 }
+
+function buildYtdUnallocatedBreakdownSheet(rows: PnlByBusinessYtdUnallocatedBreakdownRow[]): SheetAoA {
+  const data: SheetAoA = [[
+    "未命中原因",
+    "来源",
+    "原始类型",
+    "会计分类",
+    "组合",
+    "成本中心",
+    "条数",
+    "净额(万元)",
+    "绝对金额(万元)",
+    "示例证券",
+  ]];
+  for (const row of rows) {
+    data.push([
+      UNALLOCATED_REASON_LABELS[row.reason_code],
+      row.source_kind,
+      row.invest_type_std,
+      row.accounting_basis,
+      row.portfolio_name,
+      row.cost_center,
+      row.pnl_row_count,
+      wanFromYuan(row.total_pnl),
+      wanFromYuan(row.abs_pnl),
+      row.sample_instrument_codes.join("、"),
+    ]);
+  }
+  return data;
+}
+
+function buildYtdUnallocatedItemsSheet(rows: PnlByBusinessYtdUnallocatedItem[]): SheetAoA {
+  const data: SheetAoA = [[
+    "报表日",
+    "来源",
+    "原始类型",
+    "会计分类",
+    "组合",
+    "成本中心",
+    "证券代码",
+    "币种",
+    "利息收入(万元)",
+    "公允价值变动(万元)",
+    "资本利得(万元)",
+    "手工调整(万元)",
+    "合计损益(万元)",
+    "绝对金额(万元)",
+    "未命中原因",
+  ]];
+  for (const row of rows) {
+    data.push([
+      row.report_date,
+      row.source_kind,
+      row.invest_type_std,
+      row.accounting_basis,
+      row.portfolio_name,
+      row.cost_center,
+      row.instrument_code,
+      row.currency_basis,
+      wanFromYuan(row.interest_income_514),
+      wanFromYuan(row.fair_value_change_516),
+      wanFromYuan(row.capital_gain_517),
+      wanFromYuan(row.manual_adjustment),
+      wanFromYuan(row.total_pnl),
+      wanFromYuan(row.abs_pnl),
+      UNALLOCATED_REASON_LABELS[row.reason_code],
+    ]);
+  }
+  return data;
+}
+
+function buildMonthlyUnallocatedBreakdownSheet(months: PnlByBusinessMonthlyBucket[]): SheetAoA {
+  const data: SheetAoA = [[
+    "月份",
+    "未命中原因",
+    "来源",
+    "原始类型",
+    "会计分类",
+    "组合",
+    "成本中心",
+    "条数",
+    "净额(万元)",
+    "绝对金额(万元)",
+    "示例证券",
+  ]];
+  for (const month of months) {
+    for (const row of month.unallocated_breakdown ?? []) {
+      data.push([
+        month.month_key,
+        UNALLOCATED_REASON_LABELS[row.reason_code],
+        row.source_kind,
+        row.invest_type_std,
+        row.accounting_basis,
+        row.portfolio_name,
+        row.cost_center,
+        row.pnl_row_count,
+        wanFromYuan(row.total_pnl),
+        wanFromYuan(row.abs_pnl),
+        row.sample_instrument_codes.join("、"),
+      ]);
+    }
+  }
+  return data;
+}
+
+function buildMonthlyUnallocatedItemsSheet(months: PnlByBusinessMonthlyBucket[]): SheetAoA {
+  const data: SheetAoA = [[
+    "月份",
+    "报表日",
+    "来源",
+    "原始类型",
+    "会计分类",
+    "组合",
+    "成本中心",
+    "证券代码",
+    "币种",
+    "利息收入(万元)",
+    "公允价值变动(万元)",
+    "资本利得(万元)",
+    "手工调整(万元)",
+    "合计损益(万元)",
+    "绝对金额(万元)",
+    "未命中原因",
+  ]];
+  for (const month of months) {
+    for (const row of month.unallocated_items ?? []) {
+      data.push([
+        month.month_key,
+        row.report_date,
+        row.source_kind,
+        row.invest_type_std,
+        row.accounting_basis,
+        row.portfolio_name,
+        row.cost_center,
+        row.instrument_code,
+        row.currency_basis,
+        wanFromYuan(row.interest_income_514),
+        wanFromYuan(row.fair_value_change_516),
+        wanFromYuan(row.capital_gain_517),
+        wanFromYuan(row.manual_adjustment),
+        wanFromYuan(row.total_pnl),
+        wanFromYuan(row.abs_pnl),
+        UNALLOCATED_REASON_LABELS[row.reason_code],
+      ]);
+    }
+  }
+  return data;
+}
+
+/** 警示行 + 空行 + 表头，无明细数据行时的基线长度 */
+const YTD_DETAIL_SHEET_EMPTY_LENGTH = 3;
 
 function buildYtdDetailSheet(
   rows: PnlByBusinessYtdItem[],
@@ -208,7 +385,7 @@ function buildYtdDetailSheet(
     "资产数",
     "说明",
   ];
-  const data: SheetAoA = [header];
+  const data: SheetAoA = [["⚠ 本表金额与父级表重叠展示，请勿相加或用于加总统计"], [], header];
   for (const row of rows.filter(isDetailZqtzBusinessRow)) {
     data.push([
       row.business_type,
@@ -229,7 +406,7 @@ function buildYtdDetailSheet(
   return data;
 }
 
-function buildFormalSheet(rows: PnlByBusinessRow[]): SheetAoA {
+function buildFormalSheet(rows: PnlByBusinessRow[], summary: PnlByBusinessSummary | undefined): SheetAoA {
   const header: SheetAoA[0] = [
     "业务种类(primary)",
     "币种",
@@ -243,21 +420,7 @@ function buildFormalSheet(rows: PnlByBusinessRow[]): SheetAoA {
     "损益行数",
   ];
   const data: SheetAoA = [header];
-  let interest = 0;
-  let fairValue = 0;
-  let capital = 0;
-  let manual = 0;
-  let totalPnl = 0;
-  let scale = 0;
-  let pnlRows = 0;
   for (const row of rows) {
-    interest += num(row.interest_income_514) ?? 0;
-    fairValue += num(row.fair_value_change_516) ?? 0;
-    capital += num(row.capital_gain_517) ?? 0;
-    manual += num(row.manual_adjustment) ?? 0;
-    totalPnl += num(row.total_pnl) ?? 0;
-    scale += num(row.scale_amount) ?? 0;
-    pnlRows += row.pnl_row_count;
     data.push([
       row.business_type_primary,
       row.currency_basis,
@@ -271,21 +434,34 @@ function buildFormalSheet(rows: PnlByBusinessRow[]): SheetAoA {
       row.pnl_row_count,
     ]);
   }
-  if (rows.length > 0) {
-    data.push([
-      "全表合计",
-      null,
-      scale / YUAN_PER_YI,
-      interest / YUAN_PER_WAN,
-      fairValue / YUAN_PER_WAN,
-      capital / YUAN_PER_WAN,
-      manual / YUAN_PER_WAN,
-      totalPnl / YUAN_PER_WAN,
-      null,
-      pnlRows,
-    ]);
+  if (rows.length === 0) {
+    return data;
   }
+  if (!summary) {
+    data.push(["全表合计（不可用：后端未返回汇总）", null, null, null, null, null, null, null, null, null]);
+    return data;
+  }
+  /** 全表合计直读后端 summary（与明细行同一批正式数值），导出不再逐行累加。 */
+  data.push([
+    "全表合计",
+    null,
+    yiFromYuan(summary.total_scale_amount),
+    wanFromYuan(summary.interest_income_514),
+    wanFromYuan(summary.fair_value_change_516),
+    wanFromYuan(summary.capital_gain_517),
+    wanFromYuan(summary.manual_adjustment),
+    wanFromYuan(summary.total_pnl),
+    null,
+    summary.pnl_row_count,
+  ]);
   return data;
+}
+
+/** 警示行 + 空行 + 表头，无明细数据行时的基线长度（月报/月度"其中项明细"sheet复用） */
+const MONTHLY_DETAIL_SHEET_EMPTY_LENGTH = 3;
+
+function withDetailSheetOverlapWarning(sheet: SheetAoA): SheetAoA {
+  return [["⚠ 本表金额与父级表重叠展示，请勿相加或用于加总统计"], [], ...sheet];
 }
 
 function buildMonthlyFlatSheet(
@@ -459,6 +635,13 @@ function buildMetaRows(args: PnlByBusinessExcelExportArgs, ytdCalendarDays: numb
   } else {
     lines.push(["说明", "本导出为 primary 对账明细；与月报或 YTD 的 ZQTZ 管理披露分类不可混加。"]);
   }
+  if (args.viewMode !== "formal") {
+    lines.push(["日均余额口径", "与期末一致：H 用摊余成本，A/T 用公允价值，凭证式国债用面值兜底，均加应计利息。"]);
+    for (const issue of args.balanceQualityIssues ?? []) {
+      lines.push(["余额来源待核实", issue.report_date, issue.reason,
+        "受影响期间的日均、年化收益率和 FTP 为暂列值，取得正确源表后重算。"]);
+    }
+  }
   lines.push([]);
   return lines;
 }
@@ -473,25 +656,47 @@ export function buildPnlByBusinessSheets(args: PnlByBusinessExcelExportArgs): Pn
 
   if (args.viewMode === "monthly" && args.months.length > 0) {
     appendSheet(wb, "月报业务种类", buildMonthlyFlatSheet(args.months));
-    const detailSheet = buildMonthlyFlatSheet(args.months, isDetailZqtzBusinessRow);
-    if (detailSheet.length > 1) {
+    if (args.months.some((month) => (month.unallocated_breakdown?.length ?? 0) > 0)) {
+      appendSheet(wb, "月报未分类汇总", buildMonthlyUnallocatedBreakdownSheet(args.months));
+    }
+    if (args.months.some((month) => (month.unallocated_items?.length ?? 0) > 0)) {
+      appendSheet(wb, "月报未分类明细", buildMonthlyUnallocatedItemsSheet(args.months));
+    }
+    const detailSheet = withDetailSheetOverlapWarning(buildMonthlyFlatSheet(args.months, isDetailZqtzBusinessRow));
+    if (detailSheet.length > MONTHLY_DETAIL_SHEET_EMPTY_LENGTH) {
       appendSheet(wb, "月报其中项明细", detailSheet);
     }
   }
   if (args.viewMode === "ytd" && args.ytdRows.length > 0) {
-    appendSheet(wb, "YTD年累计明细", buildYtdMainSheet(args.ytdRows, args.adbAvgByBusinessType, ytdCalendarDays));
+    appendSheet(
+      wb,
+      "YTD年累计明细",
+      buildYtdMainSheet(args.ytdRows, args.ytdSummary, args.adbAvgByBusinessType, ytdCalendarDays),
+    );
+    if ((args.unallocatedBreakdown?.length ?? 0) > 0) {
+      appendSheet(wb, "YTD未分类汇总", buildYtdUnallocatedBreakdownSheet(args.unallocatedBreakdown ?? []));
+    }
+    if ((args.unallocatedItems?.length ?? 0) > 0) {
+      appendSheet(wb, "YTD未分类明细", buildYtdUnallocatedItemsSheet(args.unallocatedItems ?? []));
+    }
     const detailSheet = buildYtdDetailSheet(args.ytdRows, args.adbAvgByBusinessType, ytdCalendarDays);
-    if (detailSheet.length > 1) {
+    if (detailSheet.length > YTD_DETAIL_SHEET_EMPTY_LENGTH) {
       appendSheet(wb, "YTD其中项明细", detailSheet);
     }
   }
   if (args.viewMode === "formal" && args.formalRows.length > 0) {
-    appendSheet(wb, "Primary对账明细", buildFormalSheet(args.formalRows));
+    appendSheet(wb, "Primary对账明细", buildFormalSheet(args.formalRows, args.formalSummary));
   }
   if (args.viewMode === "ytd" && args.months.length > 0) {
     appendSheet(wb, "月度业务种类", buildMonthlyFlatSheet(args.months));
-    const detailSheet = buildMonthlyFlatSheet(args.months, isDetailZqtzBusinessRow);
-    if (detailSheet.length > 1) {
+    if (args.months.some((month) => (month.unallocated_breakdown?.length ?? 0) > 0)) {
+      appendSheet(wb, "月度未分类汇总", buildMonthlyUnallocatedBreakdownSheet(args.months));
+    }
+    if (args.months.some((month) => (month.unallocated_items?.length ?? 0) > 0)) {
+      appendSheet(wb, "月度未分类明细", buildMonthlyUnallocatedItemsSheet(args.months));
+    }
+    const detailSheet = withDetailSheetOverlapWarning(buildMonthlyFlatSheet(args.months, isDetailZqtzBusinessRow));
+    if (detailSheet.length > MONTHLY_DETAIL_SHEET_EMPTY_LENGTH) {
       appendSheet(wb, "月度其中项明细", detailSheet);
     }
   }
@@ -504,28 +709,31 @@ export function buildPnlByBusinessSheets(args: PnlByBusinessExcelExportArgs): Pn
   if (args.viewMode === "ytd" && args.bondBucketRows.length > 0) {
     appendSheet(
       wb,
-      "债券四类",
-      buildAnalysisSheet("债券四类统计", ANALYSIS_DIM_LABELS.bond_bucket, args.bondBucketRows),
+      "投资资产四类",
+      buildAnalysisSheet("投资资产四类统计", ANALYSIS_DIM_LABELS.bond_bucket, args.bondBucketRows),
     );
   }
   if (args.viewMode === "ytd" && args.bondBucketMonthlyRows.length > 0) {
     appendSheet(
       wb,
-      "四类债券月度",
-      buildAnalysisSheet("四类债券月度趋势", ANALYSIS_DIM_LABELS.bond_bucket_monthly, args.bondBucketMonthlyRows),
+      "投资资产四类月度",
+      buildAnalysisSheet("投资资产四类月度趋势", ANALYSIS_DIM_LABELS.bond_bucket_monthly, args.bondBucketMonthlyRows),
     );
   }
   if (args.viewMode === "ytd" && args.negativeFtpRows.length > 0) {
-    const neg = args.negativeFtpRows
-      .filter((row) => (num(row.ftp_net_pnl) ?? 0) < 0)
-      .sort((a, b) => (num(a.ftp_net_pnl) ?? 0) - (num(b.ftp_net_pnl) ?? 0))
-      .slice(0, 10);
-    if (neg.length > 0) {
+    const { topRows, calculatedCount, negativeCount, unavailableRows } = buildNegativeFtpList(args.negativeFtpRows);
+    const coverage = `已计算 FTP ${calculatedCount} 笔，负收益 ${negativeCount} 笔，未计算 ${unavailableRows.length} 笔`;
+    if (topRows.length > 0) {
       appendSheet(
         wb,
         "负FTP资产清单",
-        buildAnalysisSheet("负FTP后收益清单（与页面一致取前10笔）", ANALYSIS_DIM_LABELS.instrument, neg),
+        buildAnalysisSheet(`负FTP后收益拖累前10项；${coverage}`, ANALYSIS_DIM_LABELS.instrument, topRows),
       );
+    }
+    if (unavailableRows.length > 0) {
+      appendSheet(wb, "FTP未计算资产", buildAnalysisSheet(
+        `FTP 未计算，保留扣 FTP 前损益；${coverage}`, ANALYSIS_DIM_LABELS.instrument, unavailableRows,
+      ));
     }
   }
   if (args.viewMode === "ytd" && args.analysisRows.length > 0 && args.analysisDimension) {
@@ -538,6 +746,43 @@ export function buildPnlByBusinessSheets(args: PnlByBusinessExcelExportArgs): Pn
     );
   }
 
+  if (args.viewMode !== "formal") {
+    const monthlySheets = new Set(["月报业务种类", "月度业务种类", "月报其中项明细", "月度其中项明细"]);
+    const qualityBySheet = new Map<string, ExportBalanceQuality | undefined>([
+      ["YTD年累计明细", args.ytdQuality], ["YTD其中项明细", args.ytdQuality],
+      ["投资资产四类", args.bondBucketQuality], ["投资资产四类月度", args.bondBucketMonthlyQuality],
+      ["负FTP资产清单", args.negativeFtpQuality], ["FTP未计算资产", args.negativeFtpQuality],
+      ["多维下钻", args.analysisQuality],
+    ]);
+    for (const sheet of wb) {
+      const name = sheet.sheet ?? "";
+      if (monthlySheets.has(name)) {
+        appendBalanceQuality(sheet, name.includes("其中项") ? 2 : 0, (row) => {
+          const month = args.months.find((item) => item.month_key === row[0]);
+          return balanceQualityNote(month && { ...month, expected_days: month.expected_days ?? month.calendar_days });
+        });
+      } else if (qualityBySheet.has(name)) {
+        const note = balanceQualityNote(qualityBySheet.get(name));
+        const monthlyAnalysisRows = name === "投资资产四类月度" ? args.bondBucketMonthlyRows
+          : name === "多维下钻" && (args.analysisDimension === "monthly" || args.analysisDimension === "bond_bucket_monthly")
+            ? args.analysisRows : undefined;
+        appendBalanceQuality(sheet, name === "YTD年累计明细" ? 0 : 2, (_row, dataIndex) => {
+          if (!monthlyAnalysisRows) return note;
+          const key = monthlyAnalysisRows[dataIndex]?.dimension_key ?? "";
+          const monthKey = /^\d{4}-\d{2}(?=-|::|$)/.exec(key)?.[0];
+          const month = args.months.find((item) => item.month_key === monthKey);
+          return month ? balanceQualityNote({ ...month, expected_days: month.expected_days ?? month.calendar_days })
+            : `${monthKey ?? "月份未识别"} 本月覆盖未返回，日均、收益率及 FTP 完整性待核对`;
+        });
+        meta.push([`${name}余额及收益率质量`, note]);
+      }
+    }
+    for (const month of args.months) {
+      meta.push([`${month.month_key}余额及收益率质量`, balanceQualityNote({
+        ...month, expected_days: month.expected_days ?? month.calendar_days,
+      })]);
+    }
+  }
   return wb;
 }
 

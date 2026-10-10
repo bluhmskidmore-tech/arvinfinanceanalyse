@@ -206,3 +206,18 @@ def test_refresh_tushare_news_backup_cli_dry_run_emits_json_without_actor_call(
     }
     assert actor.fn_calls == []
     assert actor.send_calls == []
+
+
+def test_refresh_tushare_news_backup_cli_returns_nonzero_for_partial_result(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    module = _load_script_module()
+    actor = _FakeActor()
+    actor.fn = lambda **_kwargs: {"status": "partial", "inserted": 1, "fetched": 2}
+    monkeypatch.setattr(module, "ingest_tushare_news_to_choice_news", actor)
+
+    exit_code = module.main(["--duckdb-path", str(tmp_path / "moss.duckdb")])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 1
+    assert payload["status"] == "partial"

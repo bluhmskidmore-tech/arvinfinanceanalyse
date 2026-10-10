@@ -1,0 +1,199 @@
+.ledger-pnl-workbook-tables {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  color: var(--dh-api-ink);
+}
+
+.ledger-pnl-workbook-tables__tabs {
+  display: flex;
+  gap: var(--moss-space-4);
+  min-width: 0;
+  padding-bottom: 8px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--dh-api-line);
+  padding: 0;
+}
+
+.ledger-pnl-workbook-tables__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: var(--moss-space-2) 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--dh-api-soft);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    color 150ms ease;
+  border-bottom: 2px solid transparent;
+}
+
+.ledger-pnl-workbook-tables__tab:hover {
+  border-color: transparent;
+  background: transparent;
+  color: var(--dh-api-ink);
+}
+
+.ledger-pnl-workbook-tables__tab[aria-selected="true"] {
+  border-color: var(--dh-api-blue);
+  background: transparent;
+  color: var(--dh-api-ink);
+}
+
+.ledger-pnl-workbook-tables__tab--empty {
+  color: var(--dh-api-muted);
+}
+
+.ledger-pnl-workbook-tables__tab:focus-visible {
+  outline: 2px solid var(--dh-api-blue);
+  outline-offset: 2px;
+}
+
+.ledger-pnl-workbook-tables__tab-count {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-pnl-workbook-tables__tab[aria-selected="true"] .ledger-pnl-workbook-tables__tab-count {
+  color: var(--dh-api-soft);
+}
+
+.ledger-pnl-workbook-tables__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  align-items: start;
+  gap: 12px;
+}
+
+.ledger-pnl-workbook-tables__table {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.ledger-pnl-workbook-tables__table--empty {
+  min-height: 88px;
+}
+
+.ledger-pnl-workbook-tables__table-title {
+  margin: 0;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  color: var(--dh-api-ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.ledger-pnl-workbook-tables__truncation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.ledger-pnl-workbook-tables__truncation-toggle {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: transparent;
+  color: var(--dh-api-blue);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  min-height: 36px;
+}
+
+.ledger-pnl-workbook-tables__truncation-toggle:hover,
+.ledger-pnl-workbook-tables__truncation-toggle:focus-visible {
+  border-color: var(--dh-api-blue);
+  outline: none;
+}
+
+.ledger-pnl-workbook-tables__table-scroll {
+  overflow-x: auto;
+}
+
+.ledger-pnl-workbook-tables__table-data {
+  width: 100%;
+  min-width: max-content;
+  border-collapse: collapse;
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+}
+
+.ledger-pnl-workbook-tables__table-data th,
+.ledger-pnl-workbook-tables__table-data td {
+  padding: 0 var(--moss-space-3);
+  border-bottom: 1px solid var(--moss-table-border);
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+  height: var(--moss-table-row-h-compact);
+}
+
+.ledger-pnl-workbook-tables__table-data th {
+  background: var(--dh-api-panel-2);
+  color: var(--moss-table-header-color);
+  font-size: var(--moss-table-font-size);
+  font-weight: var(--moss-table-header-weight);
+}
+
+.ledger-pnl-workbook-tables__table-data tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.ledger-pnl-workbook-tables__empty,
+.ledger-pnl-workbook-tables__empty-group {
+  margin: 0;
+  padding: 12px;
+  color: var(--dh-api-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.ledger-pnl-workbook-tables__empty-group {
+  min-height: 88px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+@media (max-width: 640px) {
+  .ledger-pnl-workbook-tables__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.ledger-pnl-workbook-tables__table-data td {
+  font-size: var(--moss-table-font-size);
+  font-weight: var(--moss-table-cell-weight);
+}
+
+.ledger-pnl-workbook-tables__table-data [data-numeric="true"] {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}

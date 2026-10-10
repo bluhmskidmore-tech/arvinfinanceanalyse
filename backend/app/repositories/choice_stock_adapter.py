@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Literal, TypeAlias
@@ -35,6 +37,98 @@ CHOICE_STOCK_OPTIONAL_INPUT_FAMILIES: tuple[ChoiceStockInputFamily, ...] = (
     "intraday_movement",
 )
 CHOICE_STOCK_HISTORY_CALENDAR_DAYS = 220
+STOCK_FACTOR_INPUT_RULE_VERSION = "rv_choice_stock_factor_percent_units_adjusted_prices_v2"
+
+
+@dataclass(frozen=True)
+class StockDailyPriceBasisEvidence:
+    source_version: str = ""
+    stock_codes: frozenset[str] = frozenset()
+    start_date: date | None = None
+    end_date: date | None = None
+
+
+def stock_daily_price_basis_evidence(
+    *, source_version: object, request_audits: list[dict[str, object]],
+) -> StockDailyPriceBasisEvidence:
+    """Parse a historical run once; invalid evidence does not parse large code lists."""
+    source = str(source_version or "")
+    matching = [
+        audit for audit in request_audits
+        if audit.get("input_family") == "stock_ohlcv"
+        and audit.get("field_key") == "daily_ohlcv_amount"
+        and audit.get("status") == "completed"
+        and str(audit.get("source_version") or "") == source
+    ]
+    empty = StockDailyPriceBasisEvidence()
+    if len(matching) != 1:
+        return empty
+    audit = matching[0]
+    if str(audit.get("call") or "").lower() != "csd":
+        return empty
+    try:
+        options = json.loads(str(audit.get("request_options_json") or ""), object_pairs_hook=lambda pairs: pairs)
+        if not isinstance(options, list) or any(
+            not isinstance(pair, tuple) or len(pair) != 2 or not isinstance(pair[0], str)
+            for pair in options
+        ):
+            return empty
+        flags = [str(value).strip() for key, value in options if key.lower() == "adjustflag"]
+        if len(flags) != 1 or flags[0] != "1":
+            return empty
+        # OHLCV audits can contain the whole A-share universe. Decode these
+        # arguments only after the small options object proves raw prices.
+        arguments = json.loads(str(audit.get("request_arguments_json") or ""))
+        if not isinstance(arguments, list) or len(arguments) != 4:
+            return empty
+        indicators = {value.strip().upper() for value in str(arguments[1]).split(",")}
+        if not {"OPEN", "HIGH", "LOW", "CLOSE"}.issubset(indicators):
+            return empty
+        start_date = date.fromisoformat(str(arguments[2]))
+        end_date = date.fromisoformat(str(arguments[3]))
+        if start_date > end_date:
+            return empty
+        return StockDailyPriceBasisEvidence(
+            source_version=source, stock_codes=frozenset(str(arguments[0]).split(",")),
+            start_date=start_date, end_date=end_date,
+        )
+    except (TypeError, ValueError):
+        return empty
+
+
+def stock_daily_price_basis(
+    *,
+    vendor_version: object,
+    stock_code: str,
+    trade_date: str,
+    source_version: object,
+    request_audits: list[dict[str, object]],
+    request_evidence: StockDailyPriceBasisEvidence | None = None,
+) -> str:
+    """Recognize raw prices only from vendor or historical request evidence.
+
+    A current catalog cannot establish the basis of already-landed native rows.
+    Choice AdjustFlag 1/2/3 means raw/backward/forward adjusted (SDK PDF p13).
+    """
+    vendor = str(vendor_version or "").strip()
+    if re.fullmatch(r"vv_choice_tushare_stock_\d{8}_[0-9a-f]{12}", vendor) or re.fullmatch(
+        r"vv_livermore_supplement_tushare_sina_\d{8}_[0-9a-f]{12}", vendor
+    ):
+        return "raw"
+    if not re.fullmatch(r"vv_choice_stock_\d{8}_[0-9a-f]{12}", vendor):
+        return "unconfirmed"
+    evidence = request_evidence if request_evidence is not None else stock_daily_price_basis_evidence(
+        source_version=source_version, request_audits=request_audits,
+    )
+    if (evidence.start_date is None or evidence.end_date is None
+            or evidence.source_version != str(source_version or "") or stock_code not in evidence.stock_codes):
+        return "unconfirmed"
+    try:
+        if not evidence.start_date <= date.fromisoformat(trade_date) <= evidence.end_date:
+            return "unconfirmed"
+    except (TypeError, ValueError):
+        return "unconfirmed"
+    return "raw"
 
 
 class ChoiceStockCatalogEntry(BaseModel):
@@ -124,6 +218,7 @@ def load_choice_stock_request_plan(
     catalog_path: str | Path,
     *,
     as_of_date: str,
+    history_start_date: str | None = None,
 ) -> ChoiceStockRequestPlan:
     normalized_path = str(catalog_path or "").strip()
     readiness = load_choice_stock_readiness(normalized_path)
@@ -153,7 +248,11 @@ def load_choice_stock_request_plan(
         )
 
     requests = [
-        _build_request_plan_item(entry=entry, as_of_date=as_of_date)
+        _build_request_plan_item(
+            entry=entry,
+            as_of_date=as_of_date,
+            history_start_date=history_start_date,
+        )
         for entry in catalog.fields
         if _entry_is_confirmed(entry)
     ]
@@ -257,6 +356,7 @@ def _build_request_plan_item(
     *,
     entry: ChoiceStockCatalogEntry,
     as_of_date: str,
+    history_start_date: str | None = None,
 ) -> ChoiceStockRequestPlanItem:
     resolved_options = {
         key: _resolve_request_placeholder(value, as_of_date=as_of_date)
@@ -267,7 +367,11 @@ def _build_request_plan_item(
         field_key=entry.field_key,
         vendor_indicator=entry.vendor_indicator,
         call=entry.call,
-        request_arguments=_request_arguments_for_entry(entry, as_of_date=as_of_date),
+        request_arguments=_request_arguments_for_entry(
+            entry,
+            as_of_date=as_of_date,
+            history_start_date=history_start_date,
+        ),
         request_options=resolved_options,
         request_options_text=_serialize_request_options(resolved_options),
     )
@@ -277,13 +381,19 @@ def _request_arguments_for_entry(
     entry: ChoiceStockCatalogEntry,
     *,
     as_of_date: str,
+    history_start_date: str | None = None,
 ) -> list[str]:
     if entry.call == "sector":
         return [entry.vendor_indicator, as_of_date]
     if entry.call == "css":
         return ["__STOCK_CODES__", entry.vendor_indicator]
     if entry.call == "csd":
-        return ["__STOCK_CODES__", entry.vendor_indicator, choice_stock_history_start_date(as_of_date), as_of_date]
+        return [
+            "__STOCK_CODES__",
+            entry.vendor_indicator,
+            history_start_date or choice_stock_history_start_date(as_of_date),
+            as_of_date,
+        ]
     if entry.call == "ctr":
         return [entry.vendor_indicator, ""]
     return []

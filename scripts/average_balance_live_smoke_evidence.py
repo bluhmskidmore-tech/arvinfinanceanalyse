@@ -106,7 +106,7 @@ Result: {artifact['smoke_execution_status']}.
 
 Smoke checklist focus:
 
-- `GAP-AVERAGE-BALANCE-PAGE` remains candidate ADB analysis.
+- `PAGE-ADB-001` remains candidate ADB analysis.
 - First screen remains scoped to `/average-balance`.
 - Primary API remains `{artifact['primary_api']}`.
 - Supporting APIs remain `/api/analysis/adb/comparison`, `/api/analysis/adb/monthly`, `/api/analysis/adb/coverage`, and `/ui/balance-analysis/dates`.

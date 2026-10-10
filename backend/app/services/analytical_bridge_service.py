@@ -16,10 +16,10 @@ Design notes
 """
 from __future__ import annotations
 
-import logging
 import uuid
 from collections.abc import Callable, Sequence
 
+import duckdb
 from backend.app.core_finance.calibers.enums import Basis
 from backend.app.repositories.cube_query_repo import CubeQueryRepository
 from backend.app.schemas.cube_query import CubeQueryRequest, CubeQueryResponse, DrillPath
@@ -29,8 +29,6 @@ from backend.app.services.formal_result_runtime import (
     build_analytical_result_meta,
     build_ledger_result_meta,
 )
-
-logger = logging.getLogger(__name__)
 
 # ── Ledger table registry ──────────────────────────────────────────────
 # Maps the logical fact_table name from CubeQueryRequest to the physical
@@ -125,6 +123,8 @@ class AnalyticalBridgeService:
         where_sql, where_params = svc.build_where_clause(request.report_date, filters)
         repo = self._repo_factory(duckdb_path)
         matching = svc.matching_row_count(repo, table_name, where_sql, where_params)
+        if request.fact_table == "product_category" and matching > 1:
+            raise RuntimeError("Cube product_category read model is not unique for the selected date/view/category; analysis is unavailable.")
 
         if matching == 0:
             rows: list[dict[str, object]] = []
@@ -134,12 +134,33 @@ class AnalyticalBridgeService:
             rows = svc.fetch_rows(
                 repo, table_name, dimensions, measure_specs,
                 where_sql, where_params, request.order_by, request.limit, request.offset,
+                preaggregated=request.fact_table == "product_category",
             )
 
+        constrained_read = request.fact_table in {"balance", "product_category"}
+        if matching > 0:
+            _require_complete_lineage(repo, table_name, where_sql, where_params)
+        source_version, rule_version = svc.fetch_lineage(
+            repo, fact_table=request.fact_table, table_name=table_name,
+            where_sql=where_sql, where_params=where_params, has_rows=matching > 0,
+        )
         drill_paths = svc.build_drill_paths(
             repo, request=request, table_name=table_name,
             dimensions=dimensions, filters=filters,
         )
+        result_meta = build_analytical_result_meta(
+            trace_id=f"tr_analytical_{request.fact_table}_{uuid.uuid4().hex[:12]}",
+            result_kind=f"analytical.{request.fact_table}",
+            source_version=source_version,
+            rule_version=rule_version,
+            cache_version=svc.CACHE_VERSIONS[request.fact_table] if constrained_read else CACHE_VERSION,
+            quality_flag="ok" if matching > 0 else "warning",
+            evidence_rows=matching,
+            filters_applied=filters,
+            tables_used=[table_name],
+        )
+        if request.fact_table == "balance":
+            result_meta.amount_currency_basis = "CNY"
         return CubeQueryResponse(
             report_date=request.report_date,
             fact_table=request.fact_table,
@@ -148,16 +169,7 @@ class AnalyticalBridgeService:
             rows=rows,
             total_rows=total_rows,
             drill_paths=drill_paths,
-            result_meta=build_analytical_result_meta(
-                trace_id=f"tr_analytical_{request.fact_table}_{uuid.uuid4().hex[:12]}",
-                result_kind=f"analytical.{request.fact_table}",
-                source_version=f"sv_analytical_{request.fact_table}",
-                rule_version="rv_analytical_bridge_v1",
-                cache_version=CACHE_VERSION,
-                quality_flag="ok" if matching > 0 else "warning",
-                evidence_rows=matching,
-                filters_applied=dict(request.filters),
-            ),
+            result_meta=result_meta,
         )
 
     # ── ledger pathway ─────────────────────────────────────────────────
@@ -181,17 +193,15 @@ class AnalyticalBridgeService:
         where_sql, where_params = _build_ledger_where_clause(request.report_date, filters)
         repo = self._repo_factory(duckdb_path)
 
-        # Guard: if the table does not exist yet, return an empty result
-        # instead of crashing with a DuckDB catalog error.
         try:
             matching = _matching_row_count(repo, table_name, where_sql, where_params)
-        except Exception:
-            logger.warning(
-                "Ledger table %s not queryable, treating as empty",
-                table_name,
-                exc_info=True,
-            )
-            matching = 0
+        except (RuntimeError, duckdb.Error, OSError) as exc:
+            cause = exc.__cause__ or exc
+            if isinstance(cause, duckdb.CatalogException) and f"Table with name {table_name} does not exist" in str(cause):
+                raise RuntimeError("Ledger Cube table is not initialized; analysis is unavailable.") from exc
+            if isinstance(exc, RuntimeError):
+                raise
+            raise RuntimeError("Cube query storage is unavailable.") from exc
 
         if matching == 0:
             rows: list[dict[str, object]] = []
@@ -206,7 +216,15 @@ class AnalyticalBridgeService:
         drill_paths = _build_ledger_drill_paths(
             repo, request=request, table_name=table_name,
             dimensions=dimensions, filters=filters,
-        )
+        ) if matching > 0 else []
+        if matching > 0:
+            _require_complete_lineage(repo, table_name, where_sql, where_params)
+            source_version, rule_version = self._cube_service.fetch_lineage(
+                repo, fact_table=request.fact_table, table_name=table_name,
+                where_sql=where_sql, where_params=where_params, has_rows=True,
+            )
+        else:
+            source_version, rule_version = f"sv_ledger_{request.fact_table}_empty", "rv_ledger_bridge_v1"
         return CubeQueryResponse(
             report_date=request.report_date,
             fact_table=request.fact_table,
@@ -218,12 +236,13 @@ class AnalyticalBridgeService:
             result_meta=build_ledger_result_meta(
                 trace_id=f"tr_ledger_{request.fact_table}_{uuid.uuid4().hex[:12]}",
                 result_kind=f"ledger.{request.fact_table}",
-                source_version=f"sv_ledger_{request.fact_table}",
-                rule_version="rv_ledger_bridge_v1",
+                source_version=source_version,
+                rule_version=rule_version,
                 cache_version=CACHE_VERSION,
                 quality_flag="ok" if matching > 0 else "warning",
                 evidence_rows=matching,
-                filters_applied=dict(request.filters),
+                filters_applied=filters,
+                tables_used=[table_name],
             ),
         )
 
@@ -289,6 +308,25 @@ class AnalyticalBridgeService:
 
 
 # ── Private SQL helpers (all parameterised) ────────────────────────────
+def _require_complete_lineage(
+    repo: CubeQueryRepository,
+    table_name: str,
+    where_sql: str,
+    where_params: Sequence[object],
+) -> None:
+    # The shared collector skips missing versions. One valid row must not
+    # supply an apparently complete source identity for other, untracked rows.
+    rows = repo.fetchall(
+        f"""
+        select distinct source_version, rule_version
+        from {table_name}{where_sql}
+        """,
+        where_params,
+    )
+    if not rows or any(not str(value or "").strip() for row in rows for value in row):
+        raise RuntimeError("Cube query row lineage is incomplete; analysis is unavailable.")
+
+
 def _build_where_clause(
     report_date: str,
     filters: dict[str, list[str]],

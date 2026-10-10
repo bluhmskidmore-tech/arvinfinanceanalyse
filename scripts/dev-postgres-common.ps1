@@ -1,4 +1,5 @@
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "dev-python.ps1")
 
 function Invoke-DevPostgresClusterCommand {
   param(
@@ -9,7 +10,7 @@ function Invoke-DevPostgresClusterCommand {
     [string]$Command
   )
 
-  $python = (Get-Command python -ErrorAction Stop).Source
+  $python = Resolve-DevPython
   $stdoutRaw = ""
   $stderrText = ""
 

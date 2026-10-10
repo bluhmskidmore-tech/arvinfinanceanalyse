@@ -12,11 +12,16 @@ from decimal import Decimal
 import pytest
 
 from backend.app.core_finance.liability_analytics_compat import (
+
     is_interest_bearing_bond_asset,
     zqtz_asset_amount,
     zqtz_asset_yield_weight,
 )
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_liability_analytics,
+]
 
 @pytest.mark.parametrize(
     ("asset_class", "amortized", "market", "face", "expected"),
@@ -45,7 +50,6 @@ def test_zqtz_asset_yield_weight_h_a_t_and_fallbacks(
     assert zqtz_asset_yield_weight(row) == expected
     assert zqtz_asset_amount(row) == Decimal(market)
 
-
 @pytest.mark.parametrize(
     ("asset_class", "expected"),
     [
@@ -62,7 +66,6 @@ def test_zqtz_asset_yield_weight_h_a_t_and_fallbacks(
 def test_is_interest_bearing_bond_asset_h_a_t_and_shim(asset_class: str, expected: bool) -> None:
     row = {"is_issuance_like": False, "asset_class": asset_class}
     assert is_interest_bearing_bond_asset(row) is expected
-
 
 def test_is_interest_bearing_bond_asset_issuance_like_false() -> None:
     row = {"is_issuance_like": True, "asset_class": "持有至到期类资产"}

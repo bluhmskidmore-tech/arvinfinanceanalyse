@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "check_bond_analysis_business_owner_approval.py"
 TEMPLATE = ROOT / "docs" / "pnl" / "bond-analysis-business-owner-approval-template.md"
+PLAYBOOK = ROOT / "docs" / "plans" / "2026-06-10-bond-analysis-desktop-100-playbook.md"
 
 TEMPLATE_TEXT = """# Bond Analysis Business Owner Approval Template
 
@@ -176,6 +177,36 @@ def test_bond_analysis_business_owner_approval_template_references_owner_runbook
         "`docs/pnl/bond-analysis-fixed-income-convention-decision-draft.md`"
     ) in text
     assert "Owner signoff runbook: `docs/pnl/bond-analysis-owner-signoff-runbook.md`" in text
+    assert "Latest verification evidence is summarized in the sign-off packet" in text
+    assert "Full page verification: `scripts/codex-verify-page.ps1 -PageSlug bond-analysis -Run`" in text
+    assert "Golden sample capture-ready verification: `python -m pytest tests/test_golden_samples_capture_ready.py -q`" in text
+    assert (
+        "Owner boundary verification: `python -m pytest "
+        "tests/test_bond_analysis_business_owner_approval_status.py "
+        "tests/test_golden_samples_capture_ready.py -q`"
+    ) in text
+    assert "owner approval remains fail-closed until this template is completed" in text
+
+
+def test_bond_analysis_desktop_playbook_owner_handoff_stays_fail_closed() -> None:
+    text = PLAYBOOK.read_text(encoding="utf-8")
+    start = text.index("## Owner Handoff Status")
+    end = text.index("## Current Gap List", start)
+    section = text[start:end]
+
+    assert "Desktop candidate implementation is ready for owner handoff." in section
+    assert "Business-owner approval is not captured." in section
+    assert (
+        "`formal_use_allowed=false`, `closure_approved=false`, and "
+        "`certification_effect=none` must remain in force."
+    ) in section
+    assert (
+        "`python scripts/check_bond_analysis_business_owner_approval.py --require-captured` "
+        "must pass before anyone says owner approval is captured."
+    ) in section
+    assert "mobile layout, backend metric redesign, `/bond-dashboard` certification evidence" in section
+    assert "formal_use_allowed=true" not in section
+    assert "closure_approved=true" not in section
 
 
 def test_bond_analysis_business_owner_approval_checker_require_captured_blocks_pending() -> None:

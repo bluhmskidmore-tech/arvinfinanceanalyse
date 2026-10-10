@@ -24,9 +24,25 @@ class AccountingAssetMovementRowPayload(BaseModel):
     zqtz_amount: Decimal
     gl_amount: Decimal
     reconciliation_diff: Decimal
-    reconciliation_status: Literal["matched", "mismatch", "gl_only", "zqtz_only"]
+    # chain_broken：横截面对得上、但本月期初接不上上月期末。跨月勾稽不过的行
+    # 不得对外显示成已对平，所以它占用 reconciliation_status 而不是只作为附注。
+    reconciliation_status: Literal[
+        "matched",
+        "mismatch",
+        "gl_only",
+        "zqtz_only",
+        "chain_broken",
+    ]
     source_version: str
     rule_version: str
+    # 两列都可能为 None：迁移落地前写入的历史行没有记录过控制结论，读取端要把
+    # "未记录"和"已判定"分开，不能把 None 当成 no_prior_month / 无头寸源。
+    chain_status: Literal["continuous", "fx_adjusted", "broken", "no_prior_month"] | None = None
+    chain_fx_adjustment: Decimal | None = None
+    chain_fx_currency: str | None = None
+    chain_fx_prior_rate: Decimal | None = None
+    chain_fx_current_rate: Decimal | None = None
+    position_source_basis: str | None = None
 
 
 class AccountingAssetMovementSummaryPayload(BaseModel):
@@ -217,6 +233,19 @@ class AccountingBasisMovementDecompositionPayload(BaseModel):
     buckets: list[AccountingBasisMovementBucketPayload]
 
 
+class AccountingZqtzMaturityItemPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    instrument_code: str
+    instrument_name: str
+    portfolio_name: str
+    accounting_basis: str
+    current_amount: Decimal
+    maturity_date: str | None = None
+    overdue_principal_days: int | None = None
+    overdue_interest_days: int | None = None
+
+
 class AccountingZqtzMaturityBucketPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -228,6 +257,7 @@ class AccountingZqtzMaturityBucketPayload(BaseModel):
         "1-3y",
         "3-5y",
         ">5y",
+        "fund_no_maturity",
         "unknown",
     ]
     bucket_label: str
@@ -236,6 +266,7 @@ class AccountingZqtzMaturityBucketPayload(BaseModel):
     delta_amount: Decimal
     item_count: int
     share_pct: Decimal | None = None
+    items: list[AccountingZqtzMaturityItemPayload] = Field(default_factory=list)
 
 
 class AccountingZqtzMaturityStructurePayload(BaseModel):
@@ -287,11 +318,27 @@ class AccountingZqtzConcentrationAnalysisPayload(BaseModel):
     dimensions: list[AccountingZqtzConcentrationDimensionPayload]
 
 
+class UnmappedGlAccountPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    account_code: str
+    beginning_balance: Decimal
+    ending_balance: Decimal
+
+
 class AccountingAssetMovementPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     report_date: str
     currency_basis: str
+    available_report_dates: list[str]
+    upstream_control_report_dates: list[str]
+    freshness_status: Literal[
+        "fresh",
+        "read_model_lagging",
+        "read_model_empty",
+        "upstream_empty",
+    ]
     rows: list[AccountingAssetMovementRowPayload]
     summary: AccountingAssetMovementSummaryPayload
     trend_months: list[AccountingAssetMovementTrendMonthPayload]
@@ -304,12 +351,14 @@ class AccountingAssetMovementPayload(BaseModel):
     zqtz_concentration_analysis: AccountingZqtzConcentrationAnalysisPayload | None = None
     accounting_controls: list[str]
     excluded_controls: list[str]
+    unmapped_gl_accounts: list[UnmappedGlAccountPayload] = Field(default_factory=list)
 
 
 class AccountingAssetMovementDatesPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     report_dates: list[str]
+    upstream_control_report_dates: list[str]
     currency_basis: str
     latest_read_model_report_date: str | None = None
     latest_upstream_control_report_date: str | None = None

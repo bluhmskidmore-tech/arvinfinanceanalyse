@@ -1,0 +1,15 @@
+{
+  "cssPath": "frontend/src/features/workbench/dashboard-home/dashboardHomeOptionTwoDeferred.module.css",
+  "tsxFiles": [
+    "frontend/src/features/workbench/dashboard-home/sections/BondNewsSection.tsx",
+    "frontend/src/features/workbench/dashboard-home/sections/ResearchCalendarSection.tsx"
+  ],
+  "wildcards": [
+    "dhMacroReleaseItemHigh",
+    "dhMacroReleaseItemMedium"
+  ],
+  "finalMarker": null,
+  "mockUrl": "http://127.0.0.1:5897/",
+  "realUrl": "http://localhost:5888/",
+  "waitSelector": "[class*=dhBondNews]"
+}

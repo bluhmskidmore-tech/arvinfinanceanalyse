@@ -1,0 +1,1614 @@
+.screen {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+  color: var(--dh-api-ink);
+  background: var(--dh-api-bg);
+  font-family: inherit;
+}
+
+.marketReading,
+.contextCard {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  font-size: 13px;
+  line-height: 22px;
+}
+.marketReading > header,
+.contextCard > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.marketReading h2,
+.contextCard h3,
+.impactPanel h3 { margin: 0; font-size: 14px; font-weight: 600; line-height: 24px; }
+.marketReading h3 { margin: 0 0 4px; font-size: 13px; font-weight: 500; }
+.readingColumns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 24px; align-items: start; }
+.readingColumns > article { min-width: 0; }
+.readingColumns > article + article { padding-left: 24px; border-left: 1px solid var(--dh-api-line-soft); }
+.supportingObservation,
+.contextSummaries { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.contextSummaries > .contextCard { display: flex; flex-direction: column; align-self: stretch; }
+.contextSummaries .macroSummaryRow,
+.contextSummaries .eventSummaryRow { flex: 1; }
+.contextSummaries .contextCard > .contextMeta:last-child { margin-top: auto; padding-top: 12px; }
+.supportingObservation > * { align-self: stretch; }
+.readingColumns p { margin: 0 0 4px; font-size: 14px; line-height: 22px; }
+.readingColumns time { display: block; color: var(--dh-api-muted); font-size: 12px; line-height: 18px; }
+.readingColumns p[data-restricted="true"] { color: var(--dh-api-amber); }
+.marketReading .observationStatus { margin-top: var(--moss-space-4); }
+.marketReading .observationStatus > summary { padding: var(--moss-space-3) 0 0; border-top: 1px solid var(--dh-api-line-soft); font-size: 12px; }
+.primaryObservation { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: var(--moss-space-6); align-items: start; }
+.impactPanel { display: flex; flex-direction: column; gap: 16px; min-width: 0; padding: var(--moss-space-4) 0; color: var(--dh-api-soft); font-size: 12px; line-height: 1.5; }
+.impactItems { display: grid; gap: 12px; }
+.impactItems h4 { margin: 0 0 4px; font-size: 12px; font-weight: 500; color: var(--dh-api-ink-soft); }
+.impactItems p { margin: 0; font-size: 12px; line-height: 20px; color: var(--dh-api-ink-soft); }
+.impactPanel > a { margin-top: auto; align-self: flex-start; }
+.marketReading > header a,
+.impactPanel > a,
+.contextCard button { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 0 12px; border: 1px solid var(--dh-api-line); border-radius: var(--dh-api-radius); color: var(--dh-api-ink); background: var(--dh-api-panel-2); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
+.contextMeta { margin: 0; color: var(--dh-api-muted); font-size: 12px; line-height: 18px; }
+.macroSummaryRow { padding: 12px 0; border-bottom: 1px solid var(--dh-api-line-soft); }
+.macroSummaryRow > div { display: grid; grid-template-columns: minmax(0, 1fr) 72px 94px; gap: 8px; align-items: baseline; }
+.macroSummaryRow strong { font-family: var(--moss-font-tabular); font-size: 20px; line-height: 28px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.macroSummaryRow em { font-style: normal; text-align: right; font-size: 12px; color: var(--dh-api-ink-soft); }
+.macroSummaryRow p { margin: 4px 0 0; font-size: 12px; line-height: 18px; color: var(--dh-api-muted); }
+.contextCard > .contextMeta:last-child { margin-top: 12px; }
+.eventSummaryRow { padding: 12px 0; border-bottom: 1px solid var(--dh-api-line-soft); }
+.eventSummaryRow > span { color: var(--dh-api-blue); font-size: 12px; }
+.eventSummaryRow p { margin: 0; color: var(--dh-api-muted); font-size: 12px; overflow-wrap: anywhere; }
+.eventSummaryRow .eventSummaryText { display: -webkit-box; margin: 4px 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; color: var(--dh-api-ink); font-size: 13px; line-height: 22px; }
+.eventSummaryFooter { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 8px; }
+.eventSummaryFooter button { flex-shrink: 0; min-height: 36px; padding: 0 8px; }
+.eventDetail { display: grid; gap: 12px; margin: 16px 0; }
+.eventDetail button { justify-self: start; color: var(--dh-api-ink); background: var(--dh-api-panel-2); border: 1px solid var(--dh-api-line); border-radius: var(--dh-api-radius); padding: 8px 12px; cursor: pointer; font: inherit; }
+.eventFullText { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; }
+.contextDrawer { color: var(--dh-api-ink); }
+.contextDrawer :global(.ant-drawer-content) { background: var(--dh-api-panel); }
+.contextDrawer :global(.ant-drawer-content-wrapper) { max-width: 100%; }
+.contextDrawer :global(.ant-drawer-header),
+.contextDrawer :global(.ant-drawer-body) { padding: 16px; }
+.tapeWithAction { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.supportingObservation .embeddedChart { display: block; border: 0; border-radius: 0; background: transparent; }
+.embeddedChart .observationChartHeader h3 { display: none; }
+
+.observationHeading {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.observationHeading h2 { font-size: 14px; font-weight: 600; }
+
+.chapterSection {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 编号分区头对齐首页/总账损益语言：小号 mono 编号 + 14px 标题 + 发丝线。 */
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  min-height: 28px;
+  padding: 2px 0;
+}
+
+.sectionHeader > h2 {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.sectionHeader > span {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.observationStatus {
+  min-width: 0;
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.observationStatus > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding: 10px 14px;
+  list-style: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.6;
+}
+
+.observationStatus > summary::-webkit-details-marker {
+  display: none;
+}
+
+.statusLabel {
+  flex: 0 0 auto;
+  color: var(--dh-api-muted);
+}
+
+.statusReason {
+  flex: 1;
+  color: var(--dh-api-ink-soft);
+}
+
+.statusReason[data-tone="watch"] {
+  color: var(--dh-api-amber);
+}
+
+.statusMore {
+  flex: 0 0 auto;
+  color: var(--dh-api-blue);
+}
+
+.statusMore::after {
+  display: inline-block;
+  margin-left: 8px;
+  content: "+";
+}
+
+.observationStatus[open] .statusMore::after {
+  content: "−";
+}
+
+.statusBody {
+  padding: 0 14px 12px;
+  border-top: 1px solid var(--dh-api-line-soft);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.statusBody p { margin: 8px 0 0; }
+.receiptEvidence { overflow-wrap: anywhere; }
+
+.snapshotNotice {
+  margin: 0;
+  color: var(--dh-api-amber);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.observationStatus > summary:focus-visible,
+.chartDetails > summary:focus-visible,
+.primaryChart:focus-visible {
+  outline: 2px solid var(--dh-api-blue);
+  outline-offset: 3px;
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sectionTitle > span {
+  flex: 0 0 auto;
+  min-width: 22px;
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-tabular);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.sectionTitle > div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sectionTitle h2 {
+  margin: 0;
+  overflow: hidden;
+  color: var(--dh-api-ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sectionTitle em {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sectionHeader strong {
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-tabular);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.decisionHero,
+.infoPanel,
+.chartCard {
+  overflow: hidden;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.decisionHero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  padding: 12px 14px;
+}
+
+.decisionMain {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 12px;
+  border-left: 2px solid var(--dh-api-blue);
+}
+
+/* 眉标按首页 overviewEyebrow：素文本，不再做描边徽标。 */
+.heroKicker {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.decisionMain h3 {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.decisionMain p {
+  max-width: 72ch;
+  margin: 0;
+  color: var(--dh-api-ink-soft);
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.decisionMain .availabilityReason[data-tone="watch"],
+.decisionMain .snapshotWarning {
+  color: var(--dh-api-amber);
+}
+
+.decisionMain .directionalCoverage {
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+.decisionMain .directionalCoverage[data-status="insufficient"] {
+  color: var(--dh-api-amber);
+}
+
+.observationAction {
+  margin: 0;
+  color: color-mix(in srgb, var(--dh-api-blue) 52%, var(--dh-api-ink) 48%);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.observationAction[data-tone="watch"] {
+  color: var(--dh-api-amber);
+}
+
+.decisionAside {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  padding-left: 18px;
+  border-left: 1px solid var(--dh-api-line-soft);
+}
+
+.decisionAside > span,
+.decisionAside > em {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.decisionAside > strong {
+  color: var(--dh-api-ink);
+  font-family: var(--moss-font-tabular);
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.decisionAside > strong[data-available="false"] {
+  color: var(--dh-api-amber);
+}
+
+.verificationDetails {
+  min-width: 0;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  color: var(--dh-api-ink-soft);
+  font-size: 12px;
+}
+
+.verificationDetails > summary {
+  padding: 16px 0;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.verificationDetails > summary > span {
+  margin-left: 12px;
+  color: var(--dh-api-muted);
+  font-weight: 400;
+}
+
+.verificationDetails > summary:focus-visible {
+  outline: 2px solid var(--dh-api-blue);
+  outline-offset: 2px;
+}
+
+.verificationBody {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  padding: 0 0 12px;
+}
+
+.verificationBody > p {
+  margin: 0;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.gateIssueList {
+  display: grid;
+  min-width: 0;
+  border-top: 1px solid var(--dh-api-line-soft);
+}
+
+.gateIssue {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.gateIssue > div {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 128px minmax(0, 1fr);
+  gap: 3px 10px;
+}
+
+.gateIssue span,
+.gateIssue strong,
+.gateIssue em,
+.gateIssue a {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.gateIssue span {
+  grid-row: 1 / span 2;
+  color: var(--dh-api-amber);
+  font-weight: 600;
+}
+
+.gateIssue strong {
+  color: var(--dh-api-ink-soft);
+  font-weight: 600;
+}
+
+.gateIssue em {
+  color: var(--dh-api-muted);
+  font-style: normal;
+}
+
+.gateIssue a {
+  color: color-mix(in srgb, var(--dh-api-blue) 60%, var(--dh-api-ink) 40%);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.observationMeta {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 12px;
+}
+
+.observationFact {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 0;
+  border-top: 1px solid var(--dh-api-line-soft);
+}
+
+.observationFact > span {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.observationFact > strong {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dh-api-ink-soft);
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.decisionFacts {
+  display: grid;
+  grid-template-columns: minmax(100px, 0.5fr) minmax(0, 2fr) minmax(100px, 0.5fr);
+  gap: 10px;
+  align-content: start;
+}
+
+.decisionFacts > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  background: transparent;
+}
+
+.decisionFacts span {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}
+
+.decisionFacts strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crisisTrendRow {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.crisisTrendRow strong {
+  flex: 1;
+}
+
+.crisisSparkline {
+  width: 56px;
+  min-width: 56px;
+}
+
+.crisisTrendMeta {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+/* 行情带按首页 kpiRail 语言：单一外框 + 发丝竖分割，禁止卡片套卡片。 */
+.marketTape {
+  display: grid;
+  overflow: hidden;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.marketTape:focus-visible {
+  outline: 2px solid var(--dh-api-blue);
+  outline-offset: 3px;
+}
+
+.tapeCell {
+  display: grid;
+  min-width: 0;
+  min-height: 76px;
+  padding: 8px 14px;
+  align-items: baseline;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(32px, auto) minmax(24px, auto) auto auto;
+  align-content: start;
+  column-gap: 8px;
+  row-gap: 2px;
+  border-right: 1px solid var(--dh-api-line-soft);
+}
+
+.tapeCell:last-child {
+  border-right: 0;
+}
+
+/* 为长名称保留换行空间；标签、变化和日期按业务层级区分。 */
+.tapeCell > span {
+  display: block;
+  min-height: 16px;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+
+.basisBadge {
+  margin-left: 6px;
+  padding: 0;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.tapeCell > time {
+  grid-column: 1 / -1;
+  grid-row: 4;
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-tabular);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tapeCell > strong {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  flex-wrap: wrap;
+  color: var(--dh-api-ink);
+  font-family: var(--moss-font-tabular);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  line-height: 1.2;
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+.tapeAmount { white-space: nowrap; }
+
+.tapeCell > strong small {
+  white-space: nowrap;
+  color: var(--dh-api-ink-soft);
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.tapeCell > em {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  margin-top: 0;
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-tabular);
+  font-size: 12px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.tapeRestriction {
+  grid-column: 1 / -1;
+  grid-row: 5;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  text-align: left;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.tapeCell[data-tone="up"] > em {
+  color: var(--dh-api-green);
+}
+
+.tapeCell[data-tone="down"] > em {
+  color: var(--dh-api-red);
+}
+
+/* 利率类上行=警戒琥珀（DESIGN.md 现行结论 5），不复用涨绿；下行/零值保持中性。 */
+.tapeCell[data-tone="warn"] > em {
+  color: var(--dh-api-amber);
+}
+
+.tapeCell[data-tone="ok"] > em {
+  color: var(--dh-api-green);
+}
+
+.judgmentGrid {
+  display: grid;
+  align-items: start;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.infoPanel {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+}
+
+/* 面板头对齐首页 panelHeader：34px 头线 + 2px 强调左条 + 13px 标题。 */
+.panelHeader {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 12px 0 16px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.panelHeader::before {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 0;
+  width: 2px;
+  background: var(--dh-api-blue);
+  content: "";
+}
+
+.panelHeader h3 {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.panelHeader a,
+.panelHeader span {
+  color: color-mix(in srgb, var(--dh-api-blue) 68%, var(--dh-api-ink) 32%);
+  font-size: 12px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/* 行式列表替代 2x2 迷你卡：154px 卡宽装不下结论句，逐卡截断可读性太差。 */
+.focusGrid {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-rows: minmax(0, 1fr);
+  gap: 0;
+  padding: 0 14px 4px;
+}
+
+.focusCard {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-content: center;
+  column-gap: 12px;
+  row-gap: 3px;
+  min-width: 0;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.focusCard:last-child {
+  border-bottom: 0;
+}
+
+.focusCard[data-search-match="false"] {
+  opacity: 0.34;
+}
+
+.focusCard > span {
+  display: -webkit-box;
+  grid-row: 1 / span 2;
+  align-self: center;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--dh-api-blue) 55%, var(--dh-api-ink) 45%);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.focusCard > strong {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--dh-api-ink-soft);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.focusCard > em {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+/* 事项与证据摞两行：四列并排时两列各剩 ~140px，中文标题全部截断。
+   入口列固定宽，保证表头与行两套 grid 对齐。 */
+.queueHead,
+.queueRow {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 64px;
+  align-items: center;
+  gap: 10px;
+}
+
+.queueHead {
+  padding: 10px 14px 9px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}
+
+.queueHead > span:last-child {
+  text-align: right;
+}
+
+.queueRows {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-auto-rows: minmax(0, 1fr);
+}
+
+.queueRow {
+  grid-template-rows: auto auto;
+  align-content: center;
+  row-gap: 3px;
+  min-width: 0;
+  min-height: 62px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.queueRow > span {
+  grid-row: 1 / span 2;
+}
+
+.queueRow > b {
+  grid-row: 1 / span 2;
+  grid-column: 3;
+}
+
+.queueRow > strong,
+.queueRow > em {
+  grid-column: 2;
+}
+
+.queueRow:last-child {
+  border-bottom: 0;
+}
+
+.queueRow span,
+.queueRow b {
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+}
+
+.queueRow span {
+  color: var(--dh-api-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.queueRow strong,
+.queueRow em,
+.queueRow b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queueRow strong {
+  color: var(--dh-api-ink-soft);
+  font-size: 13.5px;
+}
+
+.queueRow em {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.queueRow b {
+  color: color-mix(in srgb, var(--dh-api-blue) 60%, var(--dh-api-ink) 40%);
+  font-size: 12px;
+  text-align: right;
+}
+
+.queueRow[data-tone="error"] span,
+.queueRow[data-tone="error"] b {
+  color: var(--dh-api-red);
+}
+
+.queueRow[data-tone="watch"] span,
+.queueRow[data-tone="watch"] b {
+  color: var(--dh-api-amber);
+}
+
+.evidenceLayout {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0;
+}
+
+.evidencePrimary,
+.evidenceSecondary {
+  display: grid;
+  gap: 16px;
+}
+
+.evidencePrimary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.evidenceSecondary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.chartCard {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  grid-template-rows: 44px minmax(0, 1fr) 24px;
+}
+
+.chartCard[data-has-reading-guide="true"] {
+  grid-template-rows: 44px 24px minmax(0, 1fr) 24px;
+}
+
+.chartCard[data-chartcard-shell="true"] {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.chartCard[data-chartcard-shell="true"][data-has-reading-guide="true"] {
+  grid-template-rows: 24px minmax(0, 1fr);
+}
+
+.primaryChart {
+  display: block;
+  min-height: 0;
+  padding: 16px;
+}
+
+.observationChartHeader h3 {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.observationChartHeader p {
+  margin: 8px 0 12px;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.chartBoundary {
+  margin: 8px 0 12px;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.chartDetails {
+  border-top: 1px solid var(--dh-api-line-soft);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.chartDetails > summary {
+  padding-top: 10px;
+  color: var(--dh-api-blue);
+  cursor: pointer;
+}
+
+.chartDetails > p {
+  margin: 8px 0 0;
+}
+
+.secondaryChart,
+.pulseCard {
+  min-height: 276px;
+}
+
+/* 高度随主题行数自适应：固定高度曾把第 4 行起的主题与图例静默裁掉。 */
+.newsCard {
+  height: auto;
+  min-height: 176px;
+}
+
+.chartCard[data-search-match="false"] {
+  opacity: 0.34;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.cardHeader > div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cardIndex {
+  color: color-mix(in srgb, var(--dh-api-blue) 58%, var(--dh-api-ink) 42%);
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.cardHeader h3 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--dh-api-ink);
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardHeader > span {
+  max-width: 44%;
+  overflow: hidden;
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chartGuide {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  margin: 0;
+  padding: 0 12px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  color: var(--dh-api-ink-soft);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chartCanvas {
+  min-width: 0;
+  min-height: 0;
+  padding: 6px 10px;
+  overflow: hidden;
+}
+
+.chartCard > footer {
+  padding: 5px 12px 0;
+  border-top: 1px solid var(--dh-api-line-soft);
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.macroPulse {
+  padding: 6px 12px 10px;
+}
+
+.pulseCard {
+  grid-column: 1 / -1;
+  grid-template-rows: 44px minmax(0, 1fr) auto;
+}
+
+.cardHeader > a {
+  color: var(--dh-api-blue);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.pulseFootnote {
+  padding-bottom: 5px;
+}
+
+.pulseFootnote > span {
+  display: block;
+  line-height: 1.4;
+}
+
+.pulseMetricLabel > time {
+  display: block;
+  margin-top: 4px;
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-tabular);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+}
+
+.pulseValueFlow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 0 6px;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+}
+
+/* 金融数值禁止省略号截断：长值（含单位）折行完整展示，行高由行格均分预算吸收。 */
+.pulseValueFlow > span,
+.pulseValueFlow > strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.pulseValueFlow > span {
+  color: var(--dh-api-muted);
+}
+
+.pulseValueFlow > i {
+  flex: 0 0 auto;
+  color: var(--dh-api-muted);
+  font-style: normal;
+}
+
+.pulseValueFlow > strong {
+  color: var(--dh-api-ink-soft);
+  font-weight: 600;
+}
+
+/* 密度卡脚注拆两行（单行 ≤1 个 `·`），行内不再挤省略。 */
+.densityFootnote span {
+  display: block;
+}
+
+.newsDensity {
+  display: grid;
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+  gap: 16px;
+  padding: 8px 12px 10px;
+}
+
+.heatmapPanel,
+.newsMiniFeed {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.heatmapEmpty {
+  display: grid;
+  height: 100%;
+  place-items: center;
+  color: var(--dh-api-muted);
+  font-size: 13px;
+}
+
+.heatmapGrid {
+  display: grid;
+  grid-template-columns: 84px repeat(12, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.heatmapGrid > time {
+  height: 13px;
+  color: transparent;
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  text-align: center;
+}
+
+.heatmapGrid > time[data-label="true"] {
+  color: var(--dh-api-muted);
+}
+
+.heatmapRow {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: 84px repeat(12, minmax(0, 1fr));
+  gap: 2px;
+  height: 19px;
+}
+
+.heatmapRow > span {
+  align-self: center;
+  overflow: hidden;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 无数据格用 panel-2 井底色呈现网格结构；数据档在井底上按比例加亮，
+   避免低强度格与卡面同色导致整块热力图"看不见"。 */
+.heatmapRow > i,
+.heatmapLegend > i {
+  min-width: 0;
+  background: var(--dh-api-panel-2);
+}
+
+.heatmapRow > i[data-intensity="1"],
+.heatmapLegend > i[data-intensity="1"] {
+  background: color-mix(in srgb, var(--dh-api-blue) 34%, var(--dh-api-panel-2));
+}
+
+.heatmapRow > i[data-intensity="2"],
+.heatmapLegend > i[data-intensity="2"] {
+  background: color-mix(in srgb, var(--dh-api-blue) 54%, var(--dh-api-panel-2));
+}
+
+.heatmapRow > i[data-intensity="3"],
+.heatmapLegend > i[data-intensity="3"] {
+  background: color-mix(in srgb, var(--dh-api-blue) 76%, var(--dh-api-panel-2));
+}
+
+.heatmapRow > i[data-intensity="4"],
+.heatmapLegend > i[data-intensity="4"] {
+  background: color-mix(in srgb, var(--dh-api-blue) 64%, var(--dh-api-ink) 36%);
+}
+
+.heatmapLegend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 6px;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}
+
+.heatmapLegend > i {
+  width: 11px;
+  height: 7px;
+}
+
+.newsMiniFeed {
+  display: grid;
+  grid-template-rows: 24px repeat(3, minmax(0, 1fr));
+  border-left: 1px solid var(--dh-api-line-soft);
+  padding-left: 12px;
+}
+
+.newsMiniHead,
+.newsMiniFeed article {
+  display: grid;
+  /* 时间列需完整容纳 "07-15 04:12"（11 位等宽字符）不截断。 */
+  grid-template-columns: 84px minmax(0, 1fr) 64px;
+  align-items: center;
+  gap: 8px;
+}
+
+.newsMiniHead {
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}
+
+.newsMiniHead span:last-child {
+  text-align: right;
+}
+
+.newsMiniFeed article {
+  min-height: 0;
+  overflow: hidden;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  color: var(--dh-api-ink-soft);
+  font-size: 12px;
+}
+
+.newsMiniFeed article:last-child {
+  border-bottom: 0;
+}
+
+.newsMiniFeed article > time,
+.newsMiniFeed article > strong,
+.newsMiniFeed article > em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.newsMiniFeed article > time {
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+}
+
+.newsMiniFeed article > strong {
+  color: var(--dh-api-ink-soft);
+  font-weight: 500;
+}
+
+.newsMiniFeed article > em {
+  color: var(--dh-api-amber);
+  font-style: normal;
+  text-align: right;
+}
+
+.compactEmpty {
+  display: grid;
+  grid-column: 1 / -1;
+  place-items: center;
+  color: var(--dh-api-muted);
+  font-size: 13px;
+}
+
+.signalStrip {
+  display: grid;
+  overflow: hidden;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.signalCard {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  min-height: 118px;
+  padding: 12px;
+  border-right: 1px solid var(--dh-api-line-soft);
+}
+
+.signalCard:last-child {
+  border-right: 0;
+}
+
+.signalCard span {
+  color: color-mix(in srgb, var(--dh-api-blue) 58%, var(--dh-api-ink) 42%);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.signalCard strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dh-api-ink);
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  /* 信号带是辅助层，主值压过 01 区 KPI（≤21px）会造成层级倒挂。 */
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 证据行折两行展示，单行 ellipsis 时六格全部只剩半句话。 */
+.signalCard em {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.signalCard[data-tone="alert"] strong {
+  color: var(--dh-api-red);
+}
+
+.signalCard[data-tone="watch"] strong {
+  color: var(--dh-api-amber);
+}
+
+.signalCard[data-tone="ok"] strong {
+  color: color-mix(in srgb, var(--dh-api-blue) 58%, var(--dh-api-ink) 42%);
+}
+
+/* 8 列行情带在 1500px 以下放不下“数值 + 长单位”，折成 4x2 保持完整可读。 */
+@media (max-width: 1500px) {
+  .marketTape {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .tapeCell:nth-child(4n) {
+    border-right: 0;
+  }
+
+  .tapeCell:nth-child(-n + 4) {
+    border-bottom: 1px solid var(--dh-api-line-soft);
+  }
+}
+
+/* Figma v1.4: four quotes remain visible; the remaining quotes keep the full workbench entry. */
+.marketTape { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.tapeCell:nth-child(n) { min-height: 104px; padding: 12px 16px; border-bottom: 0; }
+.tapeCell > strong { font-size: 20px; }
+.evidenceLayout { gap: 16px; }
+.supportingObservation .primaryChart { padding: 16px; }
+@media (max-width: 1279px) {
+  .primaryObservation { grid-template-columns: minmax(0, 1fr); }
+  .impactItems { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 1320px) {
+  .judgmentGrid,
+  .evidenceSecondary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .infoPanel:last-child,
+  .pulseCard {
+    grid-column: 1 / -1;
+  }
+
+  .signalStrip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .signalCard:nth-child(3n) {
+    border-right: 0;
+  }
+
+  .signalCard:nth-child(-n + 3) {
+    border-bottom: 1px solid var(--dh-api-line-soft);
+  }
+}
+
+@media (max-width: 1120px) {
+  .judgmentGrid,
+  .evidencePrimary,
+  .evidenceSecondary,
+  .signalStrip {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .signalCard {
+    border-right: 0;
+  }
+
+  .signalCard:not(:last-child) {
+    border-bottom: 1px solid var(--dh-api-line-soft);
+  }
+}
+
+@media (max-width: 760px) {
+  .observationStatus > summary {
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    padding: 10px;
+  }
+
+  .statusReason {
+    order: 3;
+    flex-basis: 100%;
+  }
+
+  .statusMore { margin-left: auto; }
+
+  .primaryChart { padding: 12px; }
+
+  .verificationDetails > summary > span {
+    display: block;
+    margin: 5px 0 0 16px;
+    line-height: 1.5;
+  }
+
+  .sectionHeader {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .decisionHero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .decisionAside {
+    gap: 6px;
+    padding-top: 10px;
+    padding-left: 0;
+    border-top: 1px solid var(--dh-api-line-soft);
+    border-left: 0;
+  }
+
+  .decisionMain h3 {
+    font-size: 16px;
+  }
+
+  .decisionFacts {
+    grid-template-columns: 1fr;
+  }
+
+  .observationMeta {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .gateIssue,
+  .gateIssue > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .gateIssue span {
+    grid-row: auto;
+  }
+
+  .gateIssue a {
+    justify-self: start;
+  }
+
+  .marketTape {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(154px, 48%);
+    overflow-x: auto;
+    scrollbar-width: thin;
+    scroll-snap-type: x proximity;
+  }
+
+  .tapeCell {
+    display: grid;
+    min-height: 110px;
+    scroll-snap-align: start;
+  }
+
+  .tapeCell:nth-child(n) {
+    border-right: 1px solid var(--dh-api-line-soft);
+    border-bottom: 0;
+  }
+
+  .tapeCell:last-child {
+    border-right: 0;
+  }
+
+  .tapeCell > span {
+    min-height: 32px;
+    white-space: normal;
+  }
+
+  .tapeCell > strong {
+    flex: 1;
+  }
+
+  .tapeRestriction {
+    text-align: left;
+  }
+
+  .focusGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .queueHead,
+  .queueRow {
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+
+  .queueHead span:nth-child(n + 3),
+  .queueRow em,
+  .queueRow b {
+    display: none;
+  }
+
+  .newsCard {
+    height: auto;
+    min-height: 300px;
+    grid-template-rows: 44px minmax(0, 1fr) auto;
+  }
+
+  .newsCard > footer {
+    min-height: 36px;
+    padding-bottom: 4px;
+    line-height: 1.35;
+    white-space: normal;
+  }
+
+  .pulseValueFlow {
+    gap: 3px;
+  }
+
+  .newsDensity {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .newsMiniFeed {
+    border-left: 0;
+    border-top: 1px solid var(--dh-api-line-soft);
+    padding-left: 0;
+    padding-top: 8px;
+  }
+}
+
+@media (max-width: 767px) {
+  .tapeWithAction { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .allQuotesAction { justify-self: start; min-height: 44px; margin-top: 0; }
+  .readingColumns, .supportingObservation, .contextSummaries, .impactItems { grid-template-columns: minmax(0, 1fr); }
+  .readingColumns > article + article { padding: 16px 0 0; border-left: 0; border-top: 1px solid var(--dh-api-line-soft); }
+  .marketReading, .impactPanel, .contextCard { padding: 16px; }
+  .marketTape { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: row; grid-auto-columns: auto; overflow: visible; }
+  .tapeCell:nth-child(n) { border-right: 1px solid var(--dh-api-line-soft); border-bottom: 1px solid var(--dh-api-line-soft); }
+  .tapeCell:nth-child(2n) { border-right: 0; }
+  .tapeCell:nth-last-child(-n + 2) { border-bottom: 0; }
+  .marketReading > header a, .impactPanel > a, .contextCard button { min-height: 44px; }
+  .macroSummaryRow > div { grid-template-columns: minmax(0, 1fr) 72px 94px; }
+  .primaryObservation, .chapterSection { gap: 16px; }
+}

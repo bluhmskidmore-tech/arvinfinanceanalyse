@@ -3,6 +3,8 @@
  * 后端返回 Decimal string，展示层用 BigInt 做十进制 half-up 舍入。
  */
 
+import { EM_DASH } from "../../../utils/format";
+
 const GROUP = /\B(?=(\d{3})+(?!\d))/g;
 
 function groupInt(s: string): string {
@@ -55,27 +57,76 @@ export function scaledBigIntToDecimalString(x: bigint, scale: number, decimals: 
   return decimals > 0 ? `${sign}${groupInt(intRaw)}.${frac}` : `${sign}${groupInt(intRaw)}`;
 }
 
-export function formatAmountYi(amountYuan: string | null | undefined, decimals: number = 2): string {
-  if (!amountYuan) return "-";
+/** 元→亿元裸数（"1.15"，含千分位，不带单位）：单位收进表格列头时用。 */
+export function formatAmountYiNumber(
+  amountYuan: string | null | undefined,
+  decimals: number = 2,
+): string {
+  if (!amountYuan) return EM_DASH;
   const { value, scale } = decimalToIntegerAndScale(amountYuan);
   const yiScaled = divideRoundHalfUp(value * pow10(decimals), 100000000n * pow10(scale));
-  const s = scaledBigIntToDecimalString(yiScaled, decimals, decimals);
-  return `${s} 亿元`;
+  return scaledBigIntToDecimalString(yiScaled, decimals, decimals);
+}
+
+export function formatAmountYi(amountYuan: string | null | undefined, decimals: number = 2): string {
+  if (!amountYuan) return EM_DASH;
+  return `${formatAmountYiNumber(amountYuan, decimals)} 亿元`;
+}
+
+export function formatAmountWanYi(
+  amountYuan: string | null | undefined,
+  decimals: number = 2,
+): string {
+  if (!amountYuan) return EM_DASH;
+  const { value, scale } = decimalToIntegerAndScale(amountYuan);
+  const wanYiScaled = divideRoundHalfUp(value * pow10(decimals), 1000000000000n * pow10(scale));
+  const s = scaledBigIntToDecimalString(wanYiScaled, decimals, decimals);
+  return `${s} 万亿元`;
+}
+
+/** 金额 ≥1 万亿（1e12 元）切万亿单位，否则亿元：只给 KPI 大数读数用。 */
+export function formatAmountYiAuto(amountYuan: string | null | undefined): string {
+  if (!amountYuan) return EM_DASH;
+  const { value, scale } = decimalToIntegerAndScale(amountYuan);
+  const abs = value < 0n ? -value : value;
+  return abs >= 1000000000000n * pow10(scale)
+    ? formatAmountWanYi(amountYuan)
+    : formatAmountYi(amountYuan);
 }
 
 export function formatAmountWan(amountYuan: string | null | undefined, decimals: number = 2): string {
-  if (!amountYuan) return "-";
+  if (!amountYuan) return EM_DASH;
   const { value, scale } = decimalToIntegerAndScale(amountYuan);
   const wanScaled = divideRoundHalfUp(value * pow10(decimals), 10000n * pow10(scale));
   const s = scaledBigIntToDecimalString(wanScaled, decimals, decimals);
   return `${s} 万元`;
 }
 
+/** Decimal string 定精度裸数展示（估值净价等）：half-up 舍入，不带单位不分组换算。 */
+export function formatDecimalFixed(
+  v: string | null | undefined,
+  decimals: number = 4,
+): string {
+  if (!v) return EM_DASH;
+  const { value, scale } = decimalToIntegerAndScale(v);
+  const scaled = divideRoundHalfUp(value * pow10(decimals), pow10(scale));
+  return scaledBigIntToDecimalString(scaled, decimals, decimals);
+}
+
 /** 利率小数（如 0.0255）→ 百分比展示（2.55%） */
 export function formatRatePercent(rateDecimal: string | null | undefined, decimals: number = 2): string {
-  if (!rateDecimal) return "-";
+  if (!rateDecimal) return EM_DASH;
   const { value, scale } = decimalToIntegerAndScale(rateDecimal);
   const pctScaled = divideRoundHalfUp(value * 100n * pow10(decimals), pow10(scale));
   const s = scaledBigIntToDecimalString(pctScaled, decimals, decimals);
+  return `${s}%`;
+}
+
+/** 已是百分数的字符串（如 "84.48287107"）→ 定精度展示（84.48%）；后端原始精度不直出。 */
+export function formatPercentValue(percent: string | null | undefined, decimals: number = 2): string {
+  if (!percent) return EM_DASH;
+  const { value, scale } = decimalToIntegerAndScale(percent);
+  const scaled = divideRoundHalfUp(value * pow10(decimals), pow10(scale));
+  const s = scaledBigIntToDecimalString(scaled, decimals, decimals);
   return `${s}%`;
 }

@@ -2,35 +2,35 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildLedgerKpiCards,
+  selectLedgerCurrency,
   formatLedgerYiAmount,
   formatLedgerYuanAmount,
+  ledgerImportPresentation,
+  ledgerImportStatusIsTerminal,
   ledgerDataState,
 } from "../features/ledger-dashboard/pages/ledgerDashboardPageModel";
+import { EM_DASH } from "../utils/format";
 
 describe("ledgerDashboardPageModel", () => {
-  it("keeps dashboard KPI values in yi yuan", () => {
-    expect(formatLedgerYiAmount(3289.07)).toBe("3289.07 亿元");
-    expect(formatLedgerYiAmount(null)).toBe("--");
-
+  it("keeps dashboard KPI values inside one currency bucket", () => {
+    expect(formatLedgerYiAmount(3289.07, "CNY")).toBe("3289.07 CNY/1亿");
+    expect(formatLedgerYiAmount(null, "CNY")).toBe(EM_DASH);
     const cards = buildLedgerKpiCards({
       as_of_date: "2026-03-17",
-      asset_face_amount: 3289.07,
-      liability_face_amount: 1231.77,
-      net_face_exposure: 2057.31,
-      alert_count: 0,
-    });
-
+      classification_status: "ready",
+      classification_rule_version: "rv_ledger_classification_v2",
+      currency_breakdown: [
+        { currency: "CNY", asset_face_amount: 3289.07, liability_face_amount: 1231.77, net_face_exposure: 2057.31, classification_total_row_count: 2, unclassified_row_count: 0, unclassified_face_amount: 0, classification_coverage_pct: 100 },
+      ],
+    }, "CNY");
     expect(cards.map((item) => item.value)).toEqual([
-      "3289.07 亿元",
-      "1231.77 亿元",
-      "2057.31 亿元",
-      "0",
+      "3289.07 CNY/1亿", "1231.77 CNY/1亿", "2057.31 CNY/1亿",
     ]);
+    expect(cards).toHaveLength(3);
   });
-
-  it("keeps position amounts as raw yuan for detail rows", () => {
+  it("keeps position amounts as native-currency values for detail rows", () => {
     expect(formatLedgerYuanAmount(100000000)).toBe("100,000,000.00");
-    expect(formatLedgerYuanAmount(null)).toBe("--");
+    expect(formatLedgerYuanAmount(null)).toBe(EM_DASH);
   });
 
   it("prioritizes explicit loading, no-data, and fallback states", () => {
@@ -61,5 +61,53 @@ describe("ledgerDashboardPageModel", () => {
         null,
       ),
     ).toBe("fallback");
+  });
+
+  it.each([
+    ["queued", "已进入导入队列", "pending", false],
+    ["running", "正在校验并导入", "pending", false],
+    ["succeeded", "导入完成", "success", true],
+    ["duplicate", "文件内容已存在，未新增批次", "duplicate", true],
+    ["failed", "导入失败", "failure", true],
+  ] as const)("maps %s without collapsing duplicate into failure", (status, label, tone, terminal) => {
+    expect(ledgerImportPresentation(status)).toEqual({ label, tone });
+    expect(ledgerImportStatusIsTerminal(status)).toBe(terminal);
+  });
+  it("selects CNY by default and builds only the selected currency cards", () => {
+    const data = {
+      as_of_date: "2026-03-17",
+      classification_status: "ready" as const,
+      classification_rule_version: "rv_ledger_classification_v2",
+      currency_breakdown: [
+        { currency: "USD", asset_face_amount: 2, liability_face_amount: null, net_face_exposure: 2, classification_total_row_count: 1, unclassified_row_count: 0, unclassified_face_amount: 0, classification_coverage_pct: 100 },
+        { currency: "CNY", asset_face_amount: 1, liability_face_amount: 0.5, net_face_exposure: 0.5, classification_total_row_count: 2, unclassified_row_count: 0, unclassified_face_amount: 0, classification_coverage_pct: 100 },
+      ],
+    };
+    expect(selectLedgerCurrency(data.currency_breakdown, null)).toBe("CNY");
+    expect(buildLedgerKpiCards(data, "USD").map((card) => [card.key, card.value])).toEqual([
+      ["asset", "2.00 USD/1亿"],
+      ["liability", EM_DASH],
+      ["net", "2.00 USD/1亿"],
+    ]);
+  });
+
+  it("keeps financial KPIs blank for legacy classification batches", () => {
+    const cards = buildLedgerKpiCards({
+      as_of_date: "2026-03-17",
+      classification_status: "legacy_unassessed",
+      classification_rule_version: "rv_ledger_classification_v2",
+      currency_breakdown: [{
+        currency: "CNY",
+        asset_face_amount: null,
+        liability_face_amount: null,
+        net_face_exposure: null,
+        classification_total_row_count: 2,
+        unclassified_row_count: null,
+        unclassified_face_amount: null,
+        classification_coverage_pct: null,
+      }],
+    }, "CNY");
+    expect(cards.map((card) => card.value)).toEqual([EM_DASH, EM_DASH, EM_DASH]);
+    expect(cards[2].detail).toContain("未分类不计入");
   });
 });

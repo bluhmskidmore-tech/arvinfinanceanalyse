@@ -209,12 +209,22 @@ def maturity_manifest_consistency(
     assert isinstance(gates, dict)
     maturity = gates["maturity_remediation"]
     assert isinstance(maturity, dict)
+    bond_no_maturity_summary = maturity.get("bond_no_maturity_summary", {})
     bond_summary = maturity.get("bond_missing_maturity_summary", {})
     tyw_summary = maturity.get("tyw_liability_missing_maturity_summary", {})
+    assert isinstance(bond_no_maturity_summary, dict)
     assert isinstance(bond_summary, dict)
     assert isinstance(tyw_summary, dict)
 
     expected_export_status = "clean" if maturity.get("status") == "clean" else "blocked"
+    expected_bond_no_maturity_rows = int_value(
+        bond_no_maturity_summary,
+        "no_maturity_rows",
+    )
+    expected_bond_no_maturity_market_value = str_value(
+        bond_no_maturity_summary,
+        "no_maturity_market_value",
+    )
     expected_bond_rows = int_value(bond_summary, "missing_maturity_rows")
     expected_tyw_rows = int_value(tyw_summary, "missing_maturity_rows")
     expected_bond_market_value = str_value(bond_summary, "missing_maturity_market_value")
@@ -227,6 +237,10 @@ def maturity_manifest_consistency(
     assert isinstance(acceptance_criteria, dict)
     actual_report_date = manifest.get("report_date") if isinstance(manifest, dict) else None
     actual_export_status = manifest.get("export_status") if isinstance(manifest, dict) else None
+    actual_bond_no_maturity_rows = export_summary.get("bond_no_maturity_rows")
+    actual_bond_no_maturity_market_value = export_summary.get(
+        "bond_no_maturity_market_value"
+    )
     actual_bond_rows = export_summary.get("bond_missing_maturity_rows")
     actual_tyw_rows = export_summary.get("tyw_liability_missing_maturity_rows")
     actual_bond_market_value = export_summary.get("bond_missing_maturity_market_value")
@@ -265,6 +279,20 @@ def maturity_manifest_consistency(
             field="export_status",
             expected=expected_export_status,
             actual=actual_export_status,
+        )
+        _append_mismatch(
+            blockers,
+            prefix="maturity_remediation_manifest",
+            field="bond_no_maturity_rows",
+            expected=expected_bond_no_maturity_rows,
+            actual=actual_bond_no_maturity_rows,
+        )
+        _append_mismatch(
+            blockers,
+            prefix="maturity_remediation_manifest",
+            field="bond_no_maturity_market_value",
+            expected=expected_bond_no_maturity_market_value,
+            actual=actual_bond_no_maturity_market_value,
         )
         _append_mismatch(
             blockers,
@@ -326,6 +354,10 @@ def maturity_manifest_consistency(
         "actual_report_date": actual_report_date,
         "expected_export_status": expected_export_status,
         "actual_export_status": actual_export_status,
+        "expected_bond_no_maturity_rows": expected_bond_no_maturity_rows,
+        "actual_bond_no_maturity_rows": actual_bond_no_maturity_rows,
+        "expected_bond_no_maturity_market_value": expected_bond_no_maturity_market_value,
+        "actual_bond_no_maturity_market_value": actual_bond_no_maturity_market_value,
         "expected_bond_missing_maturity_rows": expected_bond_rows,
         "actual_bond_missing_maturity_rows": actual_bond_rows,
         "expected_tyw_liability_missing_maturity_rows": expected_tyw_rows,

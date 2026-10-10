@@ -25,10 +25,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-_PKG = Path(__file__).resolve().parent.parent
-if str(_PKG) not in sys.path:
-    sys.path.insert(0, str(_PKG))
-from paths import OUTPUT_DIR
+if __package__:
+    from backend.app.core_finance.macro.toolkit.paths import OUTPUT_DIR
+else:
+    _PKG = Path(__file__).resolve().parent.parent
+    if str(_PKG) not in sys.path:
+        sys.path.insert(0, str(_PKG))
+    from paths import OUTPUT_DIR
 
 ROOT = OUTPUT_DIR
 
@@ -38,7 +41,10 @@ ROOT = OUTPUT_DIR
 
 def connect_wind():
     try:
-        from WindPy import w
+        if __package__:
+            from backend.app.core_finance.macro.toolkit.WindPy import w
+        else:
+            from WindPy import w
         if not w.isconnected():
             ret = w.start()
             if ret.ErrorCode != 0:

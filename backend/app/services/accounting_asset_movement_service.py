@@ -1,15 +1,25 @@
 from __future__ import annotations
 
+import uuid
 from collections.abc import Iterable
+from copy import deepcopy
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import Literal
 
 import duckdb
+from backend.app.core_finance.accounting_asset_movement import (
+    GlAccountingAssetBalance,
+    build_accounting_asset_movement_summary,
+    classify_accounting_maturity,
+    collect_unmapped_gl144_accounts,
+)
 from backend.app.governance.settings import Settings
 from backend.app.repositories.accounting_asset_movement_repo import (
     AccountingAssetMovementRepository,
 )
+from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
 from backend.app.schemas.accounting_asset_movement import (
     AccountingAssetMovementDatesPayload,
     AccountingAssetMovementPayload,
@@ -34,19 +44,48 @@ from backend.app.schemas.accounting_asset_movement import (
     AccountingZqtzConcentrationDimensionPayload,
     AccountingZqtzConcentrationItemPayload,
     AccountingZqtzMaturityBucketPayload,
+    AccountingZqtzMaturityItemPayload,
     AccountingZqtzMaturityStructurePayload,
+    UnmappedGlAccountPayload,
 )
+from backend.app.services.balance_analysis_service import _duckdb_storage_identity
 from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope,
     build_formal_result_meta,
 )
-from backend.app.tasks.accounting_asset_movement import (
-    JOB_NAME,
-    PENDING_SOURCE_VERSION,
-    RULE_VERSION,
-    CACHE_KEY,
-    refresh_accounting_asset_movement_window,
-)
+from backend.app.services.runtime_cache import InMemoryTTLCache, get_runtime_cache
+
+# 与 backend/app/tasks/accounting_asset_movement.py 保持一致的任务身份常量。
+# 只读导入路径不得触发 backend.app.tasks（dramatiq broker/actor 注册），
+# 因此不在模块级 import tasks；一致性由
+# tests/test_accounting_asset_movement_service.py 的常量对齐测试保障。
+RULE_VERSION = "rv_accounting_asset_movement_v4"
+CACHE_KEY = "accounting_asset_movement.monthly"
+JOB_NAME = "accounting_asset_movement_refresh"
+PENDING_SOURCE_VERSION = "sv_accounting_asset_movement_pending"
+
+
+class _RefreshAccountingAssetMovementWindowProxy:
+    """延迟代理 tasks actor：只读路径导入本模块时不得触发
+    backend.app.tasks（dramatiq broker/actor 注册）初始化。保留模块级
+    同名符号与 .send 接口，测试仍可 monkeypatch 本模块属性。"""
+
+    def send(self, **kwargs: object) -> object:
+        from backend.app.tasks.accounting_asset_movement import (
+            refresh_accounting_asset_movement_window as _actor,
+        )
+
+        return _actor.send(**kwargs)
+
+    def __getattr__(self, name: str) -> object:
+        from backend.app.tasks.accounting_asset_movement import (
+            refresh_accounting_asset_movement_window as _actor,
+        )
+
+        return getattr(_actor, name)
+
+
+refresh_accounting_asset_movement_window = _RefreshAccountingAssetMovementWindowProxy()
 
 CACHE_VERSION = "cv_accounting_asset_movement_v1"
 CONTROL_ACCOUNTS = ["141%", "142%", "143%", "1440101%"]
@@ -77,15 +116,25 @@ INTEREST_RATE_BOND_DESCRIPTOR_FIELDS = (
     "sub_type",
     "instrument_name",
 )
-MATURITY_BUCKETS = (
-    ("overdue_or_matured", "已到期/逾期"),
+
+_ACCOUNTING_ASSET_MOVEMENT_ENVELOPE_CACHE: InMemoryTTLCache[tuple[object, ...], dict[str, object]] = get_runtime_cache(
+    "accounting_asset_movement.envelope",
+    ttl_seconds=900,
+)
+_AccountingAssetMovementCacheKey = tuple[object, ...]
+MATURITY_BUCKETS: tuple[tuple[Literal[
+    "overdue_or_matured", "<=30d", "31-90d", "91d-1y", "1-3y", "3-5y",
+    ">5y", "fund_no_maturity", "unknown",
+], str], ...] = (
+    ("overdue_or_matured", "到期日已过"),
     ("<=30d", "30天内"),
     ("31-90d", "31-90天"),
     ("91d-1y", "91天-1年"),
     ("1-3y", "1-3年"),
     ("3-5y", "3-5年"),
     (">5y", "5年以上"),
-    ("unknown", "未映射"),
+    ("fund_no_maturity", "基金未列到期日"),
+    ("unknown", "到期日缺失"),
 )
 ZQTZ228_REFERENCE_AMOUNTS = {
     "asset_zqtz_policy_financial_bond": Decimal("65228031802.46"),
@@ -98,56 +147,111 @@ class AccountingAssetMovementReadModelNotFoundError(LookupError):
     pass
 
 
+class AccountingAssetMovementUnavailableError(RuntimeError):
+    """Raised when DuckDB storage is temporarily unreadable for balance movement."""
+
+
+def _accounting_asset_movement_cache_key(
+    *,
+    duckdb_path: str,
+    report_date: str,
+    currency_basis: str,
+) -> _AccountingAssetMovementCacheKey | None:
+    storage = _duckdb_storage_identity(duckdb_path)
+    if storage is None:
+        return None
+    resolved_path, mtime_ns, size = storage
+    return (
+        report_date,
+        currency_basis,
+        resolved_path,
+        mtime_ns,
+        size,
+        RULE_VERSION,
+        CACHE_VERSION,
+    )
+
+
+def _with_fresh_movement_trace(envelope: dict[str, object]) -> dict[str, object]:
+    response = deepcopy(envelope)
+    result_meta = response.get("result_meta")
+    if isinstance(result_meta, dict):
+        result_meta["trace_id"] = f"tr_{uuid.uuid4().hex[:12]}"
+    return response
+
+
 def accounting_asset_movement_dates_envelope(
     duckdb_path: str,
     *,
     currency_basis: str = "CNX",
 ) -> dict[str, object]:
-    repo = AccountingAssetMovementRepository(duckdb_path)
-    report_dates = repo.list_report_dates(currency_basis=currency_basis)
-    latest_read_model_report_date = report_dates[0] if report_dates else None
-    latest_upstream_control_report_date = repo.latest_control_report_date(
-        currency_basis=currency_basis
-    )
-    payload = AccountingAssetMovementDatesPayload(
-        report_dates=report_dates,
-        currency_basis=currency_basis,
-        latest_read_model_report_date=latest_read_model_report_date,
-        latest_upstream_control_report_date=latest_upstream_control_report_date,
-        freshness_status=_movement_dates_freshness_status(
-            latest_read_model_report_date,
-            latest_upstream_control_report_date,
-        ),
-    )
-    meta = build_formal_result_meta(
-        trace_id="tr_balance_movement_dates",
-        result_kind="balance-analysis.movement.dates",
-        source_version=repo.latest_source_version(currency_basis=currency_basis),
-        rule_version=RULE_VERSION,
-        cache_version=CACHE_VERSION,
-        filters_applied={"currency_basis": currency_basis},
-        tables_used=[
-            "fact_accounting_asset_movement_monthly",
-            "product_category_pnl_canonical_fact",
-        ],
-    )
-    return build_formal_result_envelope(
-        result_meta=meta,
-        result_payload=payload.model_dump(mode="json"),
-    )
+    try:
+        repo = AccountingAssetMovementRepository(duckdb_path)
+        report_dates = repo.list_report_dates(currency_basis=currency_basis)
+        control_report_dates = repo.list_control_report_dates(
+            currency_basis=currency_basis
+        )
+        latest_read_model_report_date = report_dates[0] if report_dates else None
+        latest_upstream_control_report_date = (
+            control_report_dates[0] if control_report_dates else None
+        )
+        freshness_status = _movement_dates_freshness_status(
+            report_dates,
+            control_report_dates,
+        )
+        payload = AccountingAssetMovementDatesPayload(
+            report_dates=report_dates,
+            upstream_control_report_dates=control_report_dates,
+            currency_basis=currency_basis,
+            latest_read_model_report_date=latest_read_model_report_date,
+            latest_upstream_control_report_date=latest_upstream_control_report_date,
+            freshness_status=freshness_status,
+        )
+        meta = build_formal_result_meta(
+            trace_id="tr_balance_movement_dates",
+            result_kind="balance-analysis.movement.dates",
+            source_version=repo.latest_source_version(currency_basis=currency_basis),
+            rule_version=RULE_VERSION,
+            cache_version=CACHE_VERSION,
+            cache_key=CACHE_KEY,
+            quality_flag=(
+                "ok"
+                if freshness_status == "fresh"
+                else "stale"
+                if freshness_status == "read_model_lagging"
+                else "warning"
+            ),
+            filters_applied={"currency_basis": currency_basis},
+            tables_used=[
+                "fact_accounting_asset_movement_monthly",
+                "product_category_pnl_canonical_fact",
+            ],
+        )
+        return build_formal_result_envelope(
+            result_meta=meta,
+            result_payload=payload.model_dump(mode="json"),
+        )
+    except duckdb.Error as exc:
+        raise AccountingAssetMovementUnavailableError(
+            "Balance movement data is temporarily unavailable."
+        ) from exc
 
 
 def _movement_dates_freshness_status(
-    latest_read_model_report_date: str | None,
-    latest_upstream_control_report_date: str | None,
-) -> str:
+    report_dates: list[str],
+    upstream_control_report_dates: list[str],
+) -> Literal["fresh", "read_model_lagging", "read_model_empty", "upstream_empty"]:
+    latest_read_model_report_date = report_dates[0] if report_dates else None
+    latest_upstream_control_report_date = (
+        upstream_control_report_dates[0] if upstream_control_report_dates else None
+    )
     if latest_upstream_control_report_date and not latest_read_model_report_date:
         return "read_model_lagging"
     if latest_read_model_report_date and not latest_upstream_control_report_date:
         return "upstream_empty"
     if not latest_read_model_report_date and not latest_upstream_control_report_date:
         return "read_model_empty"
-    if latest_read_model_report_date < latest_upstream_control_report_date:
+    if not set(upstream_control_report_dates).issubset(report_dates):
         return "read_model_lagging"
     return "fresh"
 
@@ -158,23 +262,79 @@ def accounting_asset_movement_envelope(
     report_date: str,
     currency_basis: str = "CNX",
 ) -> dict[str, object]:
+    try:
+        cache_key = _accounting_asset_movement_cache_key(
+            duckdb_path=duckdb_path,
+            report_date=report_date,
+            currency_basis=currency_basis,
+        )
+
+        def build_envelope() -> dict[str, object]:
+            return _accounting_asset_movement_envelope_unlocked(
+                duckdb_path,
+                report_date=report_date,
+                currency_basis=currency_basis,
+            )
+
+        if cache_key is None:
+            return build_envelope()
+        return _with_fresh_movement_trace(
+            _ACCOUNTING_ASSET_MOVEMENT_ENVELOPE_CACHE.get_or_set(
+                cache_key,
+                build_envelope,
+            )
+        )
+    except duckdb.Error as exc:
+        raise AccountingAssetMovementUnavailableError(
+            "Balance movement data is temporarily unavailable."
+        ) from exc
+
+
+def _accounting_asset_movement_envelope_unlocked(
+    duckdb_path: str,
+    *,
+    report_date: str,
+    currency_basis: str = "CNX",
+) -> dict[str, object]:
     repo = AccountingAssetMovementRepository(duckdb_path)
+    with repo.scoped_connection():
+        return _build_accounting_asset_movement_envelope(
+            repo,
+            report_date=report_date,
+            currency_basis=currency_basis,
+        )
+
+
+def _build_accounting_asset_movement_envelope(
+    repo: AccountingAssetMovementRepository,
+    *,
+    report_date: str,
+    currency_basis: str,
+) -> dict[str, object]:
+    recent_rows = repo.fetch_recent_rows(
+        report_date=report_date,
+        currency_basis=currency_basis,
+        month_count=6,
+    )
     rows_without_pct = [
         AccountingAssetMovementRowPayload.model_validate(row)
-        for row in repo.fetch_rows(report_date=report_date, currency_basis=currency_basis)
+        for row in recent_rows
+        if str(row.get("report_date", "")) == report_date
     ]
     if not rows_without_pct:
         raise AccountingAssetMovementReadModelNotFoundError(
             f"No balance movement rows for report_date={report_date}, currency_basis={currency_basis}."
         )
-    rows = _with_balance_percentages(rows_without_pct)
-    trend_months = _build_trend_months(
-        repo.fetch_recent_rows(
-            report_date=report_date,
-            currency_basis=currency_basis,
-            month_count=6,
-        )
+    available_report_dates = repo.list_report_dates(currency_basis=currency_basis)
+    upstream_control_report_dates = repo.list_control_report_dates(
+        currency_basis=currency_basis
     )
+    freshness_status = _movement_dates_freshness_status(
+        available_report_dates,
+        upstream_control_report_dates,
+    )
+    rows = _with_balance_percentages(rows_without_pct)
+    trend_months = _build_trend_months(recent_rows)
     business_trend_months = _build_business_trend_months(
         repo.fetch_recent_business_rows(
             report_date=report_date,
@@ -204,10 +364,16 @@ def accounting_asset_movement_envelope(
         currency_basis=currency_basis,
     )
 
-    summary = _build_summary(rows)
+    summary = AccountingAssetMovementSummaryPayload.model_validate(
+        build_accounting_asset_movement_summary(rows),
+        from_attributes=True,
+    )
     payload = AccountingAssetMovementPayload(
         report_date=report_date,
         currency_basis=currency_basis,
+        available_report_dates=available_report_dates,
+        upstream_control_report_dates=upstream_control_report_dates,
+        freshness_status=freshness_status,
         rows=rows,
         summary=summary,
         trend_months=trend_months,
@@ -247,24 +413,53 @@ def accounting_asset_movement_envelope(
         ),
         accounting_controls=CONTROL_ACCOUNTS,
         excluded_controls=EXCLUDED_CONTROLS,
+        unmapped_gl_accounts=_unmapped_gl_accounts_payload(
+            repo,
+            report_date=report_date,
+            currency_basis=currency_basis,
+        ),
     )
+    all_evidence_rows: list[AccountingAssetMovementRowPayload | AccountingBusinessMovementRowPayload] = [
+        *evidence_rows, *business_evidence_rows,
+    ]
     meta = build_formal_result_meta(
         trace_id=f"tr_balance_movement_{report_date}_{currency_basis}",
         result_kind="balance-analysis.movement.detail",
         source_version=_joined_latest(
-            row.source_version for row in [*evidence_rows, *business_evidence_rows]
+            row.source_version for row in all_evidence_rows
         ),
         rule_version=_joined_latest(
-            row.rule_version for row in [*evidence_rows, *business_evidence_rows]
-        )
-        or RULE_VERSION,
+            [
+                RULE_VERSION,
+                *(
+                    row.rule_version
+                    for row in all_evidence_rows
+                ),
+            ]
+        ),
         cache_version=CACHE_VERSION,
-        quality_flag="ok",
+        cache_key=CACHE_KEY,
+        quality_flag=(
+            "stale"
+            if freshness_status == "read_model_lagging"
+            else "ok"
+            if (
+                freshness_status == "fresh"
+                and report_date in upstream_control_report_dates
+                and summary.matched_bucket_count == summary.bucket_count
+            )
+            else "warning"
+        ),
+        requested_report_date=report_date,
+        resolved_report_date=report_date,
+        as_of_date=report_date,
+        date_basis="month_end_report_date",
         filters_applied={"report_date": report_date, "currency_basis": currency_basis},
         tables_used=[
             "fact_accounting_asset_movement_monthly",
             "product_category_pnl_canonical_fact",
             "fact_formal_zqtz_balance_daily",
+            *(["fx_daily_mid"] if any(row.chain_status == "fx_adjusted" for row in evidence_rows) else []),
         ],
         evidence_rows=len(evidence_rows)
         + sum(len(month.rows) for month in business_trend_months),
@@ -330,18 +525,21 @@ def _recent_report_dates_for_refresh(
     month_count: int,
 ) -> list[str]:
     repo = AccountingAssetMovementRepository(duckdb_path)
+    materialized_dates = repo.list_report_dates(currency_basis=currency_basis)
     report_dates = [
         current_report_date
-        for current_report_date in repo.list_report_dates(currency_basis=currency_basis)
+        for current_report_date in materialized_dates
         if current_report_date <= report_date
     ][:month_count]
-    if report_date not in report_dates:
-        report_dates.append(report_date)
-    return sorted(set(report_dates))
-
-
-def _connect_for_read_after_refresh(duckdb_path: str) -> duckdb.DuckDBPyConnection:
-    return duckdb.connect(duckdb_path, read_only=True)
+    missing_upstream_dates = [
+        current_report_date
+        for current_report_date in repo.list_control_report_dates(
+            currency_basis=currency_basis
+        )
+        if current_report_date <= report_date
+        and current_report_date not in materialized_dates
+    ]
+    return sorted({report_date, *report_dates, *missing_upstream_dates})
 
 
 def _missing_product_category_control_dates(
@@ -350,48 +548,11 @@ def _missing_product_category_control_dates(
     report_dates: list[str],
     currency_basis: str,
 ) -> list[str]:
-    if not report_dates:
-        return []
-    try:
-        conn = _connect_for_read_after_refresh(duckdb_path)
-        table_exists = conn.execute(
-            """
-            select 1
-            from information_schema.tables
-            where table_name = 'product_category_pnl_canonical_fact'
-            limit 1
-            """
-        ).fetchone()
-        if table_exists is None:
-            return report_dates
-        rows = conn.execute(
-            """
-            select cast(report_date as varchar) as report_date, count(*) as row_count
-            from product_category_pnl_canonical_fact
-            where cast(report_date as varchar) in (select unnest(?))
-              and currency = ?
-              and (
-                account_code like '141%'
-                or account_code like '142%'
-                or account_code like '143%'
-                or account_code like '1440101%'
-              )
-            group by 1
-            """,
-            [report_dates, currency_basis],
-        ).fetchall()
-    except duckdb.Error:
-        return report_dates
-    finally:
-        if "conn" in locals():
-            conn.close()
-
-    available_dates = {str(row[0]) for row in rows if int(row[1] or 0) > 0}
-    return [
-        current_report_date
-        for current_report_date in report_dates
-        if current_report_date not in available_dates
-    ]
+    repo = AccountingAssetMovementRepository(duckdb_path)
+    return repo.fetch_missing_control_dates(
+        report_dates=report_dates,
+        currency_basis=currency_basis,
+    )
 
 
 def _resolve_refresh_product_category_source_dir(
@@ -468,12 +629,48 @@ def _resolve_refresh_fx_source_path(settings: Settings) -> str | None:
             return normalized_path
 
     default_path = Path(settings.data_input_root) / "fx" / "fx_daily_mid.csv"
-    if default_path.exists():
+    if default_path.exists() or settings._data_input_root_explicit:
         return str(default_path)
     repo_default_path = Path(__file__).resolve().parents[3] / "data_input" / "fx" / "fx_daily_mid.csv"
     if str(settings.environment).lower() == "development" and repo_default_path.exists():
         return str(repo_default_path)
     return None
+
+
+def _unmapped_gl_accounts_payload(
+    repo: AccountingAssetMovementRepository,
+    *,
+    report_date: str,
+    currency_basis: str,
+) -> list[UnmappedGlAccountPayload]:
+    parsed_report_date = date.fromisoformat(report_date)
+    gl_rows = [
+        GlAccountingAssetBalance(
+            report_date=parsed_report_date,
+            account_code=str(row.get("account_code") or ""),
+            beginning_balance=_decimal_from_object(row.get("beginning_balance")),
+            ending_balance=_decimal_from_object(row.get("ending_balance")),
+        )
+        for row in repo.fetch_gl144_family_rows(
+            report_date=report_date,
+            currency_basis=currency_basis,
+        )
+    ]
+    return [
+        UnmappedGlAccountPayload(
+            account_code=item.account_code,
+            beginning_balance=item.beginning_balance,
+            ending_balance=item.ending_balance,
+        )
+        for item in collect_unmapped_gl144_accounts(
+            gl_rows,
+            excluded_gl_account_prefixes=tuple(
+                str(pattern).rstrip("%")
+                for pattern in EXCLUDED_CONTROLS
+                if str(pattern).strip()
+            ),
+        )
+    ]
 
 
 def _build_refresh_run_id() -> str:
@@ -485,69 +682,8 @@ def _stale_formal_zqtz_dates(
     *,
     report_dates: list[str],
 ) -> list[str]:
-    if not report_dates:
-        return []
-    try:
-        conn = _connect_for_read_after_refresh(duckdb_path)
-        rows = conn.execute(
-            """
-            select
-              cast(report_date as varchar) as report_date,
-              count(*) as row_count,
-              sum(
-                case
-                  when coalesce(trim(business_type_primary), '') = '' then 1
-                  else 0
-                end
-              ) as empty_business_type_count
-            from fact_formal_zqtz_balance_daily
-            where cast(report_date as varchar) in (select unnest(?))
-              and currency_basis = 'CNY'
-              and position_scope = 'asset'
-            group by 1
-            """,
-            [report_dates],
-        ).fetchall()
-    except duckdb.Error:
-        return report_dates
-    finally:
-        if "conn" in locals():
-            conn.close()
-
-    freshness_by_date = {
-        str(row[0]): {
-            "row_count": int(row[1] or 0),
-            "empty_business_type_count": int(row[2] or 0),
-        }
-        for row in rows
-    }
-    stale_dates: list[str] = []
-    for current_report_date in report_dates:
-        freshness = freshness_by_date.get(current_report_date)
-        if freshness is None:
-            stale_dates.append(current_report_date)
-            continue
-        row_count = freshness["row_count"]
-        if row_count == 0 or freshness["empty_business_type_count"] == row_count:
-            stale_dates.append(current_report_date)
-    return stale_dates
-
-
-def _build_summary(
-    rows: list[AccountingAssetMovementRowPayload],
-) -> AccountingAssetMovementSummaryPayload:
-    return AccountingAssetMovementSummaryPayload(
-        previous_balance_total=sum((row.previous_balance for row in rows), Decimal("0")),
-        current_balance_total=sum((row.current_balance for row in rows), Decimal("0")),
-        balance_change_total=sum((row.balance_change for row in rows), Decimal("0")),
-        zqtz_amount_total=sum((row.zqtz_amount for row in rows), Decimal("0")),
-        reconciliation_diff_total=sum(
-            (row.reconciliation_diff for row in rows),
-            Decimal("0"),
-        ),
-        matched_bucket_count=sum(1 for row in rows if row.reconciliation_status == "matched"),
-        bucket_count=len(rows),
-    )
+    repo = BalanceAnalysisRepository(duckdb_path)
+    return repo.fetch_stale_formal_zqtz_report_dates(report_dates=report_dates)
 
 
 def _build_structure_migration_analysis(
@@ -895,8 +1031,10 @@ def _build_zqtz_maturity_structure(
         force_unknown=missing_maturity or prior_report_date is None,
     )
     eligible_total = sum((amount for amount, _count in current_totals.values()), Decimal("0"))
-    unknown_total = current_totals["unknown"][0]
+    # 保留 meta 的未注明有效日期总额语义，覆盖率仍以全部投资为分母。
+    unknown_total = current_totals["unknown"][0] + current_totals["fund_no_maturity"][0]
     covered_total = eligible_total - unknown_total
+    status: Literal["no_data", "unsupported_missing_columns", "supported"]
     if eligible_total == Decimal("0"):
         status = "no_data"
     elif missing_maturity:
@@ -905,6 +1043,21 @@ def _build_zqtz_maturity_structure(
         status = "supported"
 
     buckets = []
+    items_by_bucket: dict[str, list[AccountingZqtzMaturityItemPayload]] = {
+        key: [] for key, _label in MATURITY_BUCKETS
+    }
+    for row in current_rows:
+        key = _maturity_row_bucket(row, report_date, missing_maturity)
+        items_by_bucket[key].append(AccountingZqtzMaturityItemPayload(
+            instrument_code=str(row.get("instrument_code") or ""),
+            instrument_name=str(row.get("instrument_name") or ""),
+            portfolio_name=str(row.get("portfolio_name") or ""),
+            accounting_basis=str(row.get("accounting_basis") or ""),
+            current_amount=_decimal_from_object(row.get("amount")),
+            maturity_date=str(row["maturity_date"]) if row.get("maturity_date") else None,
+            overdue_principal_days=_reported_overdue_days(row.get("overdue_principal_days")),
+            overdue_interest_days=_reported_overdue_days(row.get("overdue_interest_days")),
+        ))
     for bucket_key, label in MATURITY_BUCKETS:
         current_amount, item_count = current_totals[bucket_key]
         prior_amount = prior_totals[bucket_key][0]
@@ -917,6 +1070,9 @@ def _build_zqtz_maturity_structure(
                 delta_amount=current_amount - prior_amount,
                 item_count=item_count,
                 share_pct=_pct(current_amount, eligible_total),
+                items=sorted(items_by_bucket[bucket_key], key=lambda item: (
+                    -item.current_amount, item.instrument_code, item.portfolio_name,
+                )),
             )
         )
 
@@ -934,9 +1090,9 @@ def _build_zqtz_maturity_structure(
             coverage_pct=_pct(covered_total, eligible_total),
             status=status,
             caveat=(
-                "maturity_date source column is absent; all maturity buckets are unsupported."
+                "来源缺少到期日字段，期限分类不可用。"
                 if status == "unsupported_missing_columns"
-                else "Uses maturity_date only; invalid or blank dates are reported as unknown."
+                else "有效到期日覆盖率以全部投资余额为分母；基金未列到期日单独列示，不据此认定数据异常或无固定期限。到期日已过不等于逾期，逾期天数按来源记录展示。"
             ),
         ),
         buckets=buckets,
@@ -1427,20 +1583,41 @@ def _maturity_totals(
     report_date: str,
     force_unknown: bool,
 ) -> dict[str, tuple[Decimal, int]]:
-    totals = {
+    totals: dict[str, tuple[Decimal, int]] = {
         bucket_key: (Decimal("0"), 0)
         for bucket_key, _label in MATURITY_BUCKETS
     }
-    report_date_value = _parse_iso_date(report_date)
     for row in rows:
         amount = _decimal_from_object(row.get("amount"))
-        bucket_key = "unknown"
-        if not force_unknown and report_date_value is not None:
-            maturity_date = _parse_iso_date(row.get("maturity_date"))
-            bucket_key = _maturity_bucket(maturity_date, report_date_value)
+        bucket_key = _maturity_row_bucket(row, report_date, force_unknown)
         bucket_amount, bucket_count = totals[bucket_key]
         totals[bucket_key] = (bucket_amount + amount, bucket_count + 1)
     return totals
+
+
+def _maturity_row_bucket(row: dict[str, object], report_date: str, force_unknown: bool) -> str:
+    report_date_value = _parse_iso_date(report_date)
+    if report_date_value is None:
+        return "unknown"
+    maturity_date = _parse_iso_date(row.get("maturity_date"))
+    if maturity_date is None and str(row.get("maturity_date") or "").strip():
+        return "unknown"
+    return classify_accounting_maturity(
+        maturity_date=maturity_date,
+        report_date=report_date_value,
+        instrument_code=str(row.get("instrument_code") or ""),
+        bond_type=str(row.get("bond_type") or ""),
+        force_unknown=force_unknown,
+    )
+
+
+def _reported_overdue_days(value: object) -> int | None:
+    # 缺失/非法记录保持未知，不能把未提供记录当作零天。
+    try:
+        days = Decimal(str(value))
+        return int(days) if days.is_finite() and days >= 0 and days == days.to_integral_value() else None
+    except (ValueError, ArithmeticError):
+        return None
 
 
 def _maturity_bucket(maturity_date: date | None, report_date: date) -> str:

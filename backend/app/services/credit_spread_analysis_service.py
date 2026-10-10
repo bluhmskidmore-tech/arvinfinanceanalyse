@@ -4,12 +4,17 @@ import uuid
 from dataclasses import asdict
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Literal, TypedDict, cast
 
 from backend.app.core_finance.credit_spread_analysis import (
+    MIN_HISTORY_OBSERVATIONS,
     BondSpreadRow,
     build_spread_term_structure,
     compute_bond_spreads,
     compute_spread_historical_context,
+    curve_has_usable_tenors,
+    spread_history_observation_counts,
+    summarize_spread_coverage,
 )
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
@@ -26,10 +31,25 @@ from backend.app.services.formal_result_runtime import (
 
 ZERO = Decimal("0")
 Q8 = Decimal("0.00000001")
-CACHE_VERSION = "cv_credit_spread_analysis_formal_v1"
-RULE_VERSION = "rv_credit_spread_analysis_formal_v1"
+CACHE_VERSION = "cv_credit_spread_analysis_formal_v3"
+RULE_VERSION = "rv_credit_spread_analysis_formal_v3"
 EMPTY_SOURCE_VERSION = "sv_credit_spread_analysis_empty"
 EMPTY_WARNING = "Credit spread analysis facts not yet populated for requested report_date."
+CURVE_NO_USABLE_TENORS_WARNING = (
+    "TREASURY_CURVE_NO_USABLE_TENORS: treasury curve snapshot has no recognisable tenor nodes; "
+    "credit spreads are unavailable rather than computed against a zero benchmark."
+)
+HISTORY_OBSERVATIONS_WARNING_PREFIX = "SPREAD_HISTORY_OBSERVATIONS_LT_"
+
+
+class _SpreadCoveragePayload(TypedDict):
+    credit_bond_count: int
+    total_credit_market_value: str
+    spread_bond_count: int
+    spread_market_value: str
+    missing_ytm_count: int
+    missing_ytm_market_value: str
+    spread_coverage_status: Literal["complete", "partial", "unavailable", "empty"]
 
 
 def get_credit_spread_analysis(report_date: date) -> dict:
@@ -47,9 +67,10 @@ def get_credit_spread_analysis(report_date: date) -> dict:
     )
     spread_rows = compute_bond_spreads(
         credit_rows,
-        curve_snapshot["curve"] if curve_snapshot else {},
+        cast(dict[str, Decimal], curve_snapshot["curve"]) if curve_snapshot else {},
     )
-    weighted_avg_spread = _weighted_avg_spread(spread_rows)
+    coverage = summarize_spread_coverage(credit_rows, spread_rows)
+    weighted_avg_spread = _weighted_avg_spread(spread_rows) if spread_rows else None
     historical_spreads = _build_historical_spreads(
         repo=repo,
         curve_repo=curve_repo,
@@ -74,7 +95,15 @@ def get_credit_spread_analysis(report_date: date) -> dict:
         or RULE_VERSION,
         vendor_version=str((curve_snapshot or {}).get("vendor_version") or "vv_none"),
     )
-    if curve_snapshot is None and credit_rows:
+    # 曲线快照存在但没有任何可识别期限节点：compute_bond_spreads 已 fail-closed 返回空，
+    # 这里必须把它标成曲线不可用，而不是让页面读成"0 只信用债"。
+    curve_unusable = bool(
+        curve_snapshot is not None
+        and credit_rows
+        and not spread_rows
+        and not curve_has_usable_tenors(cast(dict[str, Decimal], curve_snapshot["curve"]))
+    )
+    if (curve_snapshot is None or curve_unusable) and credit_rows:
         meta = meta.model_copy(
             update={
                 "vendor_status": "vendor_unavailable",
@@ -92,14 +121,34 @@ def get_credit_spread_analysis(report_date: date) -> dict:
     warnings: list[str] = []
     if not credit_rows:
         warnings.append(EMPTY_WARNING)
+    if curve_unusable:
+        warnings.append(CURVE_NO_USABLE_TENORS_WARNING)
     if curve_warning:
         warnings.append(curve_warning)
+    warnings.extend(_history_observation_warnings(historical_spreads))
+    if coverage["missing_ytm_count"]:
+        warnings.append(
+            "CREDIT_SPREAD_YTM_UNAVAILABLE: "
+            f"count={coverage['missing_ytm_count']}; "
+            f"market_value_cny={_text(coverage['missing_ytm_market_value'])}."
+        )
+    if coverage["spread_coverage_status"] != "complete":
+        meta = meta.model_copy(update={"quality_flag": "warning", "formal_use_allowed": False})
+        if credit_rows:
+            warnings.append(
+                "CREDIT_SPREAD_COVERAGE_INCOMPLETE: "
+                f"priced_count={coverage['spread_bond_count']}; "
+                f"credit_count={coverage['credit_bond_count']}; "
+                "spread statistics describe only computable positions."
+            )
 
     payload = CreditSpreadAnalysisResponse(
         report_date=report_date,
-        credit_bond_count=len(spread_rows),
-        total_credit_market_value=_text(sum((row.market_value for row in spread_rows), ZERO)),
-        weighted_avg_spread_bps=_text(weighted_avg_spread),
+        **cast(_SpreadCoveragePayload, {
+            key: _text(value) if isinstance(value, Decimal) else value
+            for key, value in coverage.items()
+        }),
+        weighted_avg_spread_bps=_text(weighted_avg_spread) if weighted_avg_spread is not None else None,
         spread_term_structure=[asdict(point) for point in build_spread_term_structure(spread_rows)],
         top_spread_bonds=[asdict(row) for row in _sorted_spread_rows(spread_rows, reverse=True)[:10]],
         bottom_spread_bonds=[asdict(row) for row in _sorted_spread_rows(spread_rows, reverse=False)[:10]],
@@ -137,11 +186,24 @@ def _build_historical_spreads(
                     f"Corrupt or inconsistent treasury curve snapshot lineage for trade_date={report_date_text}."
                 )
             continue
-        spread_rows = compute_bond_spreads(rows, curve_snapshot["curve"])
+        spread_rows = compute_bond_spreads(rows, cast(dict[str, Decimal], curve_snapshot["curve"]))
         if not spread_rows:
             continue
         historical.append((point_date, _weighted_avg_spread(spread_rows)))
     return sorted(historical, key=lambda item: item[0])
+
+
+def _history_observation_warnings(historical_spreads: list[tuple[date, Decimal]]) -> list[str]:
+    """历史分位样本不足时告警而不压制数值，与 credit_spread_percentile 的 MARKET_HISTORY_LT_60D 同口径。"""
+
+    count_1y, count_3y = spread_history_observation_counts(historical_spreads)
+    warnings: list[str] = []
+    for window, count in (("1y", count_1y), ("3y", count_3y)):
+        if count < MIN_HISTORY_OBSERVATIONS:
+            warnings.append(
+                f"{HISTORY_OBSERVATIONS_WARNING_PREFIX}{MIN_HISTORY_OBSERVATIONS}:{window}={count}"
+            )
+    return warnings
 
 
 def _weighted_avg_spread(rows: list[BondSpreadRow]) -> Decimal:

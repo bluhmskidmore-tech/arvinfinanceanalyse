@@ -1,5 +1,9 @@
 import { AxeBuilder } from "@axe-core/playwright";
 import { test, expect } from "@playwright/test";
+import { interceptStockAnalysisA11y } from "./fixtures/stock-analysis-a11y.mjs";
+
+const WORKBENCH_AXE_SHELL_SELECTOR =
+  '[data-testid="workbench-group-nav"], [data-testid="workbench-main-content"]';
 
 async function probeServer(baseURL) {
   if (!baseURL) {
@@ -53,11 +57,14 @@ const smokePages = [
     slug: "product-category-pnl",
     path: "/product-category-pnl",
     readySelector: '[data-testid="product-category-page"]',
+    blockedAxeImpacts: ["critical", "serious"],
+    minimumControlTargetSize: 24,
   },
   {
     slug: "pnl",
     path: "/pnl",
-    readySelector: '[data-testid="yield-analysis-page"]',
+    readySelector: '[data-testid="formal-pnl-v1-page"]',
+    excludeSelectors: [".ag-theme-alpine", ".ag-root"],
   },
   {
     slug: "pnl-bridge",
@@ -69,12 +76,6 @@ const smokePages = [
     slug: "risk-tensor",
     path: "/risk-tensor",
     readySelector: '[data-testid="risk-tensor-brief"]',
-    readySelectors: [
-      '[data-testid="risk-tensor-brief"]',
-      '[data-testid="risk-tensor-error-context"]',
-      '[data-testid="risk-tensor-dates-empty-state"]',
-      '[data-testid="risk-tensor-empty-state"]',
-    ],
   },
   {
     slug: "ledger-pnl",
@@ -110,13 +111,17 @@ const smokePages = [
     screenshotFullPage: false,
   },
   {
+    slug: "market-finance",
+    path: "/market-finance",
+    readySelector: '[data-testid="market-finance-workbench"]',
+    blockedAxeImpacts: ["critical", "serious"],
+    minimumControlTargetSize: 24,
+    screenshotFullPage: false,
+  },
+  {
     slug: "macro-toolkit",
     path: "/macro-toolkit",
-    readySelector: '[data-testid="macro-toolkit-tailwind-cockpit"]',
-    readySelectors: [
-      '[data-testid="macro-toolkit-tailwind-cockpit"]',
-      '[data-testid="macro-toolkit-error-state"]',
-    ],
+    readySelector: '[data-testid="macro-toolkit-cockpit"]',
     screenshotFullPage: false,
   },
   {
@@ -129,17 +134,26 @@ const smokePages = [
     slug: "concentration-monitor",
     path: "/concentration-monitor",
     readySelector: '[data-testid="concentration-monitor-kpi-grid"]',
-    readySelectors: [
-      '[data-testid="concentration-monitor-kpi-grid"]',
-      ".async-section__error",
-      ".async-section__empty",
-    ],
     screenshotFullPage: false,
   },
   {
     slug: "stock-analysis",
     path: "/stock-analysis",
     readySelector: '[data-testid="stock-analysis-page"]',
+    minimumControlViewport: { width: 390, height: 844 },
+    minimumControlTargetSize: 24,
+    minimumControlPrep: expandStockAnalysisMinimumControlSurfaces,
+    minimumControlSelectors: [
+      '[data-testid="stock-analysis-queue-search"]',
+      '[data-testid="stock-analysis-agent-open"]',
+      '[data-testid="stock-analysis-refresh"]',
+      '[data-testid^="stock-analysis-factor-open-"]',
+      '[data-testid^="stock-analysis-price-chart-range-"]',
+    ],
+    requiredMinimumControlSelectors: [
+      '[data-testid^="stock-analysis-factor-open-"]',
+      '[data-testid^="stock-analysis-price-chart-range-"]',
+    ],
     screenshotFullPage: false,
   },
   {
@@ -209,13 +223,11 @@ const flagshipKeyboardPages = [
   {
     slug: "macro-toolkit",
     path: "/macro-toolkit",
-    readySelector: '[data-testid="macro-toolkit-tailwind-cockpit"]',
-    readySelectors: [
-      '[data-testid="macro-toolkit-tailwind-cockpit"]',
-      '[data-testid="macro-toolkit-error-state"]',
-    ],
+    readySelector: '[data-testid="macro-toolkit-cockpit"]',
+    // 913db8d0/63ccb747 信息架构重构后 cockpit 是只读结论卡；
+    // 业务控件（刷新动作、治理与证据入口）现位于路由工具栏与治理证据栏。
     businessFocusSelector:
-      '[data-testid="macro-toolkit-tailwind-cockpit"] button, [data-testid="macro-toolkit-tailwind-cockpit"] a, [data-testid="macro-toolkit-error-state"] button',
+      '[data-testid="macro-toolkit-toolbar"] button, [data-testid="macro-toolkit-meta-rail"] button, [data-testid="macro-toolkit-meta-rail"] a',
   },
   {
     slug: "stock-analysis",
@@ -258,7 +270,7 @@ const gateHControlContextPages = [
       },
     ],
     stateCueSelector:
-      '[data-testid="cross-asset-trust-panel"], [data-testid="cross-asset-action-rail"], [data-testid="cross-asset-data-status-strip"]',
+      '[data-testid="cross-asset-status-strip"]',
   },
   {
     slug: "ledger-pnl",
@@ -280,19 +292,19 @@ const gateHControlContextPages = [
   {
     slug: "macro-toolkit",
     path: "/macro-toolkit",
-    readySelector: '[data-testid="macro-toolkit-tailwind-cockpit"]',
-    readySelectors: [
-      '[data-testid="macro-toolkit-tailwind-cockpit"]',
-      '[data-testid="macro-toolkit-error-state"]',
-    ],
+    readySelector: '[data-testid="macro-toolkit-cockpit"]',
     controls: [
       {
-        label: "cockpit action",
+        label: "toolbar refresh action",
+        selector: '[data-testid="macro-toolkit-toolbar"] button',
+      },
+      {
+        label: "governance evidence rail entry",
         selector:
-          '[data-testid="macro-toolkit-tailwind-cockpit"] button, [data-testid="macro-toolkit-tailwind-cockpit"] a, [data-testid="macro-toolkit-error-state"] button',
+          '[data-testid="macro-toolkit-meta-rail"] button, [data-testid="macro-toolkit-meta-rail"] a',
       },
     ],
-    stateCueSelector: '[data-testid="macro-toolkit-tailwind-cockpit"], [data-testid="macro-toolkit-error-state"]',
+    stateCueSelector: '[data-testid="macro-toolkit-meta-rail"]',
   },
   {
     slug: "stock-analysis",
@@ -300,8 +312,8 @@ const gateHControlContextPages = [
     readySelector: '[data-testid="stock-analysis-page"]',
     controls: [
       {
-        label: "agent open action",
-        selector: '[data-testid="stock-analysis-agent-open"]',
+        label: "queue search",
+        selector: '[data-testid="stock-analysis-queue-search"]',
       },
       {
         label: "refresh action",
@@ -351,57 +363,160 @@ const gateHControlContextPages = [
     controls: [
       {
         label: "report date selector",
-        selector: '[data-testid="bond-analysis-overview"] select[aria-label="报告日"]',
+        selector: '[data-testid="bond-analysis-overview"] [role="combobox"][aria-label="报告日"]',
+      },
+      {
+        label: "decision next action",
+        selector: '[data-testid="bond-analysis-decision-next-action"]',
       },
       {
         label: "detail disclosure",
         selector: '[data-testid="bond-analysis-detail-drilldown"] summary',
       },
     ],
+    focusTarget: {
+      label: "decision next action",
+      selector: '[data-testid="bond-analysis-decision-next-action"]',
+    },
     stateCueSelector: '[data-testid="bond-analysis-daily-judgment"]',
   },
 ];
 
 const stateCueTextPattern =
-  /就绪|待|暂无|未解析|不展示|缺失|降级|陈旧|受限|阻断|失败|错误|告警|风险|预警|兜底|可信|证据|复核|条件|已返回|已读|匹配|加载中|ready|warning|stale|fallback|blocked|no data/i;
+  /就绪|匹配|已返回|可用|待|暂无|缺失|降级|陈旧|受限|阻断|失败|错误|告警|风险|预警|兜底|可信|证据|复核|条件|ready|warning|stale|fallback|blocked|no data/i;
 const internalSlugNamePattern = /^[a-z0-9]+(?:[-_][a-z0-9]+)+$/i;
-
-function readySelectorsFor(smokePage) {
-  return smokePage.readySelectors ?? [smokePage.readySelector];
-}
-
-async function firstVisibleMatch(page, selectors, timeout = 60_000) {
-  const selectorList = (Array.isArray(selectors) ? selectors : [selectors]).filter(Boolean);
-  const deadline = Date.now() + timeout;
-
-  while (Date.now() <= deadline) {
-    for (const selector of selectorList) {
-      const locator = page.locator(selector);
-      const count = await locator.count();
-      for (let index = 0; index < count; index += 1) {
-        const candidate = locator.nth(index);
-        if (await candidate.isVisible().catch(() => false)) {
-          return { selector, locator: candidate };
-        }
-      }
-    }
-    await page.waitForTimeout(100);
-  }
-
-  const fallbackSelector = selectorList.join(", ");
-  await expect(page.locator(fallbackSelector).first()).toBeVisible({ timeout: 1 });
-  return { selector: fallbackSelector, locator: page.locator(fallbackSelector).first() };
-}
 
 async function gotoVisiblePage(page, smokePage) {
   await page.goto(smokePage.path, { waitUntil: "domcontentloaded" });
-  const pageRoot = await firstVisibleMatch(
-    page,
-    readySelectorsFor(smokePage),
-    smokePage.readyTimeout ?? 60_000,
-  );
+  const pageRoot = page.locator(smokePage.readySelector);
+  await expect(pageRoot).toBeVisible({ timeout: smokePage.readyTimeout ?? 60_000 });
   await page.waitForLoadState("load", { timeout: 15_000 }).catch(() => undefined);
   return pageRoot;
+}
+
+function resolveAxeScopeSelector(smokePage) {
+  return smokePage.axeSelector
+    ? `${WORKBENCH_AXE_SHELL_SELECTOR}, ${smokePage.axeSelector}`
+    : `${WORKBENCH_AXE_SHELL_SELECTOR}, ${smokePage.readySelector}`;
+}
+
+async function collectUndersizedControls(page, smokePage) {
+  if (!smokePage.minimumControlTargetSize) {
+    return [];
+  }
+
+  if (smokePage.minimumControlViewport) {
+    await page.setViewportSize(smokePage.minimumControlViewport);
+    await page.waitForTimeout(150);
+  }
+
+  if (smokePage.minimumControlPrep) {
+    await smokePage.minimumControlPrep(page);
+  }
+
+  const selector = smokePage.minimumControlSelectors?.length
+    ? smokePage.minimumControlSelectors.join(", ")
+    : `${smokePage.readySelector} button, ${smokePage.readySelector} a[href], ${smokePage.readySelector} select, ${smokePage.readySelector} input, ${smokePage.readySelector} textarea, ${smokePage.readySelector} summary`;
+
+  return page.locator(selector).evaluateAll((controls, minimumSize) =>
+    controls.flatMap((control) => {
+      const box = control.getBoundingClientRect();
+      const style = window.getComputedStyle(control);
+      const visible =
+        box.width > 0 &&
+        box.height > 0 &&
+        style.display !== "none" &&
+        style.visibility !== "hidden";
+      if (!visible || (box.width >= minimumSize && box.height >= minimumSize)) {
+        return [];
+      }
+      return [
+        {
+          name: (
+            control.getAttribute("aria-label") ||
+            control.textContent ||
+            control.getAttribute("title") ||
+            control.getAttribute("placeholder") ||
+            ""
+          )
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 120),
+          testId: control.getAttribute("data-testid"),
+          width: Math.round(box.width),
+          height: Math.round(box.height),
+        },
+      ];
+    }),
+  smokePage.minimumControlTargetSize);
+}
+
+async function collectMinimumControlCoverage(page, smokePage) {
+  if (!smokePage.requiredMinimumControlSelectors?.length) {
+    return [];
+  }
+
+  if (smokePage.minimumControlPrep) {
+    await smokePage.minimumControlPrep(page);
+  }
+
+  const missingSelectors = [];
+  for (const selector of smokePage.requiredMinimumControlSelectors) {
+    const locator = page.locator(selector);
+    const visibleCount = await locator.evaluateAll((controls) =>
+      controls.filter((control) => {
+        const box = control.getBoundingClientRect();
+        const style = window.getComputedStyle(control);
+        return (
+          box.width > 0 &&
+          box.height > 0 &&
+          style.display !== "none" &&
+          style.visibility !== "hidden"
+        );
+      }).length,
+    );
+    if (visibleCount === 0) {
+      missingSelectors.push(selector);
+    }
+  }
+  return missingSelectors;
+}
+
+async function expandStockAnalysisMinimumControlSurfaces(page) {
+  const factorDisclosure = page.getByTestId("stock-analysis-factor-disclosure");
+  if (await factorDisclosure.count()) {
+    const isOpen = await factorDisclosure.evaluate((element) => element.open);
+    if (!isOpen) await factorDisclosure.locator(":scope > summary").click();
+  }
+
+  const deepResearchSummary = page.getByTestId("stock-analysis-deep-research-summary");
+  if (
+    (await deepResearchSummary.isVisible().catch(() => false)) &&
+    (await deepResearchSummary.evaluate((element) => {
+      const details = element.closest("details");
+      return !(details instanceof HTMLDetailsElement) || !details.open;
+    }).catch(() => false))
+  ) {
+    await deepResearchSummary.click();
+    await page.waitForTimeout(300);
+  }
+
+  const reviewQueueJump = page.getByTestId("stock-analysis-rail-queue-jump");
+  if (await reviewQueueJump.isVisible().catch(() => false)) {
+    await reviewQueueJump.click();
+    await page.waitForTimeout(300);
+  }
+
+  const reviewQueueDetailsButton = page
+    .locator('[data-testid="stock-analysis-review-queue-details"] button')
+    .first();
+  if (
+    (await reviewQueueDetailsButton.isVisible().catch(() => false)) &&
+    ((await reviewQueueDetailsButton.getAttribute("aria-expanded")) ?? "false") !== "true"
+  ) {
+    await reviewQueueDetailsButton.click();
+    await page.waitForTimeout(300);
+  }
 }
 
 async function describeActiveElement(page, targetSelector) {
@@ -434,51 +549,23 @@ async function describeActiveElement(page, targetSelector) {
   }, targetSelector);
 }
 
-async function describeActiveElementWithFocus(page, targetSelector) {
-  return page.evaluate((selector) => {
-    const activeElement = document.activeElement;
-    const targetElements = [...document.querySelectorAll(selector)];
-    const matchedTarget = targetElements.find(
-      (target) => target === activeElement || target.contains(activeElement),
-    );
-
-    if (!(activeElement instanceof HTMLElement)) {
-      return {
-        tagName: activeElement?.tagName?.toLowerCase() ?? null,
-        testId: null,
-        ariaLabel: null,
-        text: "",
-        targetMatched: false,
-        hasVisibleFocus: false,
-        outlineStyle: null,
-        outlineWidth: null,
-        boxShadow: null,
-      };
-    }
-
-    const style = window.getComputedStyle(activeElement);
-    const outlineWidth = Number.parseFloat(style.outlineWidth || "0");
-    const hasOutline = style.outlineStyle !== "none" && outlineWidth > 0;
-    const hasShadow = Boolean(style.boxShadow && style.boxShadow !== "none");
-
-    return {
-      tagName: activeElement.tagName.toLowerCase(),
-      testId: activeElement.getAttribute("data-testid"),
-      ariaLabel: activeElement.getAttribute("aria-label"),
-      text: (activeElement.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 120),
-      targetMatched: Boolean(matchedTarget),
-      targetTestId: matchedTarget?.getAttribute("data-testid") ?? null,
-      targetTagName: matchedTarget?.tagName.toLowerCase() ?? null,
-      hasVisibleFocus: hasOutline || hasShadow,
-      outlineStyle: style.outlineStyle,
-      outlineWidth: style.outlineWidth,
-      boxShadow: style.boxShadow,
-    };
-  }, targetSelector);
-}
-
 async function firstVisibleLocator(page, selector, timeout = 60_000) {
-  return (await firstVisibleMatch(page, selector, timeout)).locator;
+  const locator = page.locator(selector);
+  const deadline = Date.now() + timeout;
+
+  while (Date.now() <= deadline) {
+    const count = await locator.count();
+    for (let index = 0; index < count; index += 1) {
+      const candidate = locator.nth(index);
+      if (await candidate.isVisible().catch(() => false)) {
+        return candidate;
+      }
+    }
+    await page.waitForTimeout(100);
+  }
+
+  await expect(locator.first()).toBeVisible({ timeout: 1 });
+  return locator.first();
 }
 
 async function readAccessibleControlContext(locator) {
@@ -515,31 +602,6 @@ async function readAccessibleControlContext(locator) {
   });
 }
 
-async function isKeyboardFocusableLocator(locator) {
-  return locator
-    .evaluate((element) => {
-      if (!(element instanceof HTMLElement)) {
-        return false;
-      }
-
-      const style = window.getComputedStyle(element);
-      const rect = element.getBoundingClientRect();
-      const isDisabled =
-        ("disabled" in element && Boolean(element.disabled)) ||
-        element.getAttribute("aria-disabled") === "true";
-
-      return (
-        !isDisabled &&
-        element.tabIndex >= 0 &&
-        style.display !== "none" &&
-        style.visibility !== "hidden" &&
-        rect.width > 0 &&
-        rect.height > 0
-      );
-    })
-    .catch(() => false);
-}
-
 async function focusMainWithSkipLink(page) {
   const skipLink = page.getByRole("link", { name: "Skip to main content" });
   const mainContent = page.locator("#workbench-main-content");
@@ -556,83 +618,97 @@ async function focusMainWithSkipLink(page) {
 }
 
 async function focusTargetFromMain(page, targetSelector, maxSteps = 100) {
-  const attempts = [];
-  const mainContent = page.locator("#workbench-main-content");
+  await focusMainWithSkipLink(page);
 
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    const focusSequence = [];
-
-    try {
-      if (attempt === 1) {
-        await focusMainWithSkipLink(page);
-      } else {
-        await mainContent.focus();
-        await expect(mainContent).toBeFocused();
+  const focusSequence = [];
+  for (let step = 1; step <= maxSteps; step += 1) {
+    await page.keyboard.press("Tab");
+    const active = await describeActiveElement(page, targetSelector);
+    const focusPresentation = await page.evaluate(() => {
+      const activeElement = document.activeElement;
+      if (!(activeElement instanceof HTMLElement)) {
+        return {
+          hasVisibleFocus: false,
+          outlineStyle: null,
+          outlineWidth: null,
+          boxShadow: null,
+        };
       }
 
-      for (let step = 1; step <= maxSteps; step += 1) {
-        await page.keyboard.press("Tab");
-        const active = await describeActiveElementWithFocus(page, targetSelector);
-        focusSequence.push({ step, ...active });
+      const style = window.getComputedStyle(activeElement);
+      const outlineWidth = Number.parseFloat(style.outlineWidth || "0");
+      const hasOutline = style.outlineStyle !== "none" && outlineWidth > 0;
+      const hasShadow = Boolean(style.boxShadow && style.boxShadow !== "none");
+      return {
+        hasVisibleFocus: hasOutline || hasShadow,
+        outlineStyle: style.outlineStyle,
+        outlineWidth: style.outlineWidth,
+        boxShadow: style.boxShadow,
+      };
+    });
+    focusSequence.push({ step, ...active, ...focusPresentation });
 
-        if (active.targetMatched) {
-          const result = {
-            attempt,
-            matchedStep: step,
-            active,
-            focusPresentation: active,
-            focusSequence,
-          };
-          attempts.push(result);
-          return { ...result, attempts };
-        }
-      }
-
-      attempts.push({ attempt, matchedStep: null, active: null, focusPresentation: null, focusSequence });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      attempts.push({
-        attempt,
-        interrupted: true,
-        error: message,
-        matchedStep: null,
-        active: null,
-        focusPresentation: null,
-        focusSequence,
-      });
-      await page.waitForLoadState("domcontentloaded", { timeout: 15_000 }).catch(() => undefined);
-      await mainContent.waitFor({ state: "visible", timeout: 60_000 }).catch(() => undefined);
+    if (active.targetMatched) {
+      return { matchedStep: step, active, focusPresentation, focusSequence };
     }
   }
 
-  return { ...attempts[attempts.length - 1], attempts };
+  return { matchedStep: null, active: null, focusPresentation: null, focusSequence };
 }
 
 test.describe("frontend accessibility + visual smoke", () => {
   for (const smokePage of smokePages) {
-    test(`${smokePage.slug} has no critical axe violations @${smokePage.slug}`, async ({ page }, testInfo) => {
+    const blockedAxeImpacts = smokePage.blockedAxeImpacts ?? ["critical"];
+    test(`${smokePage.slug} has no ${blockedAxeImpacts.join(" or ")} axe violations @${smokePage.slug}`, async ({ page }, testInfo) => {
       const serverCheck = await probeServer(testInfo.project.use.baseURL);
       expect(serverCheck.ok, serverCheck.reason).toBe(true);
 
-      const pageRoot = await gotoVisiblePage(page, smokePage);
+      const stockFixture = smokePage.slug === "stock-analysis"
+        ? await interceptStockAnalysisA11y(page)
+        : null;
+      const target = stockFixture
+        ? { ...smokePage, path: `${process.env.MOSS_PLAYWRIGHT_STATE_BASE_URL ?? `http://127.0.0.1:${process.env.MOSS_PLAYWRIGHT_STATE_PORT ?? "5889"}`}${smokePage.path}` }
+        : smokePage;
+      await gotoVisiblePage(page, target);
+      if (stockFixture) {
+        await expect(page.getByTestId("stock-analysis-pretrade-qualification-boundary")).toBeVisible();
+        await expect(page.getByTestId("stock-analysis-factor-disclosure")).toHaveCount(0);
+        stockFixture.ready = true;
+        await page.reload({ waitUntil: "domcontentloaded" });
+        await expect(page.locator(smokePage.readySelector)).toBeVisible();
+        await expect(page.getByTestId("stock-analysis-factor-disclosure")).toBeVisible();
+        expect(stockFixture.workbenchReads).toBe(2);
+      }
 
-      let axeBuilder = new AxeBuilder({ page }).include(smokePage.axeSelector ?? pageRoot.selector);
+      let axeBuilder = new AxeBuilder({ page }).include(resolveAxeScopeSelector(smokePage));
       for (const selector of smokePage.excludeSelectors ?? []) {
         axeBuilder = axeBuilder.exclude(selector);
       }
       const { violations } = await axeBuilder.analyze();
-      const criticalViolations = violations.filter((violation) => violation.impact === "critical");
+      const blockedViolations = violations.filter((violation) =>
+        blockedAxeImpacts.includes(violation.impact),
+      );
+      const undersizedControls = await collectUndersizedControls(page, smokePage);
+      const missingMinimumControlCoverage = await collectMinimumControlCoverage(page, smokePage);
 
       await page.screenshot({
         path: testInfo.outputPath(`${smokePage.slug}.png`),
         fullPage: smokePage.screenshotFullPage ?? true,
       });
 
-      expect(
-        criticalViolations,
-        criticalViolations
+      expect.soft(
+        blockedViolations,
+        blockedViolations
           .map((violation) => `${violation.id}: ${violation.help}`)
           .join("\n"),
+      ).toEqual([]);
+      expect(
+        undersizedControls,
+        `Controls smaller than ${smokePage.minimumControlTargetSize}px: ${JSON.stringify(undersizedControls)}`,
+      ).toEqual([]);
+      expect(
+        missingMinimumControlCoverage,
+        `Missing minimum-size smoke coverage for selectors: ${JSON.stringify(missingMinimumControlCoverage)}`,
       ).toEqual([]);
     });
   }
@@ -754,15 +830,10 @@ test.describe("frontend accessibility + visual smoke", () => {
       await gotoVisiblePage(page, controlPage);
 
       const controlContexts = [];
-      let firstFocusableControl = null;
       for (const control of controlPage.controls) {
         const controlLocator = await firstVisibleLocator(page, control.selector);
         const context = await readAccessibleControlContext(controlLocator);
-        const keyboardFocusable = await isKeyboardFocusableLocator(controlLocator);
-        controlContexts.push({ ...control, ...context, keyboardFocusable });
-        if (!firstFocusableControl && keyboardFocusable) {
-          firstFocusableControl = control;
-        }
+        controlContexts.push({ ...control, ...context });
 
         expect(context.accessibleName, `${controlPage.slug} ${control.label} needs a screen-reader name`).not.toBe("");
         expect(
@@ -771,19 +842,15 @@ test.describe("frontend accessibility + visual smoke", () => {
         ).not.toMatch(internalSlugNamePattern);
       }
 
-      expect(
-        firstFocusableControl,
-        `${controlPage.slug} needs at least one enabled route-owned business control`,
-      ).not.toBeNull();
-
-      const focusEvidence = await focusTargetFromMain(page, firstFocusableControl.selector);
+      const focusTarget = controlPage.focusTarget ?? controlPage.controls[0];
+      const focusEvidence = await focusTargetFromMain(page, focusTarget.selector);
       expect(
         focusEvidence.matchedStep,
-        `${controlPage.slug} keyboard focus did not reach ${firstFocusableControl.label}`,
+        `${controlPage.slug} keyboard focus did not reach ${focusTarget.label}`,
       ).not.toBeNull();
       expect(
         focusEvidence.focusPresentation?.hasVisibleFocus,
-        `${controlPage.slug} ${firstFocusableControl.label} needs a visible focus indicator`,
+        `${controlPage.slug} ${focusTarget.label} needs a visible focus indicator`,
       ).toBe(true);
 
       const stateCue = await firstVisibleLocator(page, controlPage.stateCueSelector);

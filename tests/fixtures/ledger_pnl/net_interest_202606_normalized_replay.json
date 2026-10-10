@@ -1,0 +1,276 @@
+{
+  "fixture_contract_version": "ledger-pnl-net-interest-synthetic-replay-v1",
+  "sample_id": "GS-LEDGER-PNL-NET-INTEREST-202606-A",
+  "report_month": "202606",
+  "rule_version": "qdb-finance-2026-v1.0.1",
+  "data_classification": "synthetic_aggregate_preserving",
+  "retained_compact_evidence": "previously_disclosed_account_codes_contributions_and_current_locators_only",
+  "source_hash_role": "governed_identity_anchor_only",
+  "account_name_policy": "synthetic_placeholder",
+  "source_periods": [
+    {
+      "month": "202604",
+      "report_date": "2026-04-30",
+      "ledger_file_name": "总账对账202604.xlsx",
+      "ledger_sha256": "6b59d7b41b9b11aa8bff431b9d33e353b20751b024e959327dae619a2b84e977"
+    },
+    {
+      "month": "202605",
+      "report_date": "2026-05-31",
+      "ledger_file_name": "总账对账202605.xlsx",
+      "ledger_sha256": "dabefcb6b713d0a427bb09d53673940ecd5df8b98051c61592b0c89b3d505224"
+    },
+    {
+      "month": "202606",
+      "report_date": "2026-06-30",
+      "ledger_file_name": "总账对账202606.xlsx",
+      "ledger_sha256": "29717578b92e107cc2fbcd5b66cd7c63191c24e1a7d245c103c94e235331c0b7"
+    }
+  ],
+  "components": [
+    {
+      "metric_id": "income.interest.loan.total",
+      "formula_weight": 1,
+      "effective_component_weight": "-1",
+      "top_account_code": "50106000001",
+      "top_current_row": 934,
+      "top_contribution_yi": "-0.1047455527",
+      "filler_code_prefix": "5019",
+      "filler_current_row_start": 1500,
+      "regular_filler_count": 18,
+      "regular_filler_contribution_yi": "-0.0100000000",
+      "remainder_filler_contribution_yi": "-0.0626469214",
+      "shared_offset_account_code": "50206000001",
+      "shared_offset_current_row": 1900,
+      "shared_offset_ending_yuan_by_month": {
+        "202604": "100000000",
+        "202605": "200000000",
+        "202606": "300000000"
+      }
+    },
+    {
+      "metric_id": "expense.interest.deposit.total",
+      "formula_weight": -1,
+      "effective_component_weight": "1",
+      "top_account_code": "52101000001",
+      "top_current_row": 1092,
+      "top_contribution_yi": "-0.1264796803",
+      "filler_code_prefix": "5219",
+      "filler_current_row_start": 1600,
+      "regular_filler_count": 12,
+      "regular_filler_contribution_yi": "0.0150000000",
+      "remainder_filler_contribution_yi": "0.0295706432"
+    },
+    {
+      "metric_id": "income.interest.investment",
+      "formula_weight": 1,
+      "effective_component_weight": "-1",
+      "top_account_code": "51402010003",
+      "top_current_row": 1041,
+      "top_contribution_yi": "-1.3160266974",
+      "filler_code_prefix": "5149",
+      "filler_current_row_start": 1700,
+      "regular_filler_count": 16,
+      "regular_filler_contribution_yi": "-0.0200000000",
+      "remainder_filler_contribution_yi": "-0.0900052564"
+    },
+    {
+      "metric_id": "income.interest.interbank_net",
+      "formula_weight": 1,
+      "effective_component_weight": "-1",
+      "top_account_code": "52201000001",
+      "top_current_row": 1106,
+      "top_contribution_yi": "-0.7223470174",
+      "filler_code_prefix": "5239",
+      "filler_current_row_start": 1800,
+      "regular_filler_count": 17,
+      "regular_filler_contribution_yi": "0.0050000000",
+      "remainder_filler_contribution_yi": "0.0645589406",
+      "shared_offset_account_code": "50206000001",
+      "shared_offset_current_row": 1900
+    }
+  ],
+  "supporting_point_accounts": [
+    {
+      "match_level": "l1",
+      "rule_code": "201",
+      "account_code": "20180000001",
+      "ending_yuan": "100000000",
+      "current_row": 2001
+    },
+    {
+      "match_level": "l1",
+      "rule_code": "202",
+      "account_code": "20280000001",
+      "ending_yuan": "100000000",
+      "current_row": 2002
+    },
+    {
+      "match_level": "l1",
+      "rule_code": "203",
+      "account_code": "20380000001",
+      "ending_yuan": "100000000",
+      "current_row": 2003
+    },
+    {
+      "match_level": "l1",
+      "rule_code": "204",
+      "account_code": "20480000001",
+      "ending_yuan": "100000000",
+      "current_row": 2004
+    },
+    {
+      "match_level": "l1",
+      "rule_code": "205",
+      "account_code": "20580000001",
+      "ending_yuan": "100000000",
+      "current_row": 2005
+    },
+    {
+      "match_level": "l1",
+      "rule_code": "225",
+      "account_code": "22580000001",
+      "ending_yuan": "100000000",
+      "current_row": 2006
+    },
+    {
+      "match_level": "l1",
+      "rule_code": "243",
+      "account_code": "24380000001",
+      "ending_yuan": "100000000",
+      "current_row": 2007
+    },
+    {
+      "match_level": "l1",
+      "rule_code": "244",
+      "account_code": "24480000001",
+      "ending_yuan": "100000000",
+      "current_row": 2008
+    },
+    {
+      "match_level": "l1",
+      "rule_code": "251",
+      "account_code": "25180000001",
+      "ending_yuan": "100000000",
+      "current_row": 2009
+    },
+    {
+      "match_level": "l2",
+      "rule_code": "20250",
+      "account_code": "20250800001",
+      "ending_yuan": "100000000",
+      "current_row": 2010
+    },
+    {
+      "match_level": "full",
+      "rule_code": "21601020001",
+      "account_code": "21601020001",
+      "ending_yuan": "100000000",
+      "current_row": 2011
+    },
+    {
+      "match_level": "l1",
+      "rule_code": "211",
+      "account_code": "21180000001",
+      "ending_yuan": "100000000",
+      "current_row": 2012
+    },
+    {
+      "match_level": "l1",
+      "rule_code": "215",
+      "account_code": "21580000001",
+      "ending_yuan": "100000000",
+      "current_row": 2013
+    },
+    {
+      "match_level": "l2",
+      "rule_code": "21702",
+      "account_code": "21702800001",
+      "ending_yuan": "100000000",
+      "current_row": 2014
+    },
+    {
+      "match_level": "full",
+      "rule_code": "21602020001",
+      "account_code": "21602020001",
+      "ending_yuan": "100000000",
+      "current_row": 2015
+    },
+    {
+      "match_level": "l1",
+      "rule_code": "123",
+      "account_code": "12380000001",
+      "ending_yuan": "100000000",
+      "current_row": 2016
+    },
+    {
+      "match_level": "full",
+      "rule_code": "13001000002",
+      "account_code": "13001000002",
+      "ending_yuan": "100000000",
+      "current_row": 2017
+    },
+    {
+      "match_level": "full",
+      "rule_code": "13003000002",
+      "account_code": "13003000002",
+      "ending_yuan": "100000000",
+      "current_row": 2018
+    },
+    {
+      "match_level": "l1",
+      "rule_code": "132",
+      "account_code": "13280000001",
+      "ending_yuan": "100000000",
+      "current_row": 2019
+    },
+    {
+      "match_level": "l1",
+      "rule_code": "136",
+      "account_code": "13680000001",
+      "ending_yuan": "100000000",
+      "current_row": 2020
+    },
+    {
+      "match_level": "l2",
+      "rule_code": "13604",
+      "account_code": "13604800001",
+      "ending_yuan": "100000000",
+      "current_row": 2021
+    },
+    {
+      "match_level": "l1",
+      "rule_code": "129",
+      "account_code": "12980000001",
+      "ending_yuan": "100000000",
+      "current_row": 2022
+    },
+    {
+      "match_level": "l1",
+      "rule_code": "122",
+      "account_code": "12280000001",
+      "ending_yuan": "100000000",
+      "current_row": 2023
+    },
+    {
+      "match_level": "full",
+      "rule_code": "13001000001",
+      "account_code": "13001000001",
+      "ending_yuan": "100000000",
+      "current_row": 2024
+    },
+    {
+      "match_level": "full",
+      "rule_code": "13003000001",
+      "account_code": "13003000001",
+      "ending_yuan": "100000000",
+      "current_row": 2025
+    }
+  ],
+  "expected_synthetic_rows_sha256": {
+    "income.interest.loan.total": "172c6e1dd22010be35f3d59e550ce4809f569635502a571c7580a587a086c86d",
+    "expense.interest.deposit.total": "1f7e51c585776ff5be85f84a857694f2eadea5516799578d5bd335b1e20b5878",
+    "income.interest.investment": "13df788be8062a23d065cbfe0de24878210618a6bb44be897dcce8af8f58d346",
+    "income.interest.interbank_net": "45ff1e838f8229fe17f6c502e1c07c412493fe9fd4736896977aec52542f0994"
+  }
+}

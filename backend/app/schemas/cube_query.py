@@ -15,7 +15,14 @@ class CubeQueryRequest(BaseModel):
     fact_table: str
     measures: list[str]
     dimensions: list[str] = Field(default_factory=list)
-    filters: dict[str, list[str]] = Field(default_factory=dict)
+    filters: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description=(
+            "Governed balance reads require exactly currency_basis=['CNY']. "
+            "Product category reads require one supported view and one configured category_id. "
+            "These Cube surfaces are analytical-only; ledger filters are validated separately."
+        ),
+    )
     order_by: list[str] = Field(default_factory=list)
     limit: int = Field(default=100, ge=1, le=1000)
     offset: int = Field(default=0, ge=0)

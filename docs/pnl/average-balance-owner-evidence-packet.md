@@ -1,6 +1,6 @@
 # Average Balance Owner Evidence Packet
 
-Page ID: `GAP-AVERAGE-BALANCE-PAGE`
+Page ID: `PAGE-ADB-001`
 Page slug: `average-balance`
 Primary API: `/api/analysis/adb`
 Business contract status: `evidence-pending`
@@ -16,8 +16,23 @@ This packet does not approve page closure, write governance records, prove page 
 
 - `golden_sample_boundary=daily_and_monthly_adb_candidate_dto_capture_ready_pending_approval`
 - `golden_sample_approval_artifact_status=captured-awaiting-approval`
+- `monthly_golden_response_model_status=model-valid-awaiting-owner-review`
+- `monthly_golden_recapture_required=false`
 - `approval_action_item_count=13`
 - `business_owner_approval_captured=false`
+
+## Monthly Golden Response-Model Readiness
+
+- Response model: `backend.app.schemas.adb_analysis.AdbAnalysisEnvelope`
+- Status: `model-valid-awaiting-owner-review`
+- Response-model valid: `true`
+- Deterministic recapture required: `false`
+- Missing required fields: `none`
+- Validation error types: `none`
+- `writes_golden_sample=false`
+- `captures_golden_sample_approval=false`
+
+This packet diagnoses the stored sample only. It does not regenerate `response.json`, accept the producer diff, or record owner approval.
 
 ## Boundary
 
@@ -64,6 +79,10 @@ Existing record line: `dry-run not written`
 - owner_signoff_runbook: `docs/pnl/average-balance-owner-signoff-runbook.md`
 - daily_golden_sample: `tests/golden_samples/GS-AVERAGE-BALANCE-A`
 - monthly_golden_sample: `tests/golden_samples/GS-AVERAGE-BALANCE-MONTHLY-A`
+- monthly_golden_response_model: `backend/app/schemas/adb_analysis.py`
+- response_model_preservation_test: `tests/test_api_response_model_field_preservation.py`
+- monthly_recapture_candidate_tool: `scripts/capture_average_balance_monthly_golden_candidate.py`
+- monthly_recapture_candidate_command: `python scripts/capture_average_balance_monthly_golden_candidate.py --output-dir <new-review-dir>`
 - metric_dictionary: `docs/metric_dictionary.md`
 - live_smoke_evidence: `docs/audits/2026-06-09-average-balance-live-smoke-evidence.md`
 - latest_verification_snapshot: `docs/audits/2026-06-10-average-balance-candidate-verification.md`
@@ -107,3 +126,4 @@ Existing record line: `dry-run not written`
 - `validates_required_fields=true`
 - `approves_formal_balance_truth=false`
 - `approves_monthly_adb_nim_truth=false`
+- `validates_monthly_golden_response_model=true`

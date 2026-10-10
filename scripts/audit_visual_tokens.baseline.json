@@ -1,0 +1,212 @@
+{
+  "frontend/src/components/CalendarList.css": {
+    "hex": 0,
+    "forbidden": 0,
+    "offRadius": 1,
+    "doubleDash": 0
+  },
+  "frontend/src/components/page/DataQualityBanner.css": {
+    "hex": 0,
+    "forbidden": 0,
+    "offRadius": 1,
+    "doubleDash": 0
+  },
+  "frontend/src/components/page/PagePrimitives.module.css": {
+    "hex": 17,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/agent/AgentWorkbenchPage.css": {
+    "hex": 44,
+    "forbidden": 0,
+    "offRadius": 17,
+    "doubleDash": 0
+  },
+  "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.css": {
+    "hex": 0,
+    "forbidden": 0,
+    "offRadius": 6,
+    "doubleDash": 0
+  },
+  "frontend/src/features/balance-analysis/pages/balanceAnalysisPageModel.ts": {
+    "hex": 1,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/bond-analytics/components/BondAnalyticsDetailPrimitives.module.css": {
+    "hex": 0,
+    "forbidden": 0,
+    "offRadius": 1,
+    "doubleDash": 0
+  },
+  "frontend/src/features/bond-analytics/components/BondAnalyticsViewContent.module.css": {
+    "hex": 0,
+    "forbidden": 0,
+    "offRadius": 9,
+    "doubleDash": 0
+  },
+  "frontend/src/features/cross-asset/lib/crossAssetAnalytics.test.ts": {
+    "hex": 1,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/cross-asset/lib/crossAssetAnalytics.ts": {
+    "hex": 9,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/macro-toolkit/pages/MacroToolkitPage.css": {
+    "hex": 17,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/market-data/pages/MarketDataPage.css": {
+    "hex": 0,
+    "forbidden": 0,
+    "offRadius": 5,
+    "doubleDash": 0
+  },
+  "frontend/src/features/source-preview/pages/SourcePreviewPage.tsx": {
+    "hex": 15,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/features/stock-analysis/components/StockAnalysisDataHealthCard.css": {
+    "hex": 0,
+    "forbidden": 0,
+    "offRadius": 1,
+    "doubleDash": 0
+  },
+  "frontend/src/features/stock-analysis/components/StockAnalysisPretradeChecklist.css": {
+    "hex": 0,
+    "forbidden": 0,
+    "offRadius": 2,
+    "doubleDash": 0
+  },
+  "frontend/src/features/stock-analysis/pages/StockAnalysisPage.css": {
+    "hex": 0,
+    "forbidden": 0,
+    "offRadius": 24,
+    "doubleDash": 0
+  },
+  "frontend/src/features/workbench/dashboard-home/dashboardHome.module.css": {
+    "hex": 14,
+    "forbidden": 0,
+    "offRadius": 4,
+    "doubleDash": 0
+  },
+  "frontend/src/features/workbench/dashboard-home/dashboardHomeOptionTwoDeferred.module.css": {
+    "hex": 0,
+    "forbidden": 0,
+    "offRadius": 6,
+    "doubleDash": 0
+  },
+  "frontend/src/features/workbench/dashboard-home/dashboardHomeShell.module.css": {
+    "hex": 38,
+    "forbidden": 0,
+    "offRadius": 7,
+    "doubleDash": 0
+  },
+  "frontend/src/features/workbench/dashboard/dashboardMockData.ts": {
+    "hex": 3,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/router/WorkbenchRouteStatusPages.module.css": {
+    "hex": 8,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/styles/dashboardCockpit.css": {
+    "hex": 22,
+    "forbidden": 0,
+    "offRadius": 5,
+    "doubleDash": 0
+  },
+  "frontend/src/styles/tokens.css": {
+    "hex": 122,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/styles/workbenchDeferredChrome.css": {
+    "hex": 10,
+    "forbidden": 0,
+    "offRadius": 9,
+    "doubleDash": 0
+  },
+  "frontend/src/styles/workbenchInstitutionalConsole.css": {
+    "hex": 1,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/styles/workbenchShell.css": {
+    "hex": 0,
+    "forbidden": 0,
+    "offRadius": 3,
+    "doubleDash": 0
+  },
+  "frontend/src/test/bondAnalyticsCockpitTokens.test.ts": {
+    "hex": 1,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/test/crossAssetDriversPageModel.test.ts": {
+    "hex": 8,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/test/CrossAssetPage.test.tsx": {
+    "hex": 4,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/test/PnlAttributionPage.test.tsx": {
+    "hex": 3,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/test/RiskTensorPage.test.tsx": {
+    "hex": 0,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 2
+  },
+  "frontend/src/test/theme.test.ts": {
+    "hex": 14,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/theme/designSystem.ts": {
+    "hex": 217,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/theme/displayTokens.ts": {
+    "hex": 3,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  },
+  "frontend/src/theme/tokens.ts": {
+    "hex": 34,
+    "forbidden": 0,
+    "offRadius": 0,
+    "doubleDash": 0
+  }
+}

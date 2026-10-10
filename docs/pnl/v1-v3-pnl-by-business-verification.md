@@ -7,7 +7,7 @@
 本仓库不包含 3888 旧前端源码；V1 行为以产品/迁移文档为准：
 
 - [docs/superpowers/specs/2026-04-18-v1-v3-parity-matrix.md](../superpowers/specs/2026-04-18-v1-v3-parity-matrix.md)：`/pnl-by-business` 对应 **`/api/pnl/by-business`** 与年度汇总等。
-- [audit_pack/source_snapshot/docs/handoff/2026-04-18-backend-endpoint-handoff.md](../../audit_pack/source_snapshot/docs/handoff/2026-04-18-backend-endpoint-handoff.md)：V1 路由含 **`/api/pnl/by-business`**、**`/api/pnl/yearly-summary`**。
+- [docs/handoff/2026-04-18-backend-endpoint-handoff.md](../handoff/2026-04-18-backend-endpoint-handoff.md)：V1 路由含 **`/api/pnl/by-business`**、**`/api/pnl/yearly-summary`**。
 
 **你在本机 3888 仍应做一次 Network 截图/导出**，确认实际路径是否为 `by-business` / `yearly-summary` / 其它，以排除部署差异。
 

@@ -6,7 +6,11 @@ def _default_probe_result(module, url: str):
         "http://api/ui/risk/overview",
         "http://api/ui/home/alerts",
         "http://api/ui/home/contribution",
+    }
+    auth_guarded_urls = {
         "http://api/api/cube/dimensions/bond_analytics",
+    }
+    analytical_urls = {
         "http://api/api/risk/buckets?report_date=2025-12-31",
         "http://api/api/analysis/yield_metrics?report_date=2025-12-31",
         "http://api/api/analysis/liabilities/counterparty?report_date=2025-12-31&top_n=10",
@@ -18,14 +22,16 @@ def _default_probe_result(module, url: str):
         "http://api/ui/balance-analysis/dates",
         "http://api/api/pnl/dates",
     }
-    status = 503 if url in reserved_urls else 200
+    status = 503 if url in reserved_urls else 403 if url in auth_guarded_urls else 200
     return module.ProbeResult(
         name="",
         url=url,
         status=status,
         outcome="pass" if status == 200 else "blocked",
         result_kind="demo.kind" if status == 200 else None,
-        basis="formal" if status == 200 else None,
+        basis=("analytical" if url in analytical_urls else "formal") if status == 200 else None,
+        formal_use_allowed=(url not in analytical_urls) if status == 200 else None,
+        scenario_flag=False if status == 200 else None,
         report_dates=["2025-12-31"] if url in dated_urls else None,
         detail="reserved" if status == 503 else None,
     )
@@ -233,7 +239,7 @@ def test_build_preflight_report_blocks_when_excluded_route_is_live(monkeypatch):
     assert "ui_risk_overview" in report["required_failures"]
 
 
-def test_build_preflight_report_blocks_when_reserved_route_is_live(monkeypatch):
+def test_build_preflight_report_blocks_when_analytical_route_claims_formal_semantics(monkeypatch):
     module = load_module(
         "scripts.governed_phase2_preflight",
         "scripts/governed_phase2_preflight.py",
@@ -250,6 +256,8 @@ def test_build_preflight_report_blocks_when_reserved_route_is_live(monkeypatch):
                 outcome="pass",
                 result_kind="demo.kind",
                 basis="formal",
+                formal_use_allowed=True,
+                scenario_flag=False,
                 report_dates=None,
             )
             if url == "http://api/api/risk/buckets?report_date=2025-12-31"
@@ -260,4 +268,34 @@ def test_build_preflight_report_blocks_when_reserved_route_is_live(monkeypatch):
     report = module.build_preflight_report(api_base="http://api", frontend_base="http://frontend")
 
     assert report["verdict"] == "blocked"
-    assert "api_risk_buckets_reserved" in report["required_failures"]
+    assert "api_risk_buckets_analytical" in report["required_failures"]
+
+
+def test_build_preflight_report_preserves_analytical_route_http_failure_detail(monkeypatch):
+    module = load_module(
+        "scripts.governed_phase2_preflight",
+        "scripts/governed_phase2_preflight.py",
+    )
+
+    monkeypatch.setattr(
+        module,
+        "_fetch_json",
+        lambda url, timeout_seconds=20: (
+            module.ProbeResult(
+                name="",
+                url=url,
+                status=503,
+                outcome="blocked",
+                detail="canonical source unavailable",
+            )
+            if url == "http://api/api/risk/buckets?report_date=2025-12-31"
+            else _default_probe_result(module, url)
+        ),
+    )
+
+    report = module.build_preflight_report(api_base="http://api", frontend_base="http://frontend")
+    probe = next(item for item in report["probes"] if item["name"] == "api_risk_buckets_analytical")
+
+    assert report["verdict"] == "blocked"
+    assert "canonical source unavailable" in probe["detail"]
+    assert "expected basis=analytical" in probe["detail"]

@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>市场工作台 · 目标态样张</title>
+<style>
+/* ============================================================
+   市场工作台 · 目标态（dh-api 令牌，与 portfolio 深色规格一致）
+   数据：真实 API 快照（采集 2026-07-19，最新行情日 2026-07-10）
+   ============================================================ */
+:root {
+  --bg-page:      #070a12;
+  --bg-panel:     #0c1421;
+  --bg-panel2:    #101a2a;
+  --bg-panel3:    #132033;
+  --border:       rgba(103,119,142,.34);
+  --border-2:     rgba(103,119,142,.22);
+  --text:         #e8eef7;
+  --text-2:       #a9b6c7;
+  --text-3:       #8593a8;
+  --accent:       #72a7dc;
+  --up:           #66b98b;
+  --down:         #d47a72;
+  --warn:         #c9a565;
+  --rail-bg:      #10161f;
+  --gold:         #c9a85c;
+  --radius:       6px;
+  --font-sans:    -apple-system, 'PingFang SC', 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
+  --font-num:     ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  background: var(--bg-page);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  font-style: normal;
+  -webkit-font-smoothing: antialiased;
+}
+
+.num, .v, .chg, .date, .mono {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 样张数据标注 ---------- */
+.sample-tag {
+  position: fixed; right: 14px; bottom: 12px; z-index: 60;
+  font-size: 11px; color: var(--text-3); letter-spacing: .03em;
+  background: var(--bg-page);
+  border: 1px solid var(--border-2); border-radius: var(--radius);
+  padding: 4px 9px;
+}
+
+/* ---------- 左侧导航 rail ---------- */
+.rail {
+  position: fixed; top: 0; left: 0; bottom: 0; width: 220px; z-index: 50;
+  background: var(--rail-bg);
+  border-right: 1px solid var(--border-2);
+  padding: 18px 0 20px;
+  overflow: hidden;
+}
+.rail-logo {
+  display: flex; align-items: center; gap: 10px;
+  padding: 2px 20px 16px;
+  border-bottom: 1px solid var(--border-2);
+}
+.rail-logo .m {
+  width: 26px; height: 26px; border-radius: var(--radius);
+  background: var(--bg-panel3); border: 1px solid var(--border);
+  color: var(--gold);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 600;
+}
+.rail-logo .word { font-size: 15px; font-weight: 600; letter-spacing: .12em; color: var(--text); }
+
+.rail-group { padding: 16px 0 4px; }
+.rail-group-label {
+  padding: 0 20px 8px;
+  font-size: 11px; color: var(--text-3); letter-spacing: .18em;
+}
+.rail-item {
+  position: relative;
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 20px;
+  color: var(--text-2); font-size: 13px;
+}
+.rail-item svg { flex: 0 0 auto; opacity: .75; }
+.rail-item .tail { margin-left: auto; font-size: 11px; color: var(--text-3); }
+.rail-item.active {
+  background: #16202e;
+  color: var(--text);
+}
+.rail-item.active::before {
+  content: ""; position: absolute; left: 0; top: 6px; bottom: 6px;
+  width: 2px; background: var(--gold);
+}
+.rail-item.active .tail { color: var(--text-3); }
+.rail-sub { padding: 1px 20px 6px 44px; font-size: 11px; color: var(--text-3); }
+.badge {
+  margin-left: auto; font-size: 10px; letter-spacing: .08em;
+  color: var(--gold); border: 1px solid rgba(201,168,92,.45);
+  border-radius: 3px; padding: 1px 6px;
+}
+
+/* ---------- 主区骨架 ---------- */
+.main {
+  margin-left: 220px;
+  padding: 16px 24px 56px;
+  min-width: 0;
+}
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* ---------- 顶栏 ---------- */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 11px 20px;
+}
+.topbar-left { display: flex; align-items: baseline; gap: 14px; min-width: 0; }
+.page-title { font-size: 18px; font-weight: 600; color: var(--text); white-space: nowrap; }
+.page-sub { font-size: 12px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topbar-right { display: flex; align-items: center; gap: 18px; flex: 0 0 auto; }
+.btn-primary {
+  font-family: var(--font-sans); font-size: 12px; letter-spacing: .04em;
+  color: #0a1420; background: var(--accent);
+  border: 1px solid var(--accent); border-radius: var(--radius);
+  padding: 6px 16px; cursor: default;
+}
+.topbar-note { text-align: left; }
+.topbar-note .l1 { font-size: 12px; color: var(--text-2); }
+.topbar-note .l2 { font-size: 11px; color: var(--text-3); margin-top: 1px; }
+.topbar-status { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text-2); }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--up); }
+.topbar-dates { font-size: 11px; color: var(--text-3); }
+.topbar-dates .num { color: var(--text-2); margin-left: 4px; }
+
+/* ---------- 行情带面板 ---------- */
+.bands { margin-top: 10px; }
+.band { padding: 8px 16px 9px; }
+.band + .band { border-top: 1px solid var(--border-2); }
+.band-label {
+  font-size: 11px; color: var(--text-3); letter-spacing: .16em;
+  margin-bottom: 5px;
+}
+.rate-grid { border: 1px solid var(--border-2); border-radius: var(--radius); overflow: hidden; }
+.rate-row { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); }
+.rate-row + .rate-row { border-top: 1px solid var(--border-2); }
+.rate-cell {
+  padding: 6px 12px 5px;
+  border-left: 1px solid var(--border-2);
+  min-width: 0;
+}
+.rate-cell:first-child { border-left: 0; }
+.rate-cell.empty { background: transparent; border-left-color: transparent; }
+.rc-label { font-size: 11px; color: var(--text-3); white-space: nowrap; }
+.rc-mid { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 2px; }
+.rc-value { font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; }
+.rc-chg { margin-top: 1px; font-size: 11px; }
+.rc-date { margin-top: 0; font-size: 10px; color: var(--text-3); }
+.chg.r { color: var(--down); }   /* 涨：去饱和红（沿用真实页红涨绿跌语义） */
+.chg.g { color: var(--up); }     /* 跌：去饱和绿 */
+.chg.n { color: var(--text-3); }
+
+.spark { display: block; flex: 0 0 auto; }
+.spark path { fill: none; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+.spark.rd path { stroke: var(--down); }
+.spark.gn path { stroke: var(--up); }
+.spark.bl path { stroke: var(--accent); }
+
+.xasset-row { display: inline-flex; border: 1px solid var(--border-2); border-radius: var(--radius); overflow: hidden; }
+.xasset-cell { padding: 6px 12px 5px; border-left: 1px solid var(--border-2); min-width: 196px; }
+.xasset-cell:first-child { border-left: 0; }
+
+.stance-box { border: 1px solid var(--border-2); border-radius: var(--radius); padding: 6px 12px 5px; max-width: 420px; }
+.stance-label { font-size: 11px; color: var(--text-3); }
+.stance-value { margin-top: 2px; font-size: 15px; font-weight: 600; color: var(--text); }
+
+/* ---------- hero + 右侧小卡 ---------- */
+.hero-row {
+  display: grid; grid-template-columns: 1fr 348px; gap: 12px;
+  margin-top: 10px; align-items: stretch;
+}
+.hero { padding: 12px 20px 10px; display: flex; flex-direction: column; }
+.hero-label { font-size: 11px; color: var(--accent); letter-spacing: .16em; }
+.hero-title {
+  margin-top: 6px;
+  font-size: 21px; font-weight: 500; line-height: 1.55; color: var(--text);
+  letter-spacing: .01em;
+}
+.hero-title .num { font-weight: 500; }
+.hero-sub { margin-top: 6px; font-size: 12px; color: var(--text-2); }
+.hero-cols {
+  display: grid; grid-template-columns: 1fr 1fr 1fr;
+  margin-top: 9px; padding-top: 8px;
+  border-top: 1px solid var(--border-2);
+}
+.hero-col { padding: 0 16px; border-left: 1px solid var(--border-2); }
+.hero-col:first-child { padding-left: 0; border-left: 0; }
+.hero-col:last-child { padding-right: 0; }
+.hc-label { font-size: 11px; color: var(--text-3); letter-spacing: .1em; }
+.hc-main { margin-top: 6px; font-size: 12px; color: var(--text); line-height: 1.6; }
+.hc-note { margin-top: 6px; font-size: 11px; color: var(--text-3); line-height: 1.6; }
+.hero-foot {
+  margin-top: 9px; padding-top: 7px;
+  border-top: 1px solid var(--border-2);
+  font-size: 11px; color: var(--text-3); line-height: 1.7;
+}
+
+.side-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-content: start; }
+.side-card {
+  position: relative;
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px 9px;
+  overflow: hidden;
+}
+.side-card::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: var(--bar, var(--accent));
+}
+.side-card.wide { grid-column: 1 / -1; }
+.sc-label { font-size: 11px; color: var(--text-3); white-space: nowrap; }
+.sc-mid { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 4px; }
+.sc-value { font-size: 17px; font-weight: 600; color: var(--text); white-space: nowrap; }
+.sc-value.text { font-family: var(--font-sans); font-size: 15px; }
+.sc-sub { margin-top: 3px; font-size: 10px; color: var(--text-3); white-space: nowrap; }
+.sc-sub .num { color: var(--text-2); }
+
+/* ---------- 下方区块（DESK / CURVE / CROSS / MACRO） ---------- */
+.section { margin-top: 12px; padding: 14px 16px 16px; }
+.section-head {
+  display: flex; align-items: baseline; gap: 10px;
+  padding-bottom: 10px; border-bottom: 1px solid var(--border-2);
+}
+.sec-tag { font-size: 11px; color: var(--accent); letter-spacing: .18em; }
+.sec-title { font-size: 14px; font-weight: 600; color: var(--text); }
+.sec-src { font-size: 11px; color: var(--text-3); }
+.sec-link { margin-left: auto; font-size: 11px; color: var(--accent); }
+
+.notice {
+  margin-top: 12px;
+  border: 1px solid var(--border-2); border-radius: var(--radius);
+  padding: 9px 12px; font-size: 12px; color: var(--text-2);
+}
+.notice b { color: var(--warn); font-weight: 600; }
+
+.tile-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-top: 12px; }
+.tile {
+  border: 1px solid var(--border-2); border-radius: var(--radius);
+  padding: 10px 12px;
+}
+.tile-cat { font-size: 10px; color: var(--text-3); letter-spacing: .1em; }
+.tile-name { margin-top: 3px; font-size: 12px; color: var(--text-2); }
+.tile-val { margin-top: 4px; font-size: 13px; color: var(--text); white-space: nowrap; }
+
+.curve-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+.curve-table th {
+  text-align: left; font-size: 11px; font-weight: 500; letter-spacing: .08em;
+  color: var(--text-3); padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.curve-table td {
+  font-size: 12px; color: var(--text-2); padding: 7px 10px;
+  border-bottom: 1px solid var(--border-2);
+}
+.curve-table tr:last-child td { border-bottom: 0; }
+.curve-table .name { color: var(--text); }
+.curve-table td.v, .curve-table th.v { text-align: right; }
+.curve-table td.cv, .curve-table th.cv { text-align: right; }
+
+.cross-grid { display: grid; grid-template-columns: 1.2fr 1fr 1.3fr 1fr; gap: 10px; margin-top: 12px; }
+.cross-card { border: 1px solid var(--border-2); border-radius: var(--radius); padding: 11px 13px; }
+.cc-head { display: flex; align-items: baseline; gap: 8px; }
+.cc-tag { font-size: 10px; color: var(--accent); letter-spacing: .14em; }
+.cc-count { font-size: 12px; color: var(--text-3); }
+.cc-rows { margin-top: 8px; }
+.cc-row { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; border-top: 1px solid var(--border-2); font-size: 12px; }
+.cc-row:first-child { border-top: 0; }
+.cc-row .k { color: var(--text-2); }
+.cc-row .s { color: var(--text-3); font-size: 11px; }
+.crisis-val { margin-top: 8px; font-size: 20px; font-weight: 600; color: var(--warn); }
+.crisis-sub { margin-top: 2px; font-size: 11px; color: var(--text-3); }
+.cc-links { margin-top: 10px; display: flex; gap: 14px; font-size: 11px; color: var(--accent); }
+
+.macro-stance {
+  display: flex; align-items: baseline; gap: 14px;
+  margin-top: 12px; padding: 10px 12px;
+  border: 1px solid var(--border-2); border-radius: var(--radius);
+}
+.macro-stance .lab { font-size: 11px; color: var(--text-3); }
+.macro-stance .val { font-size: 14px; font-weight: 600; color: var(--text); }
+.macro-stance .note { font-size: 11px; color: var(--text-3); }
+
+.sig-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; }
+.sig-card { border: 1px solid var(--border-2); border-radius: var(--radius); padding: 11px 13px; }
+.sig-head { display: flex; align-items: baseline; gap: 8px; }
+.sig-code { font-size: 10px; color: var(--accent); letter-spacing: .12em; }
+.sig-name { font-size: 12px; color: var(--text-2); }
+.sig-status { margin-left: auto; font-size: 11px; }
+.sig-status.warn { color: var(--warn); }
+.sig-status.up { color: var(--up); }
+.sig-status.down { color: var(--down); }
+.sig-status.n { color: var(--text-2); }
+.sig-val { margin-top: 6px; font-size: 20px; font-weight: 600; color: var(--text); }
+.sig-sub { margin-top: 3px; font-size: 11px; color: var(--text-3); line-height: 1.55; }
+
+.crisis-panel { margin-top: 12px; border: 1px solid var(--border-2); border-radius: var(--radius); padding: 13px 14px; }
+.crisis-head { display: flex; align-items: baseline; gap: 10px; }
+.crisis-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.crisis-stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-top: 10px; }
+.cs-item .k { font-size: 10px; color: var(--text-3); letter-spacing: .06em; }
+.cs-item .v2 { margin-top: 2px; font-size: 15px; font-weight: 600; color: var(--text); }
+.crisis-advice { margin-top: 10px; font-size: 12px; color: var(--warn); }
+.pctl { margin-top: 12px; }
+.pctl-label { font-size: 11px; color: var(--text-3); }
+.pctl-bar { position: relative; height: 4px; background: var(--bg-panel3); border-radius: 2px; margin-top: 6px; }
+.pctl-marker {
+  position: absolute; top: -3px; left: 89.5%; width: 2px; height: 10px;
+  background: var(--warn);
+}
+.pctl-scale { display: flex; justify-content: space-between; margin-top: 5px; font-size: 10px; color: var(--text-3); }
+.trend-line { margin-top: 12px; display: flex; align-items: center; gap: 12px; }
+.trend-label { font-size: 11px; color: var(--text-3); white-space: nowrap; }
+
+.foot-src { margin-top: 14px; font-size: 11px; color: var(--text-3); }
+</style>
+</head>
+<body>
+
+<div class="sample-tag">视觉样张 · 数据来自真实 API 快照（采集 2026-07-19）</div>
+
+<!-- ================= 左侧导航 rail ================= -->
+<aside class="rail">
+  <div class="rail-logo">
+    <span class="m">M</span>
+    <span class="word">MOSS</span>
+  </div>
+
+  <div class="rail-group">
+    <div class="rail-group-label">工作台</div>
+    <div class="rail-item">
+      <svg width="13" height="13" viewBox="0 0 13 13"><rect x="1" y="1" width="4.5" height="4.5" fill="none" stroke="#8593a8"/><rect x="7.5" y="1" width="4.5" height="4.5" fill="none" stroke="#8593a8"/><rect x="1" y="7.5" width="4.5" height="4.5" fill="none" stroke="#8593a8"/><rect x="7.5" y="7.5" width="4.5" height="4.5" fill="none" stroke="#8593a8"/></svg>
+      经营日报<span class="tail">首页</span>
+    </div>
+    <div class="rail-item">
+      <svg width="13" height="13" viewBox="0 0 13 13"><path d="M1.5 11.5V6.8L6.5 2.5l5 4.3v4.7" fill="none" stroke="#8593a8"/></svg>
+      组合工作台<span class="tail">首页</span>
+    </div>
+    <div class="rail-item active">
+      <svg width="13" height="13" viewBox="0 0 13 13"><path d="M1.5 11.5V2M1.5 11.5H12M3.5 8.5l2.5-3 2 1.8 3-4" fill="none" stroke="#c9a85c"/></svg>
+      市场工作台<span class="tail">首页</span>
+    </div>
+    <div class="rail-item">
+      <svg width="13" height="13" viewBox="0 0 13 13"><path d="M6.5 1.5L11.5 11h-10z" fill="none" stroke="#8593a8"/></svg>
+      风险工作台<span class="tail">首页</span>
+    </div>
+    <div class="rail-item">
+      <svg width="13" height="13" viewBox="0 0 13 13"><circle cx="6.5" cy="6.5" r="5" fill="none" stroke="#8593a8"/><path d="M6.5 6.5L9.5 4" stroke="#8593a8"/></svg>
+      绩效工作台<span class="tail">首页</span>
+    </div>
+    <div class="rail-item">
+      <svg width="13" height="13" viewBox="0 0 13 13"><rect x="1.5" y="2" width="10" height="9" fill="none" stroke="#8593a8"/><path d="M1.5 5.5h10M5 5.5V11" stroke="#8593a8"/></svg>
+      报表与数据<span class="tail">首页</span>
+    </div>
+  </div>
+
+  <div class="rail-group">
+    <div class="rail-group-label">对话</div>
+    <div class="rail-item">
+      <svg width="13" height="13" viewBox="0 0 13 13"><path d="M2 2.5h9v6H7l-2.5 2v-2H2z" fill="none" stroke="#8593a8"/></svg>
+      MOSS Chat<span class="badge">可用</span>
+    </div>
+    <div class="rail-sub">直接提问</div>
+  </div>
+
+  <div class="rail-group">
+    <div class="rail-group-label">支持入口</div>
+    <div class="rail-item">
+      <svg width="13" height="13" viewBox="0 0 13 13"><rect x="2" y="1.5" width="9" height="10" fill="none" stroke="#8593a8"/><path d="M4 4.5h5M4 6.8h5M4 9h3" stroke="#8593a8"/></svg>
+      报表中心
+    </div>
+    <div class="rail-item">
+      <svg width="13" height="13" viewBox="0 0 13 13"><circle cx="6.5" cy="6.5" r="2" fill="none" stroke="#8593a8"/><path d="M6.5 1.5v2M6.5 9.5v2M1.5 6.5h2M9.5 6.5h2" stroke="#8593a8"/></svg>
+      中台配置
+    </div>
+    <div class="rail-item">
+      <svg width="13" height="13" viewBox="0 0 13 13"><path d="M2.5 2h6a2 2 0 012 2v7H4.5a2 2 0 01-2-2z" fill="none" stroke="#8593a8"/><path d="M5 5h3.5M5 7.2h3.5" stroke="#8593a8"/></svg>
+      帮助文档
+    </div>
+  </div>
+</aside>
+
+<!-- ================= 主内容 ================= -->
+<main class="main">
+
+  <!-- 顶栏 -->
+  <header class="panel topbar">
+    <div class="topbar-left">
+      <h1 class="page-title">市场工作台</h1>
+      <span class="page-sub">今天利率、跨资产和新闻事件是否改变组合阅读顺序？</span>
+    </div>
+    <div class="topbar-right">
+      <button class="btn-primary" type="button">刷新数据</button>
+      <div class="topbar-note">
+        <div class="l1">市场数据页</div>
+        <div class="l2">同步 Choice 宏观与市场快照</div>
+      </div>
+      <div class="topbar-status"><span class="dot"></span>已接入</div>
+      <div class="topbar-dates">最新行情日<span class="num">2026-07-10</span>&nbsp;&nbsp;正式序列日<span class="num">2026-07-10</span></div>
+    </div>
+  </header>
+
+  <!-- 利率 / 跨资产 / 立场 三带 -->
+  <section class="panel bands">
+
+    <!-- 利率带 -->
+    <div class="band">
+      <div class="band-label">利率</div>
+      <div class="rate-grid">
+        <div class="rate-row">
+          <div class="rate-cell">
+            <div class="rc-label">10Y 国债</div>
+            <div class="rc-mid"><span class="rc-value num">1.74%</span>
+              <svg class="spark rd" width="52" height="20" viewBox="0 0 52 20"><path d="M1,9 L7,6 L13,8 L19,4 L25,6 L31,10 L37,8 L43,12 L51,10"/></svg></div>
+            <div class="rc-chg chg r num">+0.2bp</div>
+            <div class="rc-date date">2026-07-10</div>
+          </div>
+          <div class="rate-cell">
+            <div class="rc-label">2Y 国债</div>
+            <div class="rc-mid"><span class="rc-value num">1.25%</span>
+              <svg class="spark rd" width="52" height="20" viewBox="0 0 52 20"><path d="M1,13 L9,12 L17,13 L25,11 L33,11 L41,5 L51,2"/></svg></div>
+            <div class="rc-chg chg r num">+4bp</div>
+            <div class="rc-date date">2026-07-07</div>
+          </div>
+          <div class="rate-cell">
+            <div class="rc-label">5Y 国债</div>
+            <div class="rc-mid"><span class="rc-value num">1.44%</span>
+              <svg class="spark rd" width="52" height="20" viewBox="0 0 52 20"><path d="M1,11 L8,5 L15,3 L22,6 L29,9 L36,13 L43,15 L51,14"/></svg></div>
+            <div class="rc-chg chg r num">+0.8bp</div>
+            <div class="rc-date date">2026-07-07</div>
+          </div>
+          <div class="rate-cell">
+            <div class="rc-label">7Y 国债</div>
+            <div class="rc-mid"><span class="rc-value num">1.57%</span>
+              <svg class="spark rd" width="52" height="20" viewBox="0 0 52 20"><path d="M1,5 L8,7 L15,6 L22,9 L29,11 L36,10 L43,13 L51,15"/></svg></div>
+            <div class="rc-chg chg r num">+0.8bp</div>
+            <div class="rc-date date">2026-07-07</div>
+          </div>
+          <div class="rate-cell">
+            <div class="rc-label">30Y 国债</div>
+            <div class="rc-mid"><span class="rc-value num">2.26%</span>
+              <svg class="spark rd" width="52" height="20" viewBox="0 0 52 20"><path d="M1,9 L8,3 L14,11 L21,15 L28,13 L35,15 L42,12 L51,14"/></svg></div>
+            <div class="rc-chg chg r num">+2bp</div>
+            <div class="rc-date date">2026-07-07</div>
+          </div>
+          <div class="rate-cell">
+            <div class="rc-label">1Y 国债</div>
+            <div class="rc-mid"><span class="rc-value num">1.12%</span>
+              <svg class="spark gn" width="52" height="20" viewBox="0 0 52 20"><path d="M1,6 L10,8 L19,7 L28,10 L37,11 L46,13 L51,14"/></svg></div>
+            <div class="rc-chg chg g num">-0.4bp</div>
+            <div class="rc-date date">2026-07-07</div>
+          </div>
+          <div class="rate-cell">
+            <div class="rc-label">3Y 国债</div>
+            <div class="rc-mid"><span class="rc-value num">1.29%</span>
+              <svg class="spark gn" width="52" height="20" viewBox="0 0 52 20"><path d="M1,7 L11,9 L21,8 L31,11 L41,12 L51,14"/></svg></div>
+            <div class="rc-chg chg g num">-0.2bp</div>
+            <div class="rc-date date">2026-07-07</div>
+          </div>
+          <div class="rate-cell">
+            <div class="rc-label">DR007</div>
+            <div class="rc-mid"><span class="rc-value num">1.38%</span>
+              <svg class="spark bl" width="52" height="20" viewBox="0 0 52 20"><path d="M1,4 L10,8 L19,11 L28,12 L37,12 L46,13 L51,13"/></svg></div>
+            <div class="rc-chg chg n num">0bp</div>
+            <div class="rc-date date">2026-07-10</div>
+          </div>
+        </div>
+        <div class="rate-row">
+          <div class="rate-cell">
+            <div class="rc-label">10Y 国开</div>
+            <div class="rc-mid"><span class="rc-value num">1.79%</span>
+              <svg class="spark rd" width="52" height="20" viewBox="0 0 52 20"><path d="M1,5 L11,7 L21,10 L31,11 L41,14 L51,15"/></svg></div>
+            <div class="rc-chg chg r num">+1bp</div>
+            <div class="rc-date date">2026-07-07</div>
+          </div>
+          <div class="rate-cell">
+            <div class="rc-label">5Y 国开</div>
+            <div class="rc-mid"><span class="rc-value num">1.54%</span>
+              <svg class="spark rd" width="52" height="20" viewBox="0 0 52 20"><path d="M1,6 L13,8 L26,9 L39,12 L51,14"/></svg></div>
+            <div class="rc-chg chg r num">+0.3bp</div>
+            <div class="rc-date date">2026-07-07</div>
+          </div>
+          <div class="rate-cell">
+            <div class="rc-label">3Y 国开</div>
+            <div class="rc-mid"><span class="rc-value num">1.47%</span>
+              <svg class="spark rd" width="52" height="20" viewBox="0 0 52 20"><path d="M1,7 L13,9 L26,11 L39,12 L51,14"/></svg></div>
+            <div class="rc-chg chg r num">+0.6bp</div>
+            <div class="rc-date date">2026-07-07</div>
+          </div>
+          <div class="rate-cell">
+            <div class="rc-label">1Y 国开</div>
+            <div class="rc-mid"><span class="rc-value num">1.35%</span>
+              <svg class="spark rd" width="52" height="20" viewBox="0 0 52 20"><path d="M1,8 L13,9 L26,11 L39,12 L51,13"/></svg></div>
+            <div class="rc-chg chg r num">+0.5bp</div>
+            <div class="rc-date date">2026-07-07</div>
+          </div>
+          <div class="rate-cell">
+            <div class="rc-label">R007</div>
+            <div class="rc-mid"><span class="rc-value num">1.41%</span></div>
+            <div class="rc-chg chg n num">--</div>
+            <div class="rc-date date">2026-07-06</div>
+          </div>
+          <div class="rate-cell empty"></div>
+          <div class="rate-cell empty"></div>
+          <div class="rate-cell empty"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 跨资产带 -->
+    <div class="band">
+      <div class="band-label">跨资产</div>
+      <div class="xasset-row">
+        <div class="xasset-cell">
+          <div class="rc-label">沪深300指数收盘价</div>
+          <div class="rc-mid"><span class="rc-value num">4780.79</span>
+            <svg class="spark gn" width="52" height="20" viewBox="0 0 52 20"><path d="M1,5 L8,9 L15,7 L22,11 L29,10 L36,13 L43,12 L51,15"/></svg></div>
+          <div class="rc-chg chg g"><span class="rc-chg-text" style="color:var(--text-3)">日变动</span> <span class="num">-1.96%</span></div>
+          <div class="rc-date date">2026-07-10</div>
+        </div>
+        <div class="xasset-cell">
+          <div class="rc-label">Brent spot price</div>
+          <div class="rc-mid"><span class="rc-value num">69.56USD/bbl</span>
+            <svg class="spark rd" width="52" height="20" viewBox="0 0 52 20"><path d="M1,4 L10,7 L19,9 L28,11 L37,13 L46,14 L51,16"/></svg></div>
+          <div class="rc-chg chg r num">+0.88USD/bbl</div>
+          <div class="rc-date date">2026-07-06</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 立场带 -->
+    <div class="band">
+      <div class="band-label">立场</div>
+      <div class="stance-box">
+        <div class="stance-label">工具立场</div>
+        <div class="stance-value">中性偏积极</div>
+        <div class="rc-chg chg n num">--</div>
+        <div class="rc-date date">2026-07-10</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- hero + 右侧小卡 -->
+  <section class="hero-row">
+
+    <div class="panel hero">
+      <div class="hero-label">本日市场判断</div>
+      <h2 class="hero-title">中性偏积极 · 中债国债到期收益率:10年 最新值 <span class="num">1.74%</span>；DR007 <span class="num">1.38%</span>。</h2>
+      <div class="hero-sub">先确认 10Y 与 DR007，再看沪深300指数收盘价对债市判断的传导。</div>
+
+      <div class="hero-cols">
+        <div class="hero-col">
+          <div class="hc-label">利率快照</div>
+          <div class="hc-main">中债国债到期收益率:10年 最新值 <span class="num">1.74%</span>；DR007 <span class="num">1.38%</span>。</div>
+          <div class="hc-note">稳定 series_id 优先，名称匹配兜底；完整曲线见下方国债/国开区。</div>
+        </div>
+        <div class="hero-col">
+          <div class="hc-label">跨资产传导</div>
+          <div class="hc-main">沪深300 <span class="num">4780.79</span>，日变动 <span class="num">-1.96%</span>。</div>
+          <div class="hc-note">首页仅展示 Choice latest 已返回的观察点，不把观察口径提升为正式结论。</div>
+        </div>
+        <div class="hero-col">
+          <div class="hc-label">事件状态</div>
+          <div class="hc-main">choice-events 已返回 <span class="num">12418</span> 条；最新 市场消息：以色列总理内塔尼亚胡预计下周访问华盛顿，行程或有变动。。</div>
+          <div class="hc-note">最近收到 <span class="num">2026-07-15</span> · 进入 /news-events 查看全文。</div>
+        </div>
+      </div>
+
+      <div class="hero-foot">
+        最新行情 <span class="num">132</span> 条，正式利率序列 <span class="num">77</span> 条。
+        稳定 series_id 优先，名称匹配兜底；完整曲线见下方国债/国开区。
+        Choice/Tushare 市场数据 / 跨资产 / 新闻事件 / real
+      </div>
+    </div>
+
+    <div class="side-cards">
+      <div class="side-card" style="--bar: var(--down);">
+        <div class="sc-label">10Y国债</div>
+        <div class="sc-mid"><span class="sc-value num">1.74%</span>
+          <svg class="spark rd" width="46" height="18" viewBox="0 0 46 18"><path d="M1,7 L7,4 L13,7 L19,5 L25,9 L31,7 L37,11 L45,13"/></svg></div>
+        <div class="sc-sub"><span class="chg r num">+0.2bp</span> / <span class="num">2026-07-10</span></div>
+      </div>
+      <div class="side-card" style="--bar: var(--accent);">
+        <div class="sc-label">DR007</div>
+        <div class="sc-mid"><span class="sc-value num">1.38%</span>
+          <svg class="spark bl" width="46" height="18" viewBox="0 0 46 18"><path d="M1,5 L10,9 L19,11 L28,11 L37,12 L45,12"/></svg></div>
+        <div class="sc-sub"><span class="chg n num">0bp</span> / <span class="num">2026-07-10</span></div>
+      </div>
+      <div class="side-card" style="--bar: var(--up);">
+        <div class="sc-label">沪深300指数收盘价</div>
+        <div class="sc-mid"><span class="sc-value num">4780.79</span>
+          <svg class="spark gn" width="46" height="18" viewBox="0 0 46 18"><path d="M1,4 L7,8 L13,6 L19,10 L25,9 L31,12 L37,11 L45,14"/></svg></div>
+        <div class="sc-sub"><span class="chg g num">日变动 -1.96%</span> / <span class="num">2026-07-10</span></div>
+      </div>
+      <div class="side-card" style="--bar: var(--gold);">
+        <div class="sc-label">宏观立场</div>
+        <div class="sc-mid"><span class="sc-value text">中性偏积极</span></div>
+        <div class="sc-sub"><span class="num">2026-07-10</span></div>
+      </div>
+      <div class="side-card wide" style="--bar: var(--border);">
+        <div class="sc-label">风险评分</div>
+        <div class="sc-mid"><span class="sc-value num">8</span></div>
+        <div class="sc-sub"><span class="num">2026-07-14</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DESK 市场读数 -->
+  <section class="panel section">
+    <div class="section-head">
+      <span class="sec-tag">DESK</span>
+      <span class="sec-title">市场读数 · 曲线形态与工具指标</span>
+      <span class="sec-link">指标明细 →</span>
+    </div>
+    <div class="notice"><b>曲线形态 不可用</b> — 国债曲线缺少必要的 1Y/10Y 节点。</div>
+    <div class="tile-grid">
+      <div class="tile">
+        <div class="tile-cat">风险资产</div>
+        <div class="tile-name">沪深300</div>
+        <div class="tile-val num">4780.7867点 · <span class="chg g">-1.96%</span></div>
+      </div>
+      <div class="tile">
+        <div class="tile-cat">工业需求</div>
+        <div class="tile-name">铜主力</div>
+        <div class="tile-val num">103710元/吨 · <span class="chg r">+0.53%</span></div>
+      </div>
+      <div class="tile">
+        <div class="tile-cat">汇率</div>
+        <div class="tile-name">美元兑人民币</div>
+        <div class="tile-val num">6.7989 · <span class="chg g">-0.07%</span></div>
+      </div>
+      <div class="tile">
+        <div class="tile-cat">流动性</div>
+        <div class="tile-name">DR007</div>
+        <div class="tile-val num">1.38% · +0.00%</div>
+      </div>
+      <div class="tile">
+        <div class="tile-cat">资金利率</div>
+        <div class="tile-name">3M NCD</div>
+        <div class="tile-val num">1.4279% · <span class="chg g">-0.08%</span></div>
+      </div>
+      <div class="tile">
+        <div class="tile-cat">利率</div>
+        <div class="tile-name">5Y 国债</div>
+        <div class="tile-val num">1.4442% · <span class="chg r">+0.53%</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CURVE 国债与国开曲线 -->
+  <section class="panel section">
+    <div class="section-head">
+      <span class="sec-tag">CURVE</span>
+      <span class="sec-title">国债与国开曲线</span>
+      <span class="sec-src">来源 market-data terminal · 已返回</span>
+    </div>
+    <table class="curve-table">
+      <thead>
+        <tr><th>序列</th><th class="v">最新</th><th class="cv">变动</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="name">国债 1Y</td><td class="v num">1.12%</td><td class="cv chg g num">-0.4bp</td></tr>
+        <tr><td class="name">国债 2Y</td><td class="v num">1.25%</td><td class="cv chg r num">+4bp</td></tr>
+        <tr><td class="name">国债 3Y</td><td class="v num">1.29%</td><td class="cv chg g num">-0.2bp</td></tr>
+        <tr><td class="name">国债 5Y</td><td class="v num">1.44%</td><td class="cv chg r num">+0.8bp</td></tr>
+        <tr><td class="name">国债 7Y</td><td class="v num">1.57%</td><td class="cv chg r num">+0.8bp</td></tr>
+        <tr><td class="name">国债 10Y</td><td class="v num">1.74%</td><td class="cv chg r num">+0.2bp</td></tr>
+        <tr><td class="name">国债 20Y</td><td class="v num">2.23</td><td class="cv chg n num" style="color:var(--warn)">缺前值</td></tr>
+        <tr><td class="name">国债 30Y</td><td class="v num">2.26%</td><td class="cv chg r num">+2bp</td></tr>
+        <tr><td class="name">国开 1Y</td><td class="v num">1.35%</td><td class="cv chg r num">+0.5bp</td></tr>
+        <tr><td class="name">国开 2Y</td><td class="v num">1.43%</td><td class="cv chg r num">+2bp</td></tr>
+        <tr><td class="name">国开 3Y</td><td class="v num">1.47%</td><td class="cv chg r num">+0.6bp</td></tr>
+        <tr><td class="name">国开 5Y</td><td class="v num">1.54%</td><td class="cv chg r num">+0.3bp</td></tr>
+        <tr><td class="name">国开 10Y</td><td class="v num">1.79%</td><td class="cv chg r num">+1bp</td></tr>
+        <tr><td class="name">国开 20Y</td><td class="v num">2.3%</td><td class="cv chg r num">+2bp</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- CROSS 跨资产快讯 -->
+  <section class="panel section">
+    <div class="section-head">
+      <span class="sec-tag">CROSS</span>
+      <span class="sec-title">跨资产快讯</span>
+      <span class="sec-src">来源 choice-latest · 已返回</span>
+      <span class="sec-link">跨资产页 →</span>
+    </div>
+    <div class="cross-grid">
+      <div class="cross-card">
+        <div class="cc-head"><span class="cc-tag">EQUITY</span><span class="cc-count num">2</span></div>
+        <div class="cc-rows">
+          <div class="cc-row"><span class="k">沪深300指数收盘价</span><span class="s num">4780.79 · 日变动 -1.96%</span></div>
+          <div class="cc-row"><span class="k">沪深300指数涨跌幅</span><span class="s num">-1.96% · -450bp</span></div>
+        </div>
+      </div>
+      <div class="cross-card">
+        <div class="cc-head"><span class="cc-tag">COMMOD</span><span class="cc-count num">1</span></div>
+        <div class="cc-rows">
+          <div class="cc-row"><span class="k">Brent spot price</span><span class="s num">69.56USD/bbl · +0.88USD/bbl</span></div>
+        </div>
+      </div>
+      <div class="cross-card">
+        <div class="cc-head"><span class="cc-tag">DESK</span><span class="cc-count">上下文</span></div>
+        <div class="cc-rows">
+          <div class="cc-row"><span class="k">RATES</span><span class="s num">1.38% DR007</span></div>
+          <div class="cc-row"><span class="k">FX</span><span class="s">待观察</span></div>
+          <div class="cc-row"><span class="k">待接入</span><span class="s">曲线 不可用</span></div>
+          <div class="cc-row"><span class="k">更多观察</span><span class="s num">4 条</span></div>
+          <div class="cc-row"><span class="k">沪深300市盈率</span><span class="s num">14.58 · -0.16</span></div>
+          <div class="cc-row"><span class="k">铜主力期货收盘价</span><span class="s num">103710CNY/t · +550CNY/t</span></div>
+          <div class="cc-row"><span class="k">铝主力期货收盘价</span><span class="s num">23055CNY/t · -5CNY/t</span></div>
+          <div class="cc-row"><span class="k">CSI 500 index close</span><span class="s num">8503.97 · -148.82</span></div>
+        </div>
+      </div>
+      <div class="cross-card">
+        <div class="cc-head"><span class="cc-tag">CRISIS</span><span class="cc-count">趋势</span></div>
+        <div class="crisis-val num">1.03</div>
+        <div class="crisis-sub">警惕 · 展示 <span class="num">3/13</span> 条</div>
+        <div class="cc-links"><span>宏观工具 →</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MACRO 宏观工具 -->
+  <section class="panel section">
+    <div class="section-head">
+      <span class="sec-tag">MACRO</span>
+      <span class="sec-title">宏观工具</span>
+      <span class="sec-src">来源 macro-toolkit / analysis · <span class="num">8/8 · 100.0%</span> · 25 个 · 产物 17 个 · 6 张信号卡 · 8 项指标</span>
+      <span class="sec-link">完整工具页 →</span>
+    </div>
+
+    <div class="macro-stance">
+      <span class="lab">工具立场</span>
+      <span class="val">中性偏积极</span>
+      <span class="note num">8/8 · 100.0%</span>
+      <span class="note">维持观察，可优先运行 signal_aggregator / risk_monitor 形成交易层信号。</span>
+    </div>
+
+    <div class="sig-grid">
+      <div class="sig-card">
+        <div class="sig-head"><span class="sig-code">CRIS</span><span class="sig-name">Crisis Score</span><span class="sig-status warn">警惕</span></div>
+        <div class="sig-val num">1.03</div>
+        <div class="sig-sub">历史分位 <span class="num">89.47%</span></div>
+      </div>
+      <div class="sig-card">
+        <div class="sig-head"><span class="sig-code">LQD</span><span class="sig-name">流动性</span><span class="sig-status up">偏松</span></div>
+        <div class="sig-val num">78</div>
+        <div class="sig-sub num">DR007 1.38% · 3M NCD 1.43%</div>
+      </div>
+      <div class="sig-card">
+        <div class="sig-head"><span class="sig-code">CRDT</span><span class="sig-name">信用利差</span><span class="sig-status n">中性</span></div>
+        <div class="sig-val num">55</div>
+        <div class="sig-sub num">AA-国债 5Y 58.8bp</div>
+      </div>
+      <div class="sig-card">
+        <div class="sig-head"><span class="sig-code">RISK</span><span class="sig-name">风险偏好</span><span class="sig-status down">转弱</span></div>
+        <div class="sig-val num">35</div>
+        <div class="sig-sub num">沪深300 -1.96% · 铜主力 +0.53%</div>
+      </div>
+      <div class="sig-card">
+        <div class="sig-head"><span class="sig-code">A股</span><span class="sig-name">市场踩踏风险</span><span class="sig-status up">绿色风险</span></div>
+        <div class="sig-val num">8</div>
+        <div class="sig-sub">指数从日内高点回落超过1% · ST 股票已从普通核心风险统计剔除，并单独统计。</div>
+      </div>
+      <div class="sig-card">
+        <div class="sig-head"><span class="sig-code">OUT</span><span class="sig-name">脚本产物</span><span class="sig-status n">已生成</span></div>
+        <div class="sig-val num">100</div>
+        <div class="sig-sub num">17 个输出文件 · performance_results.csv</div>
+      </div>
+    </div>
+
+    <div class="crisis-panel">
+      <div class="crisis-head">
+        <span class="sec-tag">MACRO</span>
+        <span class="crisis-title">宏观解释 · Crisis Score</span>
+        <span class="sec-link">宏观工具 →</span>
+      </div>
+      <div class="hc-main" style="margin-top:8px">Crisis Score <span class="num">1.03</span>: 警惕</div>
+      <div class="crisis-stats">
+        <div class="cs-item"><div class="k">Score</div><div class="v2 num">1.03</div></div>
+        <div class="cs-item"><div class="k">Regime</div><div class="v2">警惕</div></div>
+        <div class="cs-item"><div class="k">分位</div><div class="v2 num">P89.5</div></div>
+        <div class="cs-item"><div class="k">组件</div><div class="v2 num">2/5</div></div>
+        <div class="cs-item"><div class="k">区间ΔScore</div><div class="v2 num">-1.17</div></div>
+        <div class="cs-item"><div class="k">区间Δ分位</div><div class="v2 num">-10.53</div></div>
+      </div>
+      <div class="crisis-advice">降低风险敞口，增加对冲</div>
+      <div class="pctl">
+        <div class="pctl-label">历史分位 <span class="num">P89.5</span></div>
+        <div class="pctl-bar"><span class="pctl-marker"></span></div>
+        <div class="pctl-scale num"><span>0</span><span>50</span><span>100</span></div>
+      </div>
+      <div class="trend-line">
+        <span class="trend-label">Score 趋势 · 2025-08-27 起</span>
+        <svg class="spark rd" width="220" height="26" viewBox="0 0 220 26" style="flex:0 0 auto">
+          <path d="M1,20 L16,18 L31,19 L46,15 L61,16 L76,12 L91,13 L106,9 L121,11 L136,7 L151,9 L166,5 L181,7 L196,4 L211,6 L219,5"/>
+        </svg>
+      </div>
+    </div>
+
+    <div class="foot-src">Choice/Tushare 市场数据 / 跨资产 / 新闻事件 / real</div>
+  </section>
+
+</main>
+
+</body>
+</html>

@@ -22,6 +22,7 @@ from scripts.portfolio_home_limit import (  # noqa: E402
 from scripts.portfolio_home_owner_action_packet import (  # noqa: E402
     _assignment_coverage_ready,
     _blocker_closure_matrix_coverage_ready,
+    _portable_provenance_path,
     _score_blocker_action_coverage_ready,
     build_packet,
 )
@@ -289,8 +290,8 @@ def build_summary(
         "page_id": packet.get("page_id"),
         "page_slug": packet.get("page_slug"),
         "report_date": packet.get("report_date"),
-        "duckdb_path": packet.get("duckdb_path"),
-        "template_path": packet.get("template_path"),
+        "duckdb_path": _portable_provenance_path(packet.get("duckdb_path")),
+        "template_path": _portable_provenance_path(packet.get("template_path")),
         "current_score": packet.get("current_score"),
         "remaining_gap": packet.get("remaining_gap"),
         "score_status": packet.get("score_status"),

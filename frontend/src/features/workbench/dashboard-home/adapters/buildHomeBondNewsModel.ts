@@ -2,11 +2,13 @@ import type {
   BondPositionChangesPayload,
   BondTopHoldingsPayload,
   ChoiceNewsEvent,
+  ChoiceNewsEventsPayload,
   IndustryDistPayload,
 } from "../../../../api/contracts";
 import { dashboardMacroNewsTopicLabel } from "../../dashboard/dashboardMacroNewsTopics";
 import { stripHtmlTags } from "./macroNewsPresentation";
 
+import { EM_DASH } from "../../../../utils/format";
 export type HomeBondNewsItem = {
   id: string;
   title: string;
@@ -35,12 +37,31 @@ type MatchCandidate = {
   priority: number;
 };
 
-const BOND_NEWS_SOURCE_LABEL = "来源：Choice / Tushare 债券新闻";
-const BOND_NEWS_REFRESH_LABEL = "刷新：随页面查询自动更新";
+type ResolvedEventTimestamp = {
+  value: string;
+  source: "content" | "received";
+  sortValue: number;
+};
+
+const BOND_NEWS_SOURCE_LABEL = "后端入库：Choice / Tushare 债券新闻";
+const BOND_NEWS_REFRESH_LABEL = "页面读取：每 5 分钟重新读取已落库数据";
 const BOND_NEWS_STALE_DAYS = 7;
 const HOLDING_HIT_LIMIT = 4;
 const MARKET_NEWS_LIMIT = 5;
 const CREDIT_NEWS_LIMIT = 4;
+const CONTENT_TIMESTAMP_KEYS = [
+  "published_at",
+  "published_time",
+  "publish_time",
+  "publish_date",
+  "pub_time",
+  "pubtime",
+  "datetime",
+  "trade_date",
+  "pub_date",
+  "report_date",
+  "date",
+] as const;
 
 const BOND_MARKET_KEYWORDS = [
   "债券",
@@ -122,7 +143,7 @@ function normalizeToken(value: string | null | undefined): string {
 
 function dateLabel(value: string): string {
   const normalized = value.trim();
-  if (!normalized || normalized === "—") {
+  if (!normalized || normalized === EM_DASH) {
     return "时间待核";
   }
   if (normalized.length >= 16) {
@@ -134,6 +155,75 @@ function dateLabel(value: string): string {
   return normalized;
 }
 
+function parsePayloadJson(payloadJson: string | null | undefined): Record<string, unknown> | null {
+  const raw = payloadJson?.trim();
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeTimestampCandidate(value: unknown): string {
+  if (typeof value !== "string" && typeof value !== "number") {
+    return "";
+  }
+  const raw = String(value).trim();
+  if (!raw) {
+    return "";
+  }
+  const compactDateTime = raw.match(
+    /^(\d{4})(\d{2})(\d{2})[ T]?(\d{2})(\d{2})(\d{2})$/,
+  );
+  if (compactDateTime) {
+    const [, year, month, day, hour, minute, second] = compactDateTime;
+    return `${year}-${month}-${day}T${hour}:${minute}:${second}`;
+  }
+  const compactDate = raw.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (compactDate) {
+    const [, year, month, day] = compactDate;
+    return `${year}-${month}-${day}`;
+  }
+  const normalized = raw.replaceAll("/", "-").replace(" ", "T");
+  if (!/^\d{4}-\d{2}-\d{2}/.test(normalized)) {
+    return "";
+  }
+  return Number.isNaN(new Date(normalized).getTime()) ? "" : normalized;
+}
+
+function timestampSortValue(value: string): number {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+}
+
+function resolveEventTimestamp(event: ChoiceNewsEvent): ResolvedEventTimestamp {
+  const payload = parsePayloadJson(event.payload_json);
+  if (payload) {
+    for (const key of CONTENT_TIMESTAMP_KEYS) {
+      const value = normalizeTimestampCandidate(payload[key]);
+      if (value) {
+        return {
+          value,
+          source: "content",
+          sortValue: timestampSortValue(value),
+        };
+      }
+    }
+  }
+  const receivedAt = normalizeTimestampCandidate(event.received_at) || event.received_at.trim();
+  return {
+    value: receivedAt,
+    source: "received",
+    sortValue: timestampSortValue(receivedAt),
+  };
+}
+
 function daysBetween(leftIso: string, rightIso: string): number | null {
   const left = new Date(`${leftIso.slice(0, 10)}T00:00:00Z`);
   const right = new Date(`${rightIso.slice(0, 10)}T00:00:00Z`);
@@ -143,23 +233,37 @@ function daysBetween(leftIso: string, rightIso: string): number | null {
   return Math.floor((left.getTime() - right.getTime()) / 86_400_000);
 }
 
+function latestChoiceNewsPayloadAsOfDate(
+  payloads: readonly ChoiceNewsEventsPayload[] | null | undefined,
+): string {
+  return (payloads ?? [])
+    .map((payload) => payload.as_of_date?.trim() ?? "")
+    .filter(Boolean)
+    .sort()
+    .at(-1) ?? "";
+}
+
+function excludedFutureRowsTotal(
+  payloads: readonly ChoiceNewsEventsPayload[] | null | undefined,
+): number {
+  return (payloads ?? []).reduce(
+    (total, payload) => total + payload.excluded_future_rows,
+    0,
+  );
+}
+
 function eventText(event: ChoiceNewsEvent): string {
   return `${event.payload_text ?? ""} ${event.payload_json ?? ""}`;
 }
 
 function extractTitleFromPayloadJson(payloadJson: string | null | undefined): string {
-  const raw = payloadJson?.trim();
-  if (!raw) {
+  const parsed = parsePayloadJson(payloadJson);
+  if (!parsed) {
     return "";
   }
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const headline = typeof parsed.headline === "string" ? parsed.headline.trim() : "";
-    const title = typeof parsed.title === "string" ? parsed.title.trim() : "";
-    return stripHtmlTags(headline || title);
-  } catch {
-    return "";
-  }
+  const headline = typeof parsed.headline === "string" ? parsed.headline.trim() : "";
+  const title = typeof parsed.title === "string" ? parsed.title.trim() : "";
+  return stripHtmlTags(headline || title);
 }
 
 function summarizeBondNewsEvent(event: ChoiceNewsEvent): string {
@@ -179,7 +283,7 @@ function addCandidate(
   priority: number,
 ): void {
   const normalized = normalizeToken(value);
-  if (!normalized || normalized === "—" || normalized.length < 3) {
+  if (!normalized || normalized === EM_DASH || normalized.length < 3) {
     return;
   }
   const key = normalized.toLowerCase();
@@ -247,8 +351,8 @@ function toBondNewsItem(
   return {
     id: event.event_key,
     title,
-    timeLabel: dateLabel(event.received_at),
-    sourceLabel: dashboardMacroNewsTopicLabel(event.topic_code),
+    timeLabel: dateLabel(resolveEventTimestamp(event).value),
+    sourceLabel: dashboardMacroNewsTopicLabel(event.topic_code, event.group_id),
     topicLabel,
     hitLabel,
   };
@@ -256,6 +360,7 @@ function toBondNewsItem(
 
 export function buildHomeBondNewsModel(input: {
   events?: readonly ChoiceNewsEvent[] | null;
+  choiceNewsPayloads?: readonly ChoiceNewsEventsPayload[] | null;
   todayIsoDate: string;
   topHoldings?: BondTopHoldingsPayload | null;
   positionChanges?: BondPositionChangesPayload | null;
@@ -265,14 +370,19 @@ export function buildHomeBondNewsModel(input: {
   const candidates = buildMatchCandidates(input);
   const sortedEvents = (input.events ?? [])
     .filter((event) => event.error_code === 0)
+    .map((event) => ({ event, timestamp: resolveEventTimestamp(event) }))
     .slice()
-    .sort((left, right) => right.received_at.localeCompare(left.received_at));
+    .sort(
+      (left, right) =>
+        right.timestamp.sortValue - left.timestamp.sortValue ||
+        right.event.received_at.localeCompare(left.event.received_at),
+    );
   const holdingHits: HomeBondNewsItem[] = [];
   const marketNews: HomeBondNewsItem[] = [];
   const creditAndIssuanceNews: HomeBondNewsItem[] = [];
-  let latestIncludedReceivedAt = "";
+  let latestIncludedTimestamp: ResolvedEventTimestamp | null = null;
 
-  for (const event of sortedEvents) {
+  for (const { event, timestamp } of sortedEvents) {
     const title = summarizeBondNewsEvent(event);
     if (title.length < 6) {
       continue;
@@ -290,8 +400,8 @@ export function buildHomeBondNewsModel(input: {
     }
 
     seenTitles.add(dedupeKey);
-    if (!latestIncludedReceivedAt) {
-      latestIncludedReceivedAt = event.received_at;
+    if (!latestIncludedTimestamp) {
+      latestIncludedTimestamp = timestamp;
     }
     if (holdingHit) {
       holdingHits.push(toBondNewsItem(event, title, "持仓命中", holdingHit));
@@ -302,25 +412,68 @@ export function buildHomeBondNewsModel(input: {
     }
   }
 
-  const latestDate = latestIncludedReceivedAt.slice(0, 10);
+  const latestDate = latestIncludedTimestamp?.value.slice(0, 10) ?? "";
   const staleDays = latestDate ? daysBetween(input.todayIsoDate, latestDate) : null;
   const isStale = staleDays != null && staleDays > BOND_NEWS_STALE_DAYS;
-  const latestTimeLabel = latestIncludedReceivedAt ? dateLabel(latestIncludedReceivedAt) : "";
+  const latestTimeLabel = latestIncludedTimestamp
+    ? dateLabel(latestIncludedTimestamp.value)
+    : "";
+  const latestQueriedTimestamp = sortedEvents[0]?.timestamp;
+  const latestQueriedTimeLabel = latestQueriedTimestamp
+    ? dateLabel(latestQueriedTimestamp.value)
+    : "";
+  const includedNewsCount =
+    holdingHits.length + marketNews.length + creditAndIssuanceNews.length;
+  const queriedNewsCount = sortedEvents.length;
+  const noBondNewsButQueried = includedNewsCount === 0 && queriedNewsCount > 0;
+  const payloadAsOfDate = latestChoiceNewsPayloadAsOfDate(input.choiceNewsPayloads);
+  const excludedFutureRows = excludedFutureRowsTotal(input.choiceNewsPayloads);
+  const excludedFutureRowsSuffix =
+    excludedFutureRows > 0 ? ` · 已剔除未来 ${excludedFutureRows} 条` : "";
+  const payloadAsOfLabel = payloadAsOfDate
+    ? `查询日期 ${payloadAsOfDate}${excludedFutureRowsSuffix}`
+    : "";
 
   return {
     holdingHits: holdingHits.slice(0, HOLDING_HIT_LIMIT),
     marketNews: marketNews.slice(0, MARKET_NEWS_LIMIT),
     creditAndIssuanceNews: creditAndIssuanceNews.slice(0, CREDIT_NEWS_LIMIT),
-    holdingMessage: holdingHits.length > 0 ? null : "持仓命中：当前无相关新闻",
-    marketMessage: marketNews.length > 0 ? null : "债券市场：暂无相关新闻",
-    creditMessage: creditAndIssuanceNews.length > 0 ? null : "发行/评级：暂无相关新闻",
+    holdingMessage:
+      holdingHits.length > 0
+        ? null
+        : noBondNewsButQueried
+          ? `持仓命中：已查询 ${queriedNewsCount} 条新闻，未命中当前持仓或发行人。`
+          : "持仓命中：当前无相关新闻",
+    marketMessage:
+      marketNews.length > 0
+        ? null
+        : noBondNewsButQueried
+          ? `债券市场：已查询 ${queriedNewsCount} 条新闻，未筛出债券市场相关内容。`
+          : "债券市场：暂无相关新闻",
+    creditMessage:
+      creditAndIssuanceNews.length > 0
+        ? null
+        : noBondNewsButQueried
+          ? `发行/评级：已查询 ${queriedNewsCount} 条新闻，未筛出债券发行或评级内容。`
+          : "发行/评级：暂无相关新闻",
     sourceLabel: BOND_NEWS_SOURCE_LABEL,
-    asOfLabel: latestTimeLabel ? `数据截至 ${latestTimeLabel}` : "数据截至：暂无",
+    asOfLabel:
+      latestTimeLabel
+        ? latestIncludedTimestamp?.source === "content"
+          ? `最新内容 ${latestTimeLabel}${excludedFutureRowsSuffix}`
+          : `最新事件 ${latestTimeLabel}${excludedFutureRowsSuffix}`
+        : latestQueriedTimeLabel
+          ? latestQueriedTimestamp?.source === "content"
+            ? `已查询内容至 ${latestQueriedTimeLabel}${excludedFutureRowsSuffix}`
+            : `已查询事件至 ${latestQueriedTimeLabel}${excludedFutureRowsSuffix}`
+          : payloadAsOfLabel || "最新内容：暂无",
     statusLabel:
-      holdingHits.length + marketNews.length + creditAndIssuanceNews.length > 0
+      includedNewsCount > 0
         ? isStale
           ? "来源状态：偏旧"
           : "来源状态：正常"
+        : noBondNewsButQueried
+          ? "来源状态：未命中债券相关内容"
         : "来源状态：暂无数据",
     refreshLabel: BOND_NEWS_REFRESH_LABEL,
   };

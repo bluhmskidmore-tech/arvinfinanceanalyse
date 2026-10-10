@@ -74,7 +74,7 @@ def test_concentration_monitor_governance_record_dry_run_preflights_without_writ
     }
 
     preflight = payload["preflight"]
-    assert preflight["page_id"] == "GAP-CONCENTRATION-MONITOR-PAGE"
+    assert preflight["page_id"] == "PAGE-CONC-001"
     assert preflight["frontend_route"] == "/concentration-monitor"
     assert preflight["primary_api"] == "/api/bond-analytics/credit-spread-migration"
     assert preflight["approval_status"] == "candidate_or_pending"
@@ -121,7 +121,7 @@ def test_concentration_monitor_governance_record_explicit_write_is_mcp_validated
         max_results=10,
     )
     page = validation_payload["pages"][0]
-    assert page["page_id"] == "GAP-CONCENTRATION-MONITOR-PAGE"
+    assert page["page_id"] == "PAGE-CONC-001"
     assert page["validation_status"] == "direct_records_ready_for_audit_review"
     assert page["direct_record_validations"][0]["validation_status"] == "ready_for_audit_review"
     assert page["direct_record_validations"][0]["record_formal_use_allowed"] is False

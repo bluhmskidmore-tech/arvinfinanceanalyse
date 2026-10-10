@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -9,6 +10,8 @@ from backend.app.core_finance.liability_analytics_compat import (
     classify_monthly_counterparty,
     coerce_date,
     compute_liabilities_monthly,
+    compute_liabilities_monthly_detail,
+    compute_liabilities_monthly_summary,
     compute_liability_risk_buckets,
     compute_liability_yield_metrics,
     is_self_counterparty,
@@ -19,6 +22,12 @@ from backend.app.core_finance.liability_analytics_compat import (
     weighted_rate,
 )
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_liability_analytics,
+]
 
 def test_coerce_date_accepts_date_datetime_and_iso_text() -> None:
     assert coerce_date(date(2026, 2, 26)) == date(2026, 2, 26)
@@ -28,20 +37,35 @@ def test_coerce_date_accepts_date_datetime_and_iso_text() -> None:
     assert coerce_date("") is None
     assert coerce_date(None) is None
 
-
-def test_normalize_bond_rate_decimal_matches_liability_v1_behavior() -> None:
+def test_normalize_bond_rate_decimal_treats_zqtz_input_as_percent_points() -> None:
+    """ZQTZ 利率字段落库单位固定为百分点，不再按 >0.5 启发式区分小数/百分点。"""
     assert normalize_bond_rate_decimal(None) is None
     assert normalize_bond_rate_decimal("") is None
     assert normalize_bond_rate_decimal("2.5") == Decimal("0.025")
-    assert normalize_bond_rate_decimal("0.03") == Decimal("0.03")
     assert normalize_bond_rate_decimal("100") == Decimal("1")
+    # 与 v1 的刻意分歧：0.03 是 0.03%，旧启发式当成小数口径的 3%。
+    assert normalize_bond_rate_decimal("0.03") == Decimal("0.0003")
 
+def test_normalize_bond_rate_decimal_keeps_low_coupon_gray_zone_as_percent(caplog) -> None:
+    """(0, 0.5] 是真实低票息券：0.3 必须是 0.3%，不能被静默当成小数口径的 30%。"""
+    with caplog.at_level(
+        logging.WARNING,
+        logger="backend.app.core_finance.liability_analytics_compat",
+    ):
+        assert normalize_bond_rate_decimal("0.3") == Decimal("0.003")
+    assert "low-coupon" in caplog.text
+
+    # 灰区上界与灰区外的常规票息都按同一个百分点口径处理。
+    assert normalize_bond_rate_decimal("0.5") == Decimal("0.005")
+    assert normalize_bond_rate_decimal("0.51") == Decimal("0.0051")
+    assert normalize_bond_rate_decimal("0") == Decimal("0")
+    # > 100 百分点是脏数据，保留 v1 的原样透出（只记 warning，不改口径）。
+    assert normalize_bond_rate_decimal("101") == Decimal("101")
 
 def test_normalize_interbank_rate_decimal_always_treats_input_as_percent() -> None:
     assert normalize_interbank_rate_decimal(None) is None
     assert normalize_interbank_rate_decimal("2.5") == Decimal("0.025")
     assert normalize_interbank_rate_decimal("0.8") == Decimal("0.008")
-
 
 def test_normalize_interbank_rate_decimal_consumes_rate_units_pct_to_decimal(monkeypatch) -> None:
     calls: list[object] = []
@@ -55,7 +79,6 @@ def test_normalize_interbank_rate_decimal_consumes_rate_units_pct_to_decimal(mon
     assert compat.normalize_interbank_rate_decimal("2.5") == Decimal("0.1234")
     assert calls == ["2.5"]
 
-
 def test_weighted_rate_ignores_zero_amount_and_missing_rate() -> None:
     pairs = [
         (Decimal("100"), Decimal("0.02")),
@@ -64,7 +87,6 @@ def test_weighted_rate_ignores_zero_amount_and_missing_rate() -> None:
     ]
     assert weighted_rate(pairs) == Decimal("0.02")
     assert weighted_rate([(Decimal("0"), Decimal("0.01"))]) is None
-
 
 def test_maturity_bucket_uses_v1_day_boundaries_and_missing_default() -> None:
     report_date = date(2026, 2, 26)
@@ -77,16 +99,14 @@ def test_maturity_bucket_uses_v1_day_boundaries_and_missing_default() -> None:
     assert maturity_bucket(report_date, "2027-02-26") == "\u0036\u002d\u0031\u0032\u4e2a\u6708"
     assert maturity_bucket(report_date, "2027-02-27") == "\u0031\u002d\u0032\u5e74"
 
-
 def test_monthly_v1_bucket_name_uses_v1_bucket_scheme() -> None:
     report_date = date(2026, 2, 26)
-    assert monthly_v1_bucket_name(report_date, None) == "0-3M"
+    assert monthly_v1_bucket_name(report_date, None) == "到期日未提供"
     assert monthly_v1_bucket_name(report_date, "2026-02-25") == "Matured"
     assert monthly_v1_bucket_name(report_date, "2026-05-27") == "0-3M"
     assert monthly_v1_bucket_name(report_date, "2026-05-28") == "3-6M"
     assert monthly_v1_bucket_name(report_date, "2027-02-26") == "6-12M"
     assert monthly_v1_bucket_name(report_date, "2029-02-25") == "1-3Y"
-
 
 def test_counterparty_classifiers_match_v1_labels() -> None:
     assert classify_counterparty("ABC Bank") == "Bank"
@@ -98,12 +118,10 @@ def test_counterparty_classifiers_match_v1_labels() -> None:
     assert classify_monthly_counterparty("某某银行股份有限公司") == "Bank"
     assert classify_monthly_counterparty("某某财务公司") == "NonBank"
 
-
 def test_is_self_counterparty_uses_contains_rule() -> None:
     assert is_self_counterparty("中国银行股份有限公司青岛银行合作部") is True
     assert is_self_counterparty("青岛银行股份有限公司") is True
     assert is_self_counterparty("ALPHA BANK") is False
-
 
 def test_compute_liability_risk_buckets_matches_v1_bucket_shape_and_order() -> None:
     payload = compute_liability_risk_buckets(
@@ -164,11 +182,12 @@ def test_compute_liability_risk_buckets_matches_v1_bucket_shape_and_order() -> N
         "5-10Y",
         "10Y+",
         "Matured",
+        "到期日未提供",
     ]
     assert payload["liabilities_term_buckets"][0] == {
         "bucket": "0-3M",
-        "amount": 520.0,
-        "pct": 0.5977,
+        "amount": 500.0,
+        "pct": 0.5747,
     }
     assert payload["liabilities_term_buckets"][1] == {
         "bucket": "3-6M",
@@ -185,10 +204,62 @@ def test_compute_liability_risk_buckets_matches_v1_bucket_shape_and_order() -> N
         {"bucket": "5-10Y", "amount": 0.0, "pct": 0.0},
         {"bucket": "10Y+", "amount": 0.0, "pct": 0.0},
         {"bucket": "Matured", "amount": 0.0, "pct": 0.0},
+        {"bucket": "到期日未提供", "amount": 20.0, "pct": 0.0230},
     ]
     assert all("amount_yi" not in item for item in payload["liabilities_structure"])
     assert all("amount_yi" not in item for item in payload["liabilities_term_buckets"])
+    # 未提供到期日的余额单列，仍计入总额和结构占比的分母。
+    assert payload["missing_maturity_count"] == 1
 
+def test_compute_liability_risk_buckets_discloses_missing_maturity_rows() -> None:
+    """缺到期日单列，不得虚增最短桶；总额仍须闭合。"""
+    payload = compute_liability_risk_buckets(
+        "2026-02-26",
+        zqtz_rows=[
+            {
+                "is_issuance_like": True,
+                "bond_type": "商业银行债",
+                "market_value_native": "200",
+                "maturity_date": None,
+            }
+        ],
+        tyw_rows=[
+            {
+                "is_asset_side": False,
+                "principal_native": "500",
+                "product_type": "同业存放",
+                "maturity_date": "",
+            },
+            {
+                "is_asset_side": False,
+                "principal_native": "100",
+                "product_type": "同业拆入",
+                "maturity_date": "2026-03-15",
+            },
+        ],
+    )
+
+    assert payload["missing_maturity_count"] == 2
+    bucket_amounts = {item["bucket"]: item["amount"] for item in payload["liabilities_term_buckets"]}
+    assert bucket_amounts["0-3M"] == 100.0
+    assert bucket_amounts["到期日未提供"] == 700.0
+    assert sum(bucket_amounts.values()) == 800.0
+
+def test_compute_liability_risk_buckets_reports_zero_missing_maturity_when_all_dated() -> None:
+    payload = compute_liability_risk_buckets(
+        "2026-02-26",
+        zqtz_rows=[],
+        tyw_rows=[
+            {
+                "is_asset_side": False,
+                "principal_native": "100",
+                "product_type": "同业拆入",
+                "maturity_date": "2026-03-15",
+            }
+        ],
+    )
+
+    assert payload["missing_maturity_count"] == 0
 
 def test_compute_liability_yield_metrics_uses_v1_face_value_for_market_ncd_weight() -> None:
     payload = compute_liability_yield_metrics(
@@ -219,6 +290,30 @@ def test_compute_liability_yield_metrics_uses_v1_face_value_for_market_ncd_weigh
         "nim": None,
     }
 
+def test_compute_liability_yield_metrics_keeps_all_zero_market_liability_cost() -> None:
+    """全零息市场化负债的加权成本是真实的 0；Decimal 的 falsy 语义不得触发回退。"""
+    payload = compute_liability_yield_metrics(
+        "2026-02-26",
+        zqtz_rows=[
+            {
+                "is_issuance_like": True,
+                "bond_type": "商业银行债",
+                "market_value_native": "200",
+                "coupon_rate": "4.0",
+            }
+        ],
+        tyw_rows=[
+            {
+                "is_asset_side": False,
+                "principal_native": "100",
+                "funding_cost_rate": "0",
+            }
+        ],
+    )
+
+    # 商业银行债不进市场化口径，市场化负债只剩零息同业那 100。
+    assert payload["kpi"]["liability_cost"] == 0.02666666666666667
+    assert payload["kpi"]["market_liability_cost"] == 0.0
 
 def test_compute_liability_yield_metrics_falls_back_to_interest_rate_for_bond_assets() -> None:
     payload = compute_liability_yield_metrics(
@@ -243,7 +338,6 @@ def test_compute_liability_yield_metrics_falls_back_to_interest_rate_for_bond_as
         "market_liability_cost": None,
         "nim": None,
     }
-
 
 def test_compute_liability_yield_metrics_uses_amortized_cost_for_htm_asset_weight() -> None:
     payload = compute_liability_yield_metrics(
@@ -274,7 +368,6 @@ def test_compute_liability_yield_metrics_uses_amortized_cost_for_htm_asset_weigh
         "market_liability_cost": None,
         "nim": None,
     }
-
 
 def test_compute_liability_yield_metrics_excludes_assets_without_maturity() -> None:
     payload = compute_liability_yield_metrics(
@@ -307,11 +400,26 @@ def test_compute_liability_yield_metrics_excludes_assets_without_maturity() -> N
         "nim": None,
     }
 
-
-def test_compute_liabilities_monthly_keeps_v1_mom_fields_null() -> None:
+def test_compute_liabilities_monthly_returns_natural_month_mom_and_yoy_changes() -> None:
     payload = compute_liabilities_monthly(
         2026,
         zqtz_rows=[
+            {
+                "report_date": "2025-01-31",
+                "bond_type": "同业存单",
+                "is_issuance_like": True,
+                "amortized_cost_native": "70",
+                "coupon_rate": "4.0",
+                "maturity_date": "2026-04-01",
+            },
+            {
+                "report_date": "2025-12-31",
+                "bond_type": "同业存单",
+                "is_issuance_like": True,
+                "amortized_cost_native": "80",
+                "coupon_rate": "4.0",
+                "maturity_date": "2026-04-01",
+            },
             {
                 "report_date": "2026-01-31",
                 "bond_type": "同业存单",
@@ -333,7 +441,101 @@ def test_compute_liabilities_monthly_keeps_v1_mom_fields_null() -> None:
     )
 
     assert [item["month"] for item in payload["months"]] == ["2026-01", "2026-02"]
-    assert payload["months"][0]["mom_change"] is None
-    assert payload["months"][0]["mom_change_pct"] is None
-    assert payload["months"][1]["mom_change"] is None
-    assert payload["months"][1]["mom_change_pct"] is None
+    assert payload["months"][0]["mom_change"] == 20.0
+    assert payload["months"][0]["mom_change_pct"] == 0.25
+    assert payload["months"][0]["yoy_change"] == 30.0
+    assert payload["months"][0]["yoy_change_pct"] == pytest.approx(30.0 / 70.0)
+    assert payload["months"][1]["mom_change"] == 20.0
+    assert payload["months"][1]["mom_change_pct"] == 0.2
+    assert payload["months"][1]["yoy_change"] is None
+    assert payload["months"][1]["yoy_change_pct"] is None
+
+
+def test_compute_liabilities_monthly_summary_matches_full_monthly_readout() -> None:
+    full = compute_liabilities_monthly(
+        2026,
+        zqtz_rows=[
+            {
+                "report_date": "2025-01-31",
+                "amortized_cost_native": "70",
+                "coupon_rate": "4.0",
+                "bond_type": "同业存单",
+                "maturity_date": "2026-04-01",
+            },
+            {
+                "report_date": "2025-12-31",
+                "amortized_cost_native": "80",
+                "coupon_rate": "4.0",
+                "bond_type": "同业存单",
+                "maturity_date": "2026-04-01",
+            },
+            {
+                "report_date": "2026-01-31",
+                "amortized_cost_native": "100",
+                "coupon_rate": "4.0",
+                "bond_type": "同业存单",
+                "maturity_date": "2026-04-01",
+            },
+            {
+                "report_date": "2026-02-28",
+                "amortized_cost_native": "120",
+                "coupon_rate": "4.0",
+                "bond_type": "同业存单",
+                "maturity_date": "2026-05-01",
+            },
+        ],
+        tyw_rows=[],
+    )
+    summary = compute_liabilities_monthly_summary(
+        2026,
+        zqtz_daily_rows=[
+            {"report_date": "2025-01-31", "liability_amount": "70", "weighted_cost_num": "2.8", "weighted_cost_den": "70"},
+            {"report_date": "2025-12-31", "liability_amount": "80", "weighted_cost_num": "3.2", "weighted_cost_den": "80"},
+            {"report_date": "2026-01-31", "liability_amount": "100", "weighted_cost_num": "4", "weighted_cost_den": "100"},
+            {"report_date": "2026-02-28", "liability_amount": "120", "weighted_cost_num": "4.8", "weighted_cost_den": "120"},
+        ],
+        tyw_daily_rows=[],
+    )
+
+    summary_fields = {
+        "month",
+        "month_label",
+        "avg_total_liabilities",
+        "avg_interbank_liabilities",
+        "avg_issued_liabilities",
+        "avg_liability_cost",
+        "mom_change",
+        "mom_change_pct",
+        "yoy_change",
+        "yoy_change_pct",
+        "num_days",
+    }
+    assert summary["months"] == [
+        {key: item[key] for key in summary_fields}
+        for item in full["months"]
+    ]
+    assert summary["ytd_avg_total_liabilities"] == full["ytd_avg_total_liabilities"]
+    assert summary["ytd_avg_liability_cost"] == full["ytd_avg_liability_cost"]
+
+
+def test_compute_liabilities_monthly_detail_only_returns_selected_month_detail_fields() -> None:
+    payload = compute_liabilities_monthly_detail(
+        2026,
+        "2026-02",
+        zqtz_rows=[
+            {
+                "report_date": "2026-02-28",
+                "amortized_cost_native": "120",
+                "coupon_rate": "4.0",
+                "bond_type": "同业存单",
+                "maturity_date": "2026-05-01",
+            }
+        ],
+        tyw_rows=[],
+    )
+
+    assert payload["selected_month"] == "2026-02"
+    assert payload["detail"]["month"] == "2026-02"
+    assert "avg_total_liabilities" not in payload["detail"]
+    assert "mom_change" not in payload["detail"]
+    assert payload["detail"]["num_days"] == 1

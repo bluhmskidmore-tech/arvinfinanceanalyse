@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import os
 import uuid
 from datetime import date
 from pathlib import Path
@@ -23,12 +22,12 @@ from backend.app.repositories.snapshot_repo import (
     replace_tyw_snapshot_rows,
     replace_zqtz_snapshot_rows,
 )
-from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.repositories.snapshot_row_parse import (
     parse_tyw_snapshot_rows_from_bytes,
     parse_zqtz_snapshot_rows_from_bytes,
 )
 from backend.app.repositories.source_manifest_repo import SourceManifestRepository
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.schemas.snapshot import (
     SnapshotBuildRunRecord,
     SnapshotManifestRecord,
@@ -39,7 +38,7 @@ from backend.app.tasks.build_runs import BuildRunRecord
 
 logger = logging.getLogger(__name__)
 
-SNAPSHOT_RULE_VERSION = "rv_snapshot_zqtz_tyw_v1"
+SNAPSHOT_RULE_VERSION = "rv_snapshot_zqtz_tyw_v3"
 TYW_LOCF_RULE_VERSION = f"{SNAPSHOT_RULE_VERSION}__locf"
 SNAPSHOT_SCHEMA_VERSION = "snapshot.schema.v1"
 CANONICAL_GRAIN_VERSION = "cgv_v1"
@@ -73,6 +72,24 @@ def _locf_tyw_snapshot_rows(
 
     prior_date = prior_row[0]
     prior_date_text = prior_date.isoformat()
+    prior_rule_versions = {
+        str(row[0] or "").strip()
+        for row in conn.execute(
+            """
+            select distinct rule_version
+            from tyw_interbank_daily_snapshot
+            where report_date = ?::date
+            """,
+            [prior_date_text],
+        ).fetchall()
+    }
+    current_rule_versions = {SNAPSHOT_RULE_VERSION, TYW_LOCF_RULE_VERSION}
+    if not prior_rule_versions.issubset(current_rule_versions):
+        raise ValueError(
+            f"TYW LOCF source {prior_date_text} rule_version is incompatible: "
+            f"{sorted(prior_rule_versions)!r}; expected {sorted(current_rule_versions)!r}. "
+            "Rematerialize the source date under the current snapshot rule before LOCF."
+        )
     source_versions = [
         str(row[0])
         for row in conn.execute(
@@ -165,6 +182,7 @@ def _materialize_standard_snapshots(
     ingest_batch_id: str | None = None,
     source_families: list[str] | None = None,
     report_date: str | None = None,
+    local_archive_path: str | None = None,
 ) -> dict[str, object]:
     settings = get_settings()
     duckdb_file = Path(duckdb_path or settings.duckdb_path)
@@ -172,13 +190,14 @@ def _materialize_standard_snapshots(
     governance_path = Path(governance_dir or settings.governance_path)
     gov_repo = GovernanceRepository(base_dir=governance_path)
     manifest_repo = SourceManifestRepository(governance_repo=gov_repo)
+    archive_path = Path(local_archive_path or settings.local_archive_path).resolve()
     store = ObjectStoreRepository(
         endpoint=settings.minio_endpoint,
         access_key=settings.minio_access_key,
         secret_key=settings.minio_secret_key,
         bucket=settings.minio_bucket,
-        mode=settings.object_store_mode,
-        local_archive_path=str(settings.local_archive_path),
+        mode="local" if local_archive_path is not None else settings.object_store_mode,
+        local_archive_path=str(archive_path),
     )
 
     run = BuildRunRecord(job_name="snapshot_materialize", status="running")
@@ -196,7 +215,7 @@ def _materialize_standard_snapshots(
         selected = [
             row
             for row in selected
-            if row.get("archived_path") and Path(str(row["archived_path"])).is_file()
+            if row.get("archived_path") and store._resolve_archived_path(str(row["archived_path"])).is_file()
         ]
         dropped = before - len(selected)
         if dropped:

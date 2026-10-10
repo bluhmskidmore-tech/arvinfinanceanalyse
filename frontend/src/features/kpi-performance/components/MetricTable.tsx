@@ -12,19 +12,29 @@ import { Button, Card, Input, Spin, Tag } from "antd";
 
 import type { KpiDecimalString, KpiMetricWithValue } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
+import { SectionHead } from "../../../components/layout";
+import { PageStateSurface } from "../../../components/page/PagePrimitives";
+import { EM_DASH } from "../../../utils/format";
+import { observeKpiWrite, type KpiPendingWriteProps, type PendingKpiWrite } from "./pendingKpiWrite";
 
 import { TracePanel } from "./TracePanel";
 
-export type MetricTableProps = {
+export type MetricTableProps = Pick<KpiPendingWriteProps, "onUnconfirmedWrite"> & {
   metrics: KpiMetricWithValue[];
   loading?: boolean;
+  writeDisabled?: boolean;
   onRefresh?: () => void;
   onAddMetric?: () => void;
   onEditMetricDef?: (metric: KpiMetricWithValue) => void;
-  /** 日视图下的 as_of_date；汇总视图无 value行编辑时需传入页面截止日期供 updateValue */
-  valueAsOfDate: string;
+  /** 仅日视图提供缺值行的写入日期；汇总行必须使用自身的数据日期。 */
+  valueAsOfDate?: string;
   /** 打开完整表单编辑（与行内编辑并存） */
   onFullEdit?: (metric: KpiMetricWithValue) => void;
+  /**
+   * 后端下发的汇总合计（如 /api/kpi/values/summary 的 total_weight / total_score）。
+   * 提供时合计行直接展示后端值；缺省时回落到前端本地加总并保持“非官方口径”标注。
+   */
+  backendSummary?: { totalWeight: string; totalScore: string } | null;
 };
 
 type EditableField = "target_value" | "actual_value" | "progress_pct" | "score_value";
@@ -35,8 +45,10 @@ type EditingState = {
   value: string;
 };
 
+type ScoreTone = "muted" | "positive" | "neutral" | "warning" | "negative";
+
 function formatDecimal(value: KpiDecimalString, decimals = 2): string {
-  if (value === null || value === undefined || value === "") return "-";
+  if (value === null || value === undefined || value === "") return EM_DASH;
   const num = parseFloat(value);
   if (Number.isNaN(num)) return String(value);
   return num.toLocaleString("zh-CN", {
@@ -45,33 +57,52 @@ function formatDecimal(value: KpiDecimalString, decimals = 2): string {
   });
 }
 
-function getScoreColor(score: KpiDecimalString, weight: KpiDecimalString): string {
+function getScoreTone(score: KpiDecimalString, weight: KpiDecimalString): ScoreTone {
   if (score === null || score === undefined || weight === null || weight === undefined) {
-    return "#94a3b8";
+    return "muted";
   }
   const scoreNum = parseFloat(score);
   const weightNum = parseFloat(weight);
-  if (Number.isNaN(scoreNum) || Number.isNaN(weightNum) || weightNum === 0) return "#94a3b8";
+  if (Number.isNaN(scoreNum) || Number.isNaN(weightNum) || weightNum === 0) return "muted";
   const ratio = scoreNum / weightNum;
-  if (ratio >= 1) return "#16a34a";
-  if (ratio >= 0.8) return "#2563eb";
-  if (ratio >= 0.6) return "#ca8a04";
-  return "#dc2626";
+  if (ratio >= 1) return "positive";
+  if (ratio >= 0.8) return "neutral";
+  if (ratio >= 0.6) return "warning";
+  return "negative";
 }
 
 export function MetricTable({
   metrics,
   loading = false,
+  writeDisabled = false,
+  onUnconfirmedWrite,
   onRefresh,
   onAddMetric,
   onEditMetricDef,
   valueAsOfDate,
   onFullEdit,
+  backendSummary = null,
 }: MetricTableProps) {
   const client = useApiClient();
   const [expandedMetricId, setExpandedMetricId] = React.useState<number | null>(null);
   const [editing, setEditing] = React.useState<EditingState | null>(null);
   const [saving, setSaving] = React.useState(false);
+  const requestSeq = React.useRef(0);
+  const pending = React.useRef(false);
+  const activeWrite = React.useRef<{ handoff: () => void } | null>(null);
+
+  React.useEffect(() => {
+    requestSeq.current += 1;
+    pending.current = false;
+    setEditing(null);
+    setSaving(false);
+    return () => {
+      requestSeq.current += 1;
+      const request = activeWrite.current;
+      activeWrite.current = null;
+      request?.handoff();
+    };
+  }, [metrics, valueAsOfDate, loading]);
 
   const groupedMetrics = React.useMemo(() => {
     const groups: Record<string, KpiMetricWithValue[]> = {};
@@ -95,22 +126,39 @@ export function MetricTable({
 
   const handleSaveEdit = React.useCallback(
     async (metric: KpiMetricWithValue) => {
-      if (!editing) return;
+      const asOf = metric.as_of_date || valueAsOfDate;
+      if (!editing || !asOf || pending.current || writeDisabled || loading || editing.metricId !== metric.metric_id) return;
+      pending.current = true;
+      const requestId = ++requestSeq.current;
+      let write: PendingKpiWrite | undefined;
+      let request: { handoff: () => void } | undefined;
       setSaving(true);
       try {
         const updateData: Record<string, string | undefined> = {};
         updateData[editing.field] = editing.value || undefined;
-        const asOf = metric.as_of_date || valueAsOfDate;
-        await client.updateKpiValue(metric.value_id || 0, metric.metric_id, asOf, updateData);
+        const operation = client.updateKpiValue(metric.value_id || 0, metric.metric_id, asOf, updateData);
+        write = observeKpiWrite(operation);
+        request = { handoff: () => {
+          if (write) onUnconfirmedWrite?.(write, `行内编辑写入日期：${asOf}`);
+        } };
+        activeWrite.current = request;
+        await operation;
+        if (activeWrite.current === request) activeWrite.current = null;
+        if (requestId !== requestSeq.current) return;
         setEditing(null);
         onRefresh?.();
       } catch (e) {
+        if (activeWrite.current === request) activeWrite.current = null;
+        if (requestId === requestSeq.current) request?.handoff();
         console.error(e);
       } finally {
-        setSaving(false);
+        if (requestId === requestSeq.current) {
+          pending.current = false;
+          setSaving(false);
+        }
       }
     },
-    [client, editing, onRefresh, valueAsOfDate],
+    [client, editing, onRefresh, valueAsOfDate, loading, writeDisabled, onUnconfirmedWrite],
   );
 
   const renderEditableCell = (
@@ -118,8 +166,12 @@ export function MetricTable({
     field: EditableField,
     displayValue: string,
     suffix?: string,
-    scoreColor?: string,
+    scoreTone?: ScoreTone,
   ) => {
+    if (writeDisabled) return <span title="前一笔写入结果尚未确认，请先核实">{displayValue}{suffix && displayValue !== EM_DASH ? suffix : ""}</span>;
+    if (!metric.as_of_date && !valueAsOfDate) {
+      return <span title="无数据日期，请切换到日视图录入">{displayValue}{suffix && displayValue !== EM_DASH ? suffix : ""}</span>;
+    }
     const isEditing = editing?.metricId === metric.metric_id && editing?.field === field;
     if (isEditing) {
       return (
@@ -128,17 +180,26 @@ export function MetricTable({
             size="small"
             className="kpi-metric-table__edit-input"
             value={editing.value}
+            disabled={saving}
             onChange={(e) => setEditing({ ...editing, value: e.target.value })}
             onPressEnter={() => void handleSaveEdit(metric)}
           />
           <Button
+            aria-label="保存编辑"
             type="text"
             size="small"
             loading={saving}
             icon={<CheckOutlined />}
             onClick={() => void handleSaveEdit(metric)}
           />
-          <Button type="text" size="small" icon={<CloseOutlined />} onClick={() => setEditing(null)} />
+          <Button
+            aria-label="取消编辑"
+            type="text"
+            size="small"
+            icon={<CloseOutlined />}
+            disabled={saving}
+            onClick={() => setEditing(null)}
+          />
         </div>
       );
     }
@@ -146,6 +207,7 @@ export function MetricTable({
       "kpi-metric-table__editable-cell",
       "kpi-metric-table__editable-cell--button",
       field === "score_value" ? "kpi-metric-table__editable-cell--score" : null,
+      scoreTone ? `kpi-metric-table__editable-cell--score-${scoreTone}` : null,
     ]
       .filter(Boolean)
       .join(" ");
@@ -154,9 +216,11 @@ export function MetricTable({
         role="button"
         tabIndex={0}
         className={cellClassName}
-        style={{ color: scoreColor }}
+        title={`写入日期：${metric.as_of_date || valueAsOfDate}`}
         onClick={(e) => {
           e.stopPropagation();
+          if (saving) return;
+          setExpandedMetricId(metric.metric_id);
           setEditing({
             metricId: metric.metric_id,
             field,
@@ -164,7 +228,8 @@ export function MetricTable({
           });
         }}
         onKeyDown={(e) => {
-          if (e.key === "Enter") {
+          if (e.key === "Enter" && !saving) {
+            setExpandedMetricId(metric.metric_id);
             setEditing({
               metricId: metric.metric_id,
               field,
@@ -175,7 +240,7 @@ export function MetricTable({
       >
         <span>
           {displayValue}
-          {suffix && displayValue !== "-" ? suffix : ""}
+          {suffix && displayValue !== EM_DASH ? suffix : ""}
         </span>
         <EditOutlined className="kpi-metric-table__edit-icon" />
       </div>
@@ -184,32 +249,45 @@ export function MetricTable({
 
   if (loading) {
     return (
-      <Card>
-        <div className="kpi-metric-table__state">
-          <Spin />
-          <div className="kpi-metric-table__loading-text">加载指标…</div>
-        </div>
-      </Card>
+      <PageStateSurface
+        variant="loading"
+        testId="kpi-metric-table-panel"
+        className="kpi-metric-table-card kpi-metric-table-card--state kpi-metric-table__state"
+      >
+        <Spin />
+        <div className="kpi-metric-table__loading-text">加载指标…</div>
+      </PageStateSurface>
     );
   }
 
   if (metrics.length === 0) {
     return (
-      <Card>
-        <div className="kpi-metric-table__state kpi-metric-table__state--empty">
-          <p>暂无指标数据</p>
-          {onAddMetric ? (
+      <PageStateSurface
+        variant="empty"
+        testId="kpi-metric-table-panel"
+        className="kpi-metric-table-card kpi-metric-table-card--state kpi-metric-table__state kpi-metric-table__state--empty"
+        title="暂无指标数据"
+        description="当前考核对象暂无可展示指标"
+        actions={
+          onAddMetric ? (
             <Button type="primary" ghost icon={<PlusOutlined />} onClick={onAddMetric}>
               新增指标
             </Button>
-          ) : null}
-        </div>
-      </Card>
+          ) : null
+        }
+      />
     );
   }
 
   return (
-    <Card className="kpi-metric-table-card">
+    <section className="kpi-metric-table-card" data-testid="kpi-metric-table-panel">
+      <div className="kpi-metric-table-card__header">
+        <SectionHead
+          title="指标明细"
+          numbered={false}
+          actions={<span className="kpi-metric-table-card__count">{metrics.length} 项</span>}
+        />
+      </div>
       <div className="kpi-metric-table__scroll">
         <table className="kpi-metric-table">
           <thead>
@@ -253,7 +331,7 @@ export function MetricTable({
                 </tr>
                 {categoryMetrics.map((metric, idx) => {
                   const isExpanded = expandedMetricId === metric.metric_id;
-                  const scoreColor = getScoreColor(metric.score_value ?? null, metric.score_weight);
+                  const scoreTone = getScoreTone(metric.score_value ?? null, metric.score_weight);
                   const isLast = idx === categoryMetrics.length - 1;
                   const rowClassName = [
                     "kpi-metric-table__row",
@@ -272,13 +350,14 @@ export function MetricTable({
                           {isExpanded ? <DownOutlined /> : <RightOutlined />}
                         </td>
                         <td className="kpi-metric-table__cell kpi-metric-table__cell--indicator">
-                          {metric.indicator_category || "-"}
+                          {metric.indicator_category || EM_DASH}
                         </td>
                         <td className="kpi-metric-table__cell">
                           <div className="kpi-metric-table__metric-name-wrap">
                             <span className="kpi-metric-table__metric-name">{metric.metric_name}</span>
                             {onEditMetricDef ? (
                               <Button
+                                aria-label="设置指标"
                                 type="text"
                                 size="small"
                                 icon={<SettingOutlined />}
@@ -301,7 +380,7 @@ export function MetricTable({
                             className="kpi-metric-table__scoring-text"
                             title={metric.scoring_text || ""}
                           >
-                            {metric.scoring_text || "-"}
+                            {metric.scoring_text || EM_DASH}
                           </div>
                         </td>
                         <td className="kpi-metric-table__cell kpi-metric-table__cell--number">
@@ -325,7 +404,7 @@ export function MetricTable({
                             "score_value",
                             formatDecimal(metric.score_value ?? null, 2),
                             undefined,
-                            scoreColor,
+                            scoreTone,
                           )}
                         </td>
                       </tr>
@@ -341,7 +420,7 @@ export function MetricTable({
                                       编辑指标
                                     </Button>
                                   ) : null}
-                                  {onFullEdit ? (
+                                  {onFullEdit && (metric.as_of_date || valueAsOfDate) ? (
                                     <Button type="link" size="small" onClick={() => onFullEdit(metric)}>
                                       表单编辑完成情况
                                     </Button>
@@ -349,6 +428,10 @@ export function MetricTable({
                                 </div>
                                 <Card size="small">
                                   <div className="kpi-metric-table__detail-list">
+                                    <div>
+                                      <span className="kpi-metric-table__detail-label">写入日期 </span>
+                                      {metric.as_of_date || valueAsOfDate || EM_DASH}
+                                    </div>
                                     <div>
                                       <span className="kpi-metric-table__detail-label">指标代码 </span>
                                       <code>{metric.metric_code}</code>
@@ -395,20 +478,26 @@ export function MetricTable({
             ))}
             <tr className="kpi-metric-table__summary-row">
               <td colSpan={4} className="kpi-metric-table__summary-label">
-                合计
+                {backendSummary
+                  ? "合计（后端汇总口径）"
+                  : "合计（前端本地加总·非官方口径）"}
               </td>
               <td className="kpi-metric-table__summary-number">
-                {summary.totalWeight.toFixed(0)}
+                {backendSummary
+                  ? formatDecimal(backendSummary.totalWeight, 0)
+                  : summary.totalWeight.toFixed(0)}
               </td>
               <td colSpan={3} />
               <td className="kpi-metric-table__summary-number kpi-metric-table__summary-number--score">
-                {summary.totalScore.toFixed(2)}
+                {backendSummary
+                  ? formatDecimal(backendSummary.totalScore, 2)
+                  : summary.totalScore.toFixed(2)}
               </td>
             </tr>
           </tbody>
         </table>
       </div>
-    </Card>
+    </section>
   );
 }
 

@@ -5,6 +5,7 @@ import sys
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.user_scope_repo import UserScopeRepository
 from backend.app.services.pnl_service import PNL_CACHE_VERSION
 from backend.app.tasks.pnl_materialize import PNL_RESULT_CACHE_VERSION
 from tests.helpers import load_module
@@ -56,8 +57,19 @@ def _materialize_formal_anchor(tmp_path, monkeypatch) -> None:
     )
 
 
-def test_gate_a_formal_cache_metadata_anchor_remains_explicitly_formal(tmp_path, monkeypatch):
+def _grant_pnl_read_scope() -> None:
+    settings = get_settings()
+    UserScopeRepository(settings.governance_sql_dsn or settings.postgres_dsn).grant_scope(
+        user_id="*",
+        role=None,
+        resource="pnl",
+        action="read",
+    )
+
+
+def test_gate_a_formal_cache_metadata_anchor_remains_explicitly_formal(tmp_path, monkeypatch, seed_wildcard_scope):
     _materialize_formal_anchor(tmp_path, monkeypatch)
+    _grant_pnl_read_scope()
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
 
     response = client.get("/api/pnl/dates")

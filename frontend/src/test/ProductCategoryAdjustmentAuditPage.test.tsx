@@ -44,8 +44,11 @@ describe("buildProductCategoryAuditListExportQuery", () => {
     );
   });
 });
-function renderAuditPageWithClient(client: ReturnType<typeof createApiClient>) {
-  const router = createWorkbenchMemoryRouter(["/product-category-pnl/audit"]);
+function renderAuditPageWithClient(
+  client: ReturnType<typeof createApiClient>,
+  initialEntry = "/product-category-pnl/audit",
+) {
+  const router = createWorkbenchMemoryRouter([initialEntry]);
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
@@ -72,9 +75,55 @@ async function waitForMonthlyOperatingAnalysisAuditReady() {
 }
 
 describe("ProductCategoryAdjustmentAuditPage", () => {
+  // 与 ProductCategoryPnlPage.test.tsx 同源的重路由预加载，20s 上限在有负载时会稳定超时。
   beforeAll(async () => {
     await preloadWorkbenchRouteModules("product-category-pnl-audit");
-  }, 20_000);
+  }, 60_000);
+
+  it.each(["pending", "empty"] as const)(
+    "keeps audit export disabled when report dates are %s",
+    async (state) => {
+      const baseClient = createApiClient({ mode: "mock" });
+      const dates = await baseClient.getProductCategoryDates();
+      const exportSpy = vi.fn(baseClient.exportProductCategoryManualAdjustmentsCsv);
+      renderAuditPageWithClient({
+        ...baseClient,
+        getProductCategoryDates: () => state === "pending"
+          ? new Promise<Awaited<ReturnType<typeof baseClient.getProductCategoryDates>>>(() => {})
+          : Promise.resolve({ ...dates, result: { ...dates.result, report_dates: [] } }),
+        exportProductCategoryManualAdjustmentsCsv: exportSpy,
+      });
+
+      const button = await screen.findByTestId("audit-export-button");
+      expect(button).toBeDisabled();
+      await userEvent.click(button);
+      expect(exportSpy).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    {
+      route: "/product-category-pnl/audit",
+      rootTestId: "product-category-audit-page",
+      expectedScope: "product-category-pnl",
+    },
+    {
+      route: "/product-category-pnl/audit?branch=monthly_operating_analysis",
+      rootTestId: "monthly-operating-analysis-audit-page",
+      expectedScope: "product-category-pnl",
+    },
+  ])("declares the canonical Nocturne scope for $route", async ({
+    route,
+    rootTestId,
+    expectedScope,
+  }) => {
+    renderAuditPageWithClient(createApiClient({ mode: "mock" }), route);
+
+    expect(await screen.findByTestId(rootTestId)).toHaveAttribute(
+      "data-moss-theme-scope",
+      expectedScope,
+    );
+  });
 
   it("renders the independent audit view with current-state rows and timeline rows", async () => {
     const baseClient = createApiClient({ mode: "mock" });
@@ -148,6 +197,15 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
     expect(screen.getByTestId("product-category-audit-timeline-lead")).toHaveTextContent(
       "调整审计时间线",
     );
+    for (const testId of [
+      "product-category-audit-filter-lead",
+      "product-category-audit-manual-lead",
+      "product-category-audit-timeline-lead",
+    ]) {
+      expect(screen.getByTestId(testId)).toHaveAttribute("data-numbered", "false");
+      expect(screen.getByTestId(testId)).toHaveAttribute("data-content-gap", "tight");
+    }
+    expect(document.querySelector(".product-category-section-lead")).not.toBeInTheDocument();
     expect(await screen.findByTestId("audit-current-state")).toBeInTheDocument();
     expect(screen.getByTestId("audit-event-list")).toBeInTheDocument();
     expect(screen.getByText("audit-account")).toBeInTheDocument();
@@ -203,7 +261,7 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
     const listAsyncRegion = await screen.findByTestId("product-category-audit-list-timeline-async");
     const retryButton = await within(listAsyncRegion).findByRole("button", { name: "重试" });
     expect(within(listAsyncRegion).getByText(/数据载入失败/)).toBeInTheDocument();
-    expect(within(listAsyncRegion).getByText(/当前页面保留重试入口/)).toBeInTheDocument();
+    expect(within(listAsyncRegion).getByText(/暂时无法获取数据，请重试/)).toBeInTheDocument();
     expect(within(listAsyncRegion).queryByTestId("audit-current-state")).not.toBeInTheDocument();
     expect(within(listAsyncRegion).queryByTestId("audit-event-list")).not.toBeInTheDocument();
 
@@ -2318,6 +2376,14 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
     expect(screen.getByTestId("monthly-operating-analysis-audit-list-lead")).toHaveTextContent(
       "月度经营调整记录",
     );
+    for (const testId of [
+      "monthly-operating-analysis-audit-form-lead",
+      "monthly-operating-analysis-audit-list-lead",
+    ]) {
+      expect(screen.getByTestId(testId)).toHaveAttribute("data-numbered", "false");
+      expect(screen.getByTestId(testId)).toHaveAttribute("data-content-gap", "tight");
+    }
+    expect(document.querySelector(".product-category-section-lead")).not.toBeInTheDocument();
     await user.selectOptions(screen.getByTestId("monthly-operating-analysis-adjustment-class"), "analysis_adjustment");
     await user.type(screen.getByTestId("monthly-operating-analysis-adjustment-value"), "manual_override");
     await user.click(screen.getByTestId("monthly-operating-analysis-adjustment-submit"));

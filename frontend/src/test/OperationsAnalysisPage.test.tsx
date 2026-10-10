@@ -1,12 +1,12 @@
 import { createElement, useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
 import type { ApiEnvelope, ResultMeta, SourcePreviewPayload } from "../api/contracts";
-import { routerFuture } from "../router/routerFuture";
 import OperationsAnalysisPage from "../features/workbench/pages/OperationsAnalysisPage";
 
 vi.mock("../features/workbench/business-analysis/RevenueCostBridge", () => ({
@@ -36,7 +36,7 @@ function renderPage(client: ApiClient) {
 
   return render(
     <Wrapper>
-      <MemoryRouter future={routerFuture}>
+      <MemoryRouter>
         <OperationsAnalysisPage />
       </MemoryRouter>
     </Wrapper>,
@@ -198,6 +198,8 @@ describe("OperationsAnalysisPage", () => {
         total_rows: 2,
         limit: 3,
         offset: 0,
+        as_of_date: "2026-04-10",
+        excluded_future_rows: 0,
         events: [
           {
             event_key: "evt-001",
@@ -247,7 +249,7 @@ describe("OperationsAnalysisPage", () => {
     expect(screen.getByText("币种")).toBeInTheDocument();
     expect(screen.getByText("周期")).toBeInTheDocument();
     expect(
-      await screen.findByRole("heading", { name: "专题入口：资产负债正式读面" }),
+      await screen.findByRole("heading", { name: "专题入口：资产负债分析" }),
     ).toBeInTheDocument();
     const balanceAnalysisLinks = screen.getAllByRole("link", { name: "进入资产负债分析" });
     expect(balanceAnalysisLinks.length).toBeGreaterThanOrEqual(1);
@@ -258,9 +260,14 @@ describe("OperationsAnalysisPage", () => {
       expect(screen.getByTestId("operations-entry-balance-report-date")).toHaveTextContent(
         "2025-12-31",
       );
-      expect(screen.getByTestId("operations-entry-balance-amortized")).toHaveTextContent("1,123");
-      expect(screen.getByTestId("operations-entry-balance-market-value")).toHaveTextContent("1,202");
+      expect(screen.getByTestId("operations-entry-balance-asset-market-value")).toHaveTextContent("1,130");
+      expect(screen.getByTestId("operations-entry-balance-liability-market-value")).toHaveTextContent("72");
+      expect(screen.getByTestId("operations-entry-balance-asset-amortized")).toHaveTextContent("1,051");
+      expect(screen.getByTestId("operations-entry-balance-liability-amortized")).toHaveTextContent("72");
     });
+    expect(screen.queryByTestId("operations-entry-balance-market-value")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("operations-entry-balance-amortized")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("operations-entry-balance-accrued")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /数据源与运维状态/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "数据源预览" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "进入数据源预览" })).not.toBeInTheDocument();
@@ -322,7 +329,7 @@ describe("OperationsAnalysisPage", () => {
     expect(contributionGrid).toBeInTheDocument();
     await waitFor(() => {
       expect(within(contributionGrid).getByText("债券投资")).toBeInTheDocument();
-      expect(contributionGrid).toHaveTextContent("/ui/pnl/product-category");
+      expect(contributionGrid).not.toHaveTextContent("/ui/pnl/product-category");
       expect(contributionGrid).toHaveTextContent("总收益（合计）");
       expect(contributionGrid).toHaveTextContent("全部市场科目 + 投资收益合计");
       expect(contributionGrid).not.toHaveTextContent("240001.IB");
@@ -330,9 +337,35 @@ describe("OperationsAnalysisPage", () => {
     expect(await screen.findByTestId("operations-structure-grid")).toBeInTheDocument();
     expect(await screen.findByTestId("operations-entry-recommendation")).toBeInTheDocument();
     const heroProvenance = await screen.findByTestId("operations-hero-provenance");
-    expect(heroProvenance).toHaveTextContent("物化/候选对账");
-    expect(heroProvenance).toHaveTextContent("静态示例");
-    expect(await screen.findByTestId("operations-contribution-table-provenance")).toHaveTextContent("口径 正式口径");
+    expect(heroProvenance).toHaveTextContent("汇率覆盖情况用于核验外币数据");
+    // 技术路径既不出现在正文，也不放进业务说明的悬浮提示。
+    expect(heroProvenance).not.toHaveTextContent("静态示例");
+    expect(heroProvenance).not.toHaveTextContent("/ui/pnl/product-category");
+    expect(heroProvenance).not.toHaveAttribute("title");
+    expect(await screen.findByTestId("operations-contribution-table-provenance")).toHaveTextContent("正式口径");
+    const diagnostics = screen.getByTestId("operations-technical-diagnostics");
+    const endpoint = within(diagnostics).getByText("/ui/pnl/product-category");
+    expect(diagnostics).not.toHaveAttribute("open");
+    expect(endpoint).not.toBeVisible();
+    await userEvent.click(within(diagnostics).getByText("技术诊断"));
+    expect(endpoint).toBeVisible();
+    // 静态示例区默认折叠为一行 <details>，红胶囊声明保留在 summary 上。
+    expect(screen.getByTestId("operations-watch-sample-section")).not.toHaveAttribute("open");
+    expect(screen.getByTestId("operations-calendar-sample-section")).not.toHaveAttribute("open");
+    expect(screen.getByTestId("operations-tenor-sample-section")).not.toHaveAttribute("open");
+    expect(screen.getByTestId("operations-bridge-sample-section")).not.toHaveAttribute("open");
+    expect(screen.getByTestId("operations-watch-static-sample-badge")).toHaveTextContent(
+      "静态示例数据",
+    );
+    expect(screen.getByTestId("operations-calendar-static-sample-badge")).toHaveTextContent(
+      "静态示例数据",
+    );
+    expect(screen.getByTestId("operations-tenor-static-sample-badge")).toHaveTextContent(
+      "静态示例数据",
+    );
+    expect(screen.getByTestId("revenue-cost-bridge-sample-badge")).toHaveTextContent(
+      "示意数据·未接入正式口径",
+    );
   });
 
   it("does not claim evidence is sufficient when critical read surfaces are empty", async () => {
@@ -422,8 +455,52 @@ describe("OperationsAnalysisPage", () => {
       })),
     });
 
-    expect(await screen.findByText("经营口径证据链不完整")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "经营分析数据尚不完整" })).toBeInTheDocument();
     const recommendation = await screen.findByTestId("operations-entry-recommendation");
-    expect(recommendation).not.toHaveTextContent("产品分类经营口径可用于本期判断");
+    expect(recommendation).not.toHaveTextContent("查看本期产品分类经营表现");
+    expect(within(recommendation).getByRole("link", { name: "打开数据更新中心" })).toHaveAttribute("href", "/platform-config");
+  });
+
+  it("offers the data update center while retaining the failed source context", async () => {
+    const base = createApiClient({ mode: "mock" });
+    renderPage({ ...base, getSourceFoundation: vi.fn(async () => { throw new Error("source batch unavailable"); }) });
+    const recommendation = await screen.findByTestId("operations-entry-recommendation");
+    await waitFor(() => expect(within(recommendation).getByRole("link", { name: "打开数据更新中心" })).toHaveAttribute("href", "/platform-config"));
+    expect(screen.getByTestId("operations-first-screen-failure")).toHaveTextContent("数据暂不可用：数据来源");
+  });
+
+  it("keeps usage and stale-data restrictions visible while technical identifiers are collapsed", async () => {
+    const base = createApiClient({ mode: "mock" });
+    renderPage({
+      ...base,
+      getProductCategoryPnl: async (params) => {
+        const payload = await base.getProductCategoryPnl(params);
+        return {
+          ...payload,
+          result_meta: {
+            ...payload.result_meta,
+            formal_use_allowed: false,
+            quality_flag: "stale",
+            vendor_status: "vendor_stale",
+            fallback_mode: "latest_snapshot",
+            trace_id: "operations_restriction_trace",
+          },
+        };
+      },
+    });
+
+    const kpis = await screen.findByTestId("operations-business-kpis");
+    await waitFor(() => {
+      expect(kpis).toHaveTextContent("尚未获准正式使用");
+      expect(kpis).toHaveTextContent("数据质量：已过期");
+      expect(kpis).toHaveTextContent("数据来源更新延迟");
+      expect(kpis).toHaveTextContent("使用最近可用数据");
+    });
+    expect(within(kpis).getAllByText(/尚未获准正式使用/)[0]).toBeVisible();
+    const diagnostics = screen.getByTestId("operations-technical-diagnostics");
+    const rawMeta = within(diagnostics).getByText(/operations_restriction_trace/);
+    expect(rawMeta).not.toBeVisible();
+    await userEvent.click(within(diagnostics).getByText("技术诊断"));
+    expect(rawMeta).toBeVisible();
   });
 });

@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-state="after">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>组合总览 · 深色终端样张</title>
+<style>
+/* ============================================================
+   深色终端样张：同一 DOM，两组令牌
+   before = 现状（亮蓝系） / after = 目标态（dh-api 去饱和终端）
+   ============================================================ */
+
+:root[data-state="before"] {
+  --bg-page:      #07111f;
+  --bg-panel:     #0b1728;
+  --bg-panel2:    #0f2033;
+  --bg-panel3:    #0f2033;
+  --border:       rgba(125,211,252,.18);
+  --border-2:     rgba(125,211,252,.18);
+  --text:         #e6f1fb;
+  --text-2:       #8fa8c4;
+  --text-3:       #647a96;
+  --accent:       #7dd3fc;
+  --up:           #b7e08a;
+  --down:         #f2a0a0;
+  --warn:         #f5c86e;
+  --radius:       8px;
+  --shadow:       0 0 24px rgba(125,211,252,.08);
+  --font-title:   Georgia, 'Times New Roman', serif;
+  --title-spacing: 0;
+  --font-num:     -apple-system, 'PingFang SC', 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
+  --num-variant:  normal;
+  --deco-display: block;
+  --area-fill:    rgba(125,211,252,.14);
+}
+
+:root[data-state="after"] {
+  --bg-page:      #070a12;
+  --bg-panel:     #0c1421;
+  --bg-panel2:    #101a2a;
+  --bg-panel3:    #132033;
+  --border:       rgba(103,119,142,.34);
+  --border-2:     rgba(103,119,142,.22);
+  --text:         #e8eef7;
+  --text-2:       #a9b6c7;
+  --text-3:       #8593a8;
+  --accent:       #72a7dc;
+  --up:           #66b98b;
+  --down:         #d47a72;
+  --warn:         #c9a565;
+  --radius:       6px;
+  --shadow:       none;
+  --font-title:   -apple-system, 'PingFang SC', 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
+  --title-spacing: .01em;
+  --font-num:     ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
+  --num-variant:  tabular-nums;
+  --deco-display: none;
+  --area-fill:    rgba(114,167,220,.10);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  background: var(--bg-page);
+  color: var(--text);
+  font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+body * {
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+
+/* ---------- 固定元素：样张标签 + 状态切换 ---------- */
+
+.sample-tag {
+  position: fixed; top: 16px; left: 16px; z-index: 60;
+  font-size: 12px; color: var(--text-3); letter-spacing: .04em;
+  background: var(--bg-page);
+  padding: 4px 8px; border: 1px solid var(--border-2); border-radius: var(--radius);
+}
+
+.state-toggle {
+  position: fixed; top: 14px; right: 16px; z-index: 60;
+  display: flex; gap: 2px;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 3px; box-shadow: var(--shadow);
+}
+.state-toggle button {
+  font-family: inherit; font-size: 12px; letter-spacing: .06em;
+  padding: 5px 14px; border: 0; border-radius: calc(var(--radius) - 2px);
+  background: transparent; color: var(--text-3); cursor: pointer;
+}
+.state-toggle button.active {
+  background: var(--bg-panel3); color: var(--accent);
+  border: 1px solid var(--border);
+}
+
+/* ---------- 页面骨架 ---------- */
+
+.page {
+  max-width: 1200px; margin: 0 auto;
+  padding: 72px 24px 48px;
+}
+
+.page-head { margin-bottom: 20px; }
+.page-title {
+  font-family: var(--font-title);
+  letter-spacing: var(--title-spacing);
+  font-size: 26px; font-weight: 600; color: var(--text);
+}
+.page-sub {
+  margin-top: 4px; font-size: 12px; color: var(--text-3); letter-spacing: .04em;
+}
+
+/* ---------- 顶部工具条 ---------- */
+
+.toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 12px 16px;
+}
+.toolbar-left { display: flex; align-items: center; gap: 14px; }
+.report-date { font-size: 13px; color: var(--text-2); }
+.report-date b {
+  font-family: var(--font-num); font-variant-numeric: var(--num-variant);
+  font-weight: 600; color: var(--text); margin-left: 6px;
+}
+.btn-refresh {
+  font-family: inherit; font-size: 12px; letter-spacing: .05em;
+  color: var(--text-2); background: var(--bg-panel2);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 5px 12px; cursor: pointer;
+}
+.btn-refresh:hover { color: var(--text); }
+
+.status-pills { display: flex; gap: 8px; }
+.pill {
+  font-size: 11px; font-weight: 600; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--accent); background: var(--bg-panel2);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 4px 10px 4px 12px;
+}
+.pill.warn { color: var(--warn); }
+
+.deco-band {
+  display: var(--deco-display);
+  height: 2px; margin-top: -1px;
+  background: linear-gradient(90deg, #7dd3fc, transparent);
+}
+
+/* ---------- KPI 横带 ---------- */
+
+.kpis {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+  margin-top: 16px;
+}
+.kpi {
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 16px; min-height: 112px;
+  display: flex; flex-direction: column; justify-content: space-between;
+}
+.kpi-label { font-size: 12px; color: var(--text-3); letter-spacing: .05em; }
+.kpi-value {
+  margin-top: 8px;
+  font-family: var(--font-num); font-variant-numeric: var(--num-variant);
+  font-size: 28px; font-weight: 600; color: var(--text);
+  white-space: nowrap;
+}
+.kpi-value .unit { font-size: 13px; font-weight: 400; color: var(--text-3); margin-left: 4px; }
+.kpi-value.up { color: var(--up); }
+.kpi-delta {
+  margin-top: 8px; font-size: 12px; color: var(--text-3);
+  font-family: var(--font-num); font-variant-numeric: var(--num-variant);
+}
+.kpi-delta .up   { color: var(--up); }
+.kpi-delta .down { color: var(--down); }
+
+/* ---------- 双栏：图 + 表 ---------- */
+
+.grid-2 {
+  display: grid; grid-template-columns: 7fr 5fr; gap: 12px;
+  margin-top: 12px; align-items: stretch;
+}
+.panel {
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 16px;
+}
+.panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: 12px; border-bottom: 1px solid var(--border-2);
+}
+.panel-title {
+  font-family: var(--font-title); letter-spacing: var(--title-spacing);
+  font-size: 15px; font-weight: 600; color: var(--text);
+}
+.legend { display: flex; gap: 14px; font-size: 11px; color: var(--text-3); }
+.legend i {
+  display: inline-block; width: 14px; height: 2px; vertical-align: middle;
+  margin-right: 5px; background: var(--accent);
+}
+.legend i.dash {
+  background: none; height: 0; border-top: 2px dashed var(--text-3);
+}
+
+.chart-wrap { padding-top: 12px; }
+.chart-wrap svg { display: block; width: 100%; height: auto; }
+.axis-label { fill: var(--text-3); font-size: 10px; font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei UI', 'Segoe UI', sans-serif; }
+.grid-line  { stroke: var(--border-2); stroke-width: 1; }
+.base-line  { stroke: var(--text-3); stroke-width: 1; stroke-dasharray: 5 4; }
+.base-label { fill: var(--text-3); font-size: 10px; }
+.area-path  { fill: var(--area-fill); }
+.line-path  { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.line-dot   { fill: var(--accent); }
+
+/* ---------- 重点券表 ---------- */
+
+.bond-table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+.bond-table th {
+  text-align: left; font-size: 11px; font-weight: 500; letter-spacing: .06em;
+  color: var(--text-3); padding: 10px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.bond-table td {
+  font-size: 13px; color: var(--text-2); padding: 11px 8px;
+  border-bottom: 1px solid var(--border-2);
+}
+.bond-table tr:last-child td { border-bottom: 0; }
+.bond-table .name { color: var(--text); font-weight: 500; }
+.bond-table .num {
+  font-family: var(--font-num); font-variant-numeric: var(--num-variant);
+  text-align: right; white-space: nowrap;
+}
+.bond-table th.num { text-align: right; }
+.chg { font-family: var(--font-num); font-variant-numeric: var(--num-variant); text-align: right; white-space: nowrap; }
+.chg.up   { color: var(--up); }
+.chg.down { color: var(--down); }
+
+/* ---------- 底部结论条 ---------- */
+
+.verdict {
+  margin-top: 12px;
+  background: var(--bg-panel2); border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 14px 16px;
+  font-size: 13px; color: var(--text-2);
+}
+.verdict b { color: var(--text); font-weight: 600; }
+.verdict .num { font-family: var(--font-num); font-variant-numeric: var(--num-variant); }
+
+/* ---------- 窄屏 ---------- */
+
+@media (max-width: 900px) {
+  .kpis { grid-template-columns: repeat(2, 1fr); }
+  .grid-2 { grid-template-columns: 1fr; }
+  .page { padding: 88px 16px 40px; }
+  .sample-tag { position: absolute; }
+}
+</style>
+</head>
+<body>
+
+<div class="sample-tag">设计样张 · 演示数据</div>
+
+<div class="state-toggle" role="group" aria-label="状态切换">
+  <button id="btn-before" data-target="before">现状</button>
+  <button id="btn-after"  data-target="after" class="active">目标态</button>
+</div>
+
+<div class="page">
+
+  <header class="page-head">
+    <h1 class="page-title">组合总览</h1>
+    <div class="page-sub">固定收益组合 / 市场首页 · 深色终端</div>
+  </header>
+
+  <!-- ① 顶部工具条 -->
+  <section class="toolbar">
+    <div class="toolbar-left">
+      <span class="report-date">报告日<b>2026-07-18</b></span>
+      <button class="btn-refresh" type="button">刷新</button>
+    </div>
+    <div class="status-pills">
+      <span class="pill">GOV</span>
+      <span class="pill">FORMAL</span>
+      <span class="pill warn">READY</span>
+    </div>
+  </section>
+  <div class="deco-band"></div>
+
+  <!-- ② KPI 横带 -->
+  <section class="kpis">
+    <div class="kpi">
+      <div class="kpi-label">组合规模</div>
+      <div class="kpi-value">128.64<span class="unit">亿元</span></div>
+      <div class="kpi-delta">较昨日 <span class="up">+0.18 亿元</span></div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">当日损益</div>
+      <div class="kpi-value up">+2,341.2<span class="unit">万元</span></div>
+      <div class="kpi-delta">较昨日 <span class="up">+812.4 万元</span></div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">加权久期</div>
+      <div class="kpi-value">3.42<span class="unit">年</span></div>
+      <div class="kpi-delta">较昨日 <span class="up">+0.03</span></div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">加权 YTM</div>
+      <div class="kpi-value">2.184<span class="unit">%</span></div>
+      <div class="kpi-delta">较昨日 <span class="down">-1.2 bp</span></div>
+    </div>
+  </section>
+
+  <!-- ③ 双栏 -->
+  <section class="grid-2">
+
+    <!-- 左：收益趋势 -->
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">收益趋势（近 30 日）</div>
+        <div class="legend">
+          <span><i></i>组合 YTM</span>
+          <span><i class="dash"></i>基准 2.20%</span>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <svg viewBox="0 0 560 260" role="img" aria-label="近30日组合YTM走势">
+          <!-- 横向网格 + Y 轴标签 -->
+          <line class="grid-line" x1="34" y1="50"  x2="560" y2="50"/>
+          <line class="grid-line" x1="34" y1="90"  x2="560" y2="90"/>
+          <line class="grid-line" x1="34" y1="130" x2="560" y2="130"/>
+          <line class="grid-line" x1="34" y1="170" x2="560" y2="170"/>
+          <line class="grid-line" x1="34" y1="210" x2="560" y2="210"/>
+          <text class="axis-label" x="2" y="53">2.4%</text>
+          <text class="axis-label" x="2" y="93">2.3%</text>
+          <text class="axis-label" x="2" y="133">2.2%</text>
+          <text class="axis-label" x="2" y="173">2.1%</text>
+          <text class="axis-label" x="2" y="213">2.0%</text>
+          <text class="axis-label" x="34"  y="250">06-18</text>
+          <text class="axis-label" x="270" y="250">07-03</text>
+          <text class="axis-label" x="524" y="250">07-18</text>
+          <!-- 基准虚线 2.20% -->
+          <line class="base-line" x1="34" y1="130" x2="560" y2="130"/>
+          <text class="base-label" x="508" y="122">基准 2.20%</text>
+          <!-- 面积 + 折线（x 起点 34，步长约 18.14） -->
+          <path class="area-path" d="M34,42 L52.1,46 L70.3,50 L88.4,58 L106.6,54 L124.7,66 L142.9,74 L161,70 L179.2,82 L197.3,90 L215.5,86 L233.6,98 L251.8,106 L269.9,102 L288.1,114 L306.2,122 L324.4,118 L342.5,130 L360.7,134 L378.8,126 L397,138 L415.1,142 L433.3,134 L451.4,146 L469.6,150 L487.7,158 L505.9,154 L524,162 L542.2,170 L560,174 L560,260 L34,260 Z"/>
+          <path class="line-path" d="M34,42 L52.1,46 L70.3,50 L88.4,58 L106.6,54 L124.7,66 L142.9,74 L161,70 L179.2,82 L197.3,90 L215.5,86 L233.6,98 L251.8,106 L269.9,102 L288.1,114 L306.2,122 L324.4,118 L342.5,130 L360.7,134 L378.8,126 L397,138 L415.1,142 L433.3,134 L451.4,146 L469.6,150 L487.7,158 L505.9,154 L524,162 L542.2,170 L560,174"/>
+          <circle class="line-dot" cx="560" cy="174" r="3"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- 右：重点券表 -->
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">重点券持仓</div>
+        <div class="legend"><span>余额 Top 5</span></div>
+      </div>
+      <table class="bond-table">
+        <thead>
+          <tr>
+            <th>券名</th>
+            <th class="num">余额(亿)</th>
+            <th class="num">久期</th>
+            <th class="num">YTM</th>
+            <th class="num">当日涨跌</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="name">23附息国债11</td>
+            <td class="num">18.50</td>
+            <td class="num">6.82</td>
+            <td class="num">2.041%</td>
+            <td class="chg up">▲ +1.8 bp</td>
+          </tr>
+          <tr>
+            <td class="name">22国开10</td>
+            <td class="num">12.30</td>
+            <td class="num">4.15</td>
+            <td class="num">2.182%</td>
+            <td class="chg down">▼ -0.6 bp</td>
+          </tr>
+          <tr>
+            <td class="name">24进出05</td>
+            <td class="num">9.80</td>
+            <td class="num">3.02</td>
+            <td class="num">1.975%</td>
+            <td class="chg up">▲ +0.9 bp</td>
+          </tr>
+          <tr>
+            <td class="name">23农发清发07</td>
+            <td class="num">7.60</td>
+            <td class="num">5.44</td>
+            <td class="num">2.153%</td>
+            <td class="chg up">▲ +2.4 bp</td>
+          </tr>
+          <tr>
+            <td class="name">24贴现国债36</td>
+            <td class="num">5.20</td>
+            <td class="num">0.38</td>
+            <td class="num">1.642%</td>
+            <td class="chg down">▼ -1.1 bp</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </section>
+
+  <!-- ④ 底部结论条 -->
+  <section class="verdict">
+    <b>今日组合的可执行判断：</b>加权久期 <span class="num">3.42</span> 年，偏离中枢 <span class="num">+0.21</span> 年，处于容忍带上沿；建议对 23附息国债11 减仓 <span class="num">2.0</span> 亿元，将组合久期回落至 <span class="num">3.20</span> 年以内，其余持仓维持不变。
+  </section>
+
+</div>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  var btns = document.querySelectorAll('.state-toggle button');
+  btns.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      root.dataset.state = btn.dataset.target;
+      btns.forEach(function (b) { b.classList.toggle('active', b === btn); });
+    });
+  });
+})();
+</script>
+</body>
+</html>

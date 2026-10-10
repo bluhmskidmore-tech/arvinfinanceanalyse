@@ -7,7 +7,7 @@
 .agent-panel__title {
   margin: 0 0 8px;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--moss-color-text-primary);
   letter-spacing: 0.02em;
 }
@@ -44,7 +44,7 @@
   background: var(--moss-color-primary-50);
   color: var(--moss-color-primary-700);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -89,7 +89,7 @@
   display: inline-flex;
   align-items: center;
   padding: 4px 10px;
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   border: 1px solid var(--moss-color-border-default);
   font-size: 11px;
   font-weight: 600;
@@ -136,14 +136,14 @@
   margin: 1px 0 0;
   color: var(--moss-color-text-primary);
   font-size: 16px;
-  font-weight: 760;
+  font-weight: 600;
   letter-spacing: 0;
 }
 
 .agent-embedded-header__eyebrow {
   color: var(--moss-color-text-muted);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0;
 }
 
@@ -151,10 +151,10 @@
   flex: 0 0 auto;
   padding: 4px 8px;
   border: 1px solid var(--moss-color-neutral-200);
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   color: var(--moss-color-text-muted);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 600;
   white-space: nowrap;
 }
 

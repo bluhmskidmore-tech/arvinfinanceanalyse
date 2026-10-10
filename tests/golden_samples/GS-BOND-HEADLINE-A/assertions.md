@@ -18,9 +18,9 @@
 - `result_meta.formal_use_allowed == false`.
 - `result_meta.source_version == "sv"`.
 - `result_meta.vendor_version == "vv_none"`.
-- `result_meta.rule_version == "rv_bond_analytics_formal_materialize_v1"`.
-- `result_meta.cache_version == "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v1"`.
-- `result_meta.quality_flag == "warning"`.
+- `result_meta.rule_version == "rv_bond_analytics_formal_materialize_v6"`.
+- `result_meta.cache_version == "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v6"`.
+- `result_meta.quality_flag == "ok"` for this non-empty three-row fixture; candidate status remains expressed separately by `basis == "analytical"` and `formal_use_allowed == false`.
 - `result_meta.vendor_status == "ok"`.
 - `result_meta.fallback_mode == "none"`.
 - `result_meta.scenario_flag == false`.
@@ -41,6 +41,7 @@
 - `total_market_value` is a `Numeric` object with `raw` in `yuan`; the page renders it in yi yuan.
 - `unrealized_pnl` is a `Numeric` object with `raw` in `yuan`; the page renders it in yi yuan.
 - `weighted_ytm` is a `Numeric` object with `raw` in ratio form and `unit == "pct"`; the page renders it in `%`.
+- `weighted_ytm_coverage_ratio` uses the eligible rate/credit market value as its denominator and is a `Numeric` ratio.
 - `weighted_duration` is a `Numeric` object with `unit == "ratio"`; the page renders it in years.
 - `weighted_coupon` is a `Numeric` object with `raw` in ratio form and `unit == "pct"`; the page renders it in `%`.
 - `credit_spread_median` is a `Numeric` object with `raw` in ratio form and `unit == "pct"`; the page renders it in `%`.
@@ -52,6 +53,7 @@
 - `result.kpis.total_market_value.raw == 1000.0` and `unit == "yuan"`.
 - `result.kpis.unrealized_pnl.raw == 0.0` and `unit == "yuan"`.
 - `result.kpis.weighted_ytm.raw == 0.035` and `unit == "pct"`.
+- `result.kpis.weighted_ytm_coverage_ratio.raw == 1.0` from 400 / 400 eligible market value.
 - `result.kpis.weighted_duration.raw == 5.0` and `unit == "ratio"`.
 - `result.kpis.weighted_coupon.raw == 0.025` and `unit == "pct"`.
 - `result.kpis.credit_spread_median.raw == 0.04` and `unit == "pct"`.
@@ -60,6 +62,7 @@
 - `result.prev_kpis.total_market_value.raw == 300.0` and `unit == "yuan"`.
 - `result.prev_kpis.unrealized_pnl.raw == 0.0` and `unit == "yuan"`.
 - `result.prev_kpis.weighted_ytm.raw == 0.031` and `unit == "pct"`.
+- `result.prev_kpis.weighted_ytm_coverage_ratio.raw == 1.0` from 300 / 300 eligible market value.
 - `result.prev_kpis.weighted_duration.raw == 4.2` and `unit == "ratio"`.
 - `result.prev_kpis.weighted_coupon.raw == 0.025` and `unit == "pct"`.
 - `result.prev_kpis.credit_spread_median.raw == 0.035` and `unit == "pct"`.

@@ -3,7 +3,85 @@ from __future__ import annotations
 import importlib
 import types
 
+from dramatiq.brokers.stub import StubBroker
+from sqlalchemy import inspect, text
+
 from tests.helpers import load_module
+
+
+def _agent_stream_payloads():
+    return {
+        "agent_audit": {
+            "user_id": "u_sql",
+            "query_text": "governance sql authority",
+            "tools_used": ["analysis_view_tool"],
+            "trace_id": "tr_sql_audit",
+            "created_at": "2026-08-27T04:00:00+00:00",
+        },
+        "agent_prompt": {
+            "provider": "hermes",
+            "user_id": "u_sql",
+            "trace_id": "tr_sql_prompt",
+            "prompt": "authoritative prompt",
+            "prompt_chars": 20,
+            "created_at": "2026-08-27T04:01:00+00:00",
+        },
+    }
+
+
+def test_agent_governance_streams_use_sql_authority_and_keep_jsonl_mirror(
+    tmp_path, monkeypatch
+):
+    governance_mod = load_module(
+        "backend.app.repositories.governance_repo",
+        "backend/app/repositories/governance_repo.py",
+    )
+    monkeypatch.delenv("MOSS_ENVIRONMENT", raising=False)
+    sql_path = tmp_path / "governance.db"
+    repo = governance_mod.GovernanceRepository(
+        base_dir=tmp_path / "governance",
+        sql_dsn=f"sqlite:///{sql_path.as_posix()}",
+        backend_mode="sql-authority",
+    )
+
+    payloads = _agent_stream_payloads()
+    for stream, payload in payloads.items():
+        target = repo.append(stream, payload)
+        assert target == (tmp_path / "governance" / f"{stream}.jsonl").resolve()
+        assert target.exists()
+
+        target.write_text('{"source":"jsonl-decoy"}\n', encoding="utf-8")
+        assert repo.read_all(stream) == [payload]
+
+    assert repo._sql_engine is not None
+    inspector = inspect(repo._sql_engine)
+    for stream in payloads:
+        assert {column["name"] for column in inspector.get_columns(stream)} == {
+            "row_id",
+            "payload_json",
+            "created_at",
+        }
+        with repo._sql_engine.connect() as connection:
+            assert connection.execute(text(f"select count(*) from {stream}")).scalar_one() == 1
+
+
+def test_agent_governance_streams_keep_jsonl_mode_unchanged(tmp_path, monkeypatch):
+    governance_mod = load_module(
+        "backend.app.repositories.governance_repo",
+        "backend/app/repositories/governance_repo.py",
+    )
+    monkeypatch.delenv("MOSS_ENVIRONMENT", raising=False)
+    repo = governance_mod.GovernanceRepository(
+        base_dir=tmp_path,
+        backend_mode="jsonl",
+    )
+
+    for stream, payload in _agent_stream_payloads().items():
+        target = repo.append(stream, payload)
+        assert target == (tmp_path / f"{stream}.jsonl").resolve()
+        assert repo.read_all(stream) == [payload]
+
+    assert repo._sql_engine is None
 
 
 def test_governance_repository_uses_env_sql_authority_when_backend_not_explicit(tmp_path, monkeypatch):
@@ -136,8 +214,9 @@ def test_worker_bootstrap_requests_broker_before_loading_task_modules(monkeypatc
 
     fake_storage_bootstrap = types.ModuleType("backend.app.storage_bootstrap")
     fake_storage_bootstrap.run_startup_storage_migrations = lambda: startup_calls.append("migrated")
+    fake_broker = StubBroker()
     fake_broker_module = types.ModuleType("backend.app.tasks.broker")
-    fake_broker_module.get_broker = lambda: broker_calls.append("broker") or object()
+    fake_broker_module.get_broker = lambda: broker_calls.append("broker") or fake_broker
 
     real_import_module = importlib.import_module
 

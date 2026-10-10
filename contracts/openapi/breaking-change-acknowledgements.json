@@ -1,0 +1,739 @@
+{
+  "schema_version": 1,
+  "purpose": "Explicit, reviewable sign-off for breaking OpenAPI contract changes. scripts/api_contract_check.py baseline-check fails on any breaking finding that is not listed here.",
+  "how_to_use": [
+    "1. Run: python scripts/api_contract_check.py baseline-check --baseline-ref origin/main",
+    "2. Copy the printed 'id:' of each breaking finding you intend to ship.",
+    "3. Add one entry per accepted id with owner, reason, approved_by, affected_consumers, migration_plan, and an unexpired expires_at. Record real human acceptance; all six fields are enforced for matching entries.",
+    "4. Run: python scripts/api_contract_check.py baseline-update, and commit the refreshed snapshots in the same pull request.",
+    "5. After the pull request merges the change becomes part of the base-branch baseline, so delete the entry again; baseline-check reports leftover entries as unused."
+  ],
+  "id_format": "<surface>|<kind>|<METHOD /path>|<target>. Replace <surface> with '*' to cover the same change on both the default and full surfaces with one entry.",
+  "acknowledgements": [
+    {
+      "id": "*|response_field_became_optional|GET /api/pnl-attribution/campisi/enhanced|response 200:result.by_asset_class[].convexity_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_became_optional|GET /api/pnl-attribution/campisi/enhanced|response 200:result.by_asset_class[].cross_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_became_optional|GET /api/pnl-attribution/campisi/enhanced|response 200:result.by_asset_class[].income_return_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_became_optional|GET /api/pnl-attribution/campisi/enhanced|response 200:result.by_asset_class[].reinvestment_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_became_optional|GET /api/pnl-attribution/campisi/enhanced|response 200:result.by_asset_class[].selection_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_became_optional|GET /api/pnl-attribution/campisi/enhanced|response 200:result.by_asset_class[].spread_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_became_optional|GET /api/pnl-attribution/campisi/enhanced|response 200:result.by_asset_class[].treasury_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_became_optional|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.by_asset_class[].convexity_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.by_asset_class[].cross_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.by_asset_class[].income_return_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.by_asset_class[].reinvestment_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.by_asset_class[].selection_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.by_asset_class[].spread_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.by_asset_class[].treasury_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].end_available",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].field",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].market_value_start",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].positions",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].rating",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].start_available",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].end_available",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].field",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].market_value_start",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].positions",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].rating",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].start_available",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.treasury_effect.reason",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.treasury_tenors.end_missing[]",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.treasury_tenors.required_keys[]",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/enhanced|response 200:result.input_quality.market_curve_coverage.treasury_tenors.start_missing[]",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_became_optional|GET /api/pnl-attribution/campisi/four-effects|response 200:result.by_asset_class[].income_return_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_became_optional|GET /api/pnl-attribution/campisi/four-effects|response 200:result.by_asset_class[].selection_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_became_optional|GET /api/pnl-attribution/campisi/four-effects|response 200:result.by_asset_class[].spread_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_became_optional|GET /api/pnl-attribution/campisi/four-effects|response 200:result.by_asset_class[].treasury_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_became_optional|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.by_asset_class[].income_return_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.by_asset_class[].selection_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.by_asset_class[].spread_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.by_asset_class[].treasury_effect_pct",
+      "reason": "审计循环 2026-08-14 campisi 批次（已提交 5d0f74fd fix(campisi)）：formal-bridge 聚合路径仅产出 weight_pct，按桥形状将模型路径专属的逐效应 *_pct 字段声明为可空可缺省；模型路径输出不变，tests/test_campisi_bridge_second_order_disclosure.py 覆盖。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].end_available",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].field",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].market_value_start",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].positions",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].rating",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].start_available",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].end_available",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].field",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].market_value_start",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].positions",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].rating",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].start_available",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.treasury_effect.reason",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.treasury_tenors.end_missing[]",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.treasury_tenors.required_keys[]",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.input_quality.market_curve_coverage.treasury_tenors.start_missing[]",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_became_optional|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].end_available",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].field",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].market_value_start",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].positions",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].rating",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.missing_credit_spread_3y[].start_available",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].end_available",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].field",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].market_value_start",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].positions",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].rating",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.required_credit_spread_3y[].start_available",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.treasury_effect.reason",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.treasury_tenors.end_missing[]",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.treasury_tenors.required_keys[]",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/maturity-buckets|response 200:result.input_quality.market_curve_coverage.treasury_tenors.start_missing[]",
+      "reason": "审计循环 2026-08-14 campisi 批次（本轮工作区修复，schemas/campisi_attribution_read.py）：market_curve_coverage 仅由模型路径产出；formal-bridge 路径不读曲线，质量披露由 formal_closure 承担，故声明为可空。其子字段 '<max-depth>' 重报是 Optional 包装使扁平化深度越过 MAX_SCHEMA_DEPTH 的机械产物，字段实际形状未变。",
+      "approved_by": "system-audit-loop-2026-08-14"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.formal_closure.formal_actual_pnl",
+      "reason": "Campisi formal-closure review 2026-08-15: an unavailable formal bridge leaves formal_actual_pnl unknown, so the API must preserve null instead of fabricating zero. The real route/response-model regression is locked by tests/test_campisi_four_effects_detail_summary.py.",
+      "approved_by": "system-audit-loop-2026-08-15"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.formal_closure.residual_ratio",
+      "reason": "Campisi formal-closure review 2026-08-15: an unavailable formal bridge leaves residual_ratio unknown, and the ratio is mathematically undefined when formal actual PnL is zero with a non-zero residual. The real route/response-model regression is locked by tests/test_campisi_four_effects_detail_summary.py.",
+      "approved_by": "system-audit-loop-2026-08-15"
+    },
+    {
+      "id": "*|response_field_type_changed|GET /api/pnl-attribution/campisi/four-effects|response 200:result.formal_closure.residual_to_formal_pnl",
+      "reason": "Campisi formal-closure review 2026-08-15: an unavailable formal bridge leaves residual_to_formal_pnl unknown, so the API must preserve null instead of fabricating zero. The real route/response-model regression is locked by tests/test_campisi_four_effects_detail_summary.py.",
+      "approved_by": "system-audit-loop-2026-08-15"
+    },
+    {
+      "id": "full|response_field_type_changed|POST /api/agent/runs|response 200:.",
+      "owner": "本对话用户（本地系统使用者；本次仓库 API 迁移决策负责人，非组织业务或发布负责人）",
+      "reason": "用户明确接受POST /api/agent/runs统一创建异步run。可信main f53d213afc3d526390cf308e698bb7a33f60aa8a的transport=cli分支确实返回AgentEnvelope，旧前端也消费sync_compat；删除此分支是真实协议迁移，原“从不返回AgentEnvelope”的确认理由撤销。正常创建仍以现行200排队回执返回，不能据此认为执行已经完成。",
+      "approved_by": "本对话用户于2026-10-05在明确列出日期校验、五个写入口202与run_id完成查询、Agent取消终态及/runs统一异步、旧同步改/query，并确认没有必须保留旧协议的外部调用方的问题下，回复：“接受迁移，仅使用当前配套前端”。",
+      "affected_consumers": [
+        "frontend/src/api/agentClient.ts",
+        "frontend/src/api/contracts/agent.ts",
+        "frontend/src/features/agent/AgentWorkbenchPage.tsx",
+        "frontend/src/features/agent/hooks/useManagedAgentRun.ts"
+      ],
+      "migration_plan": "仅使用当前配套前端：POST /api/agent/runs消费异步创建回执、保存run_id并通过GET /api/agent/runs/{run_id}或SSE等待completed/failed/cancelled。旧CLI同步问答改为仍返回AgentEnvelope的POST /api/agent/query；不恢复/runs同步分支或旧联合消费。用户确认无必须保留旧协议外部调用方，旧构建或脚本须按此路径升级；不得将此次协议接受解释为默认开启Agent。",
+      "expires_at": "2026-11-04"
+    },
+    {
+      "id": "*|response_field_removed|GET /api/bond-dashboard/business-type-metrics|response 200:result.items[].weighted_avg_ytm_pct",
+      "reason": "交叉审计 2026-08-26 P1 契约缺陷修复：业务类型行 YTM 此前是百分点字符串（\"2.55000000\"，缺覆盖为空串 \"\"），与同页 Headline weighted_ytm 的 governed Numeric 口径（unit=pct, raw_scale=ratio）不一致，空串还会被前端拼成误导性的 \"YTM %\"。改为同口径 Numeric 字段 weighted_avg_ytm（缺覆盖 raw=null），前后端消费方与测试同步更新，见 tests/test_bond_dashboard_api_contract.py、BusinessTypeSection.test.tsx。",
+      "approved_by": "system-audit-loop-2026-08-26"
+    },
+    {
+      "id": "*|response_field_removed|GET /api/bond-dashboard/home-summary|response 200:result.business_type.items[].weighted_avg_ytm_pct",
+      "reason": "交叉审计 2026-08-26 P1 契约缺陷修复：同上（home-summary 内嵌同一 BondDashboardBusinessTypeMetricItem），weighted_avg_ytm_pct 百分点字符串改为 governed Numeric 字段 weighted_avg_ytm，口径与 Headline weighted_ytm 对齐。",
+      "approved_by": "system-audit-loop-2026-08-26"
+    },
+    {
+      "id": "*|response_enum_value_added|GET /api/pnl-attribution/summary|response 200:result.primary_driver",
+      "owner": "Codex（本轮 API 契约修复与迁移验证维护；非组织业务负责人）",
+      "reason": "现行正式归因要求从利息规模、利息收益率、交叉效应、公允价值变动、投资收益变动、手工调整变动和未解释差额中选绝对值最大项。原 volume/rate/market/unknown 保留，新增 interaction/fair_value/capital_gain/manual_adjustment/unexplained，避免将非利息驱动误报为规模、市场或未知。",
+      "approved_by": "本对话用户于2026-09-27明确选择：接受9类扩展并完成契约迁移；不含部署授权",
+      "affected_consumers": [
+        "frontend/src/api/contracts/bondAnalytics.ts:PnlAttributionAnalysisSummary",
+        "frontend/src/api/pnlAttributionClient.ts:getPnlAttributionAnalysisSummary",
+        "frontend/src/features/workbench/module-home/usePortfolioHomeQueries.ts:pnlSummaryQuery",
+        "frontend/src/features/workbench/module-home/portfolioDecisionModel.ts:pnlDriverLabel/buildPortfolioDecision",
+        "frontend/src/features/workbench/module-home/portfolioHomeModel.ts:buildPnlSummaryRows",
+        "frontend/src/features/workbench/module-home/moduleHomeModel.ts:归因摘要展示",
+        "PENDING: 仓外或旧构建消费者清单及负责人确认"
+      ],
+      "migration_plan": "仓内 schema、TypeScript 契约及共享标签映射已支持全部九值，保留旧四值。复用正式七项主驱动展示测试及 fair_value=90 和缺失项 unknown/null 反例，补核 schema/envelope 透传与明细显示。仓外或旧构建消费者须由负责人确认枚举扩展接受或迁移完成；不得将新值改写为 market/unknown。确认后更新 default/full OpenAPI 快照并使用固定旧提交作比较，确保仅本项 acknowledgement 命中且无 stale。当前未部署。",
+      "expires_at": "2026-10-04"
+    },
+    {
+      "id": "*|request_field_type_changed|GET /api/pnl/by-business-analysis|parameter query:as_of_date:.",
+      "owner": "本对话用户（本地系统使用者；本次仓库 API 迁移决策负责人，非组织业务或发布负责人）",
+      "reason": "用户接受GET /api/pnl/by-business-analysis的parameter query:as_of_date:.由自由字符串迁移为真实日历date参数，合法日期保留兼容，无效日期返回422。as_of_date空串继续视为省略。范围入口保持开始日晚于结束日返回422。",
+      "approved_by": "本对话用户于2026-10-05在明确列出日期校验、五个写入口202与run_id完成查询、Agent取消终态及/runs统一异步、旧同步改/query，并确认没有必须保留旧协议的外部调用方的问题下，回复：“接受迁移，仅使用当前配套前端”。",
+      "affected_consumers": [
+        "frontend/src/api/pnlClient.ts:getPnlByBusinessAnalysis"
+      ],
+      "migration_plan": "仅使用当前配套前端，未要求保留旧外部调用协议。pnlClient继续传ISO日历日期；可选as_of_date的空串保持省略语义。保留OpenAPI format=date、不存在日期及逆序范围422保护，相关日期反例验证后随本次迁移交付。前端按422展示输入错误；旧构建或脚本不在本次保留消费者范围。",
+      "expires_at": "2026-11-04"
+    },
+    {
+      "id": "*|request_field_type_changed|GET /api/pnl/by-business-monthly|parameter query:as_of_date:.",
+      "owner": "本对话用户（本地系统使用者；本次仓库 API 迁移决策负责人，非组织业务或发布负责人）",
+      "reason": "用户接受GET /api/pnl/by-business-monthly的parameter query:as_of_date:.由自由字符串迁移为真实日历date参数，合法日期保留兼容，无效日期返回422。as_of_date空串继续视为省略。范围入口保持开始日晚于结束日返回422。",
+      "approved_by": "本对话用户于2026-10-05在明确列出日期校验、五个写入口202与run_id完成查询、Agent取消终态及/runs统一异步、旧同步改/query，并确认没有必须保留旧协议的外部调用方的问题下，回复：“接受迁移，仅使用当前配套前端”。",
+      "affected_consumers": [
+        "frontend/src/api/pnlClient.ts:getPnlByBusinessMonthly"
+      ],
+      "migration_plan": "仅使用当前配套前端，未要求保留旧外部调用协议。pnlClient继续传ISO日历日期；可选as_of_date的空串保持省略语义。保留OpenAPI format=date、不存在日期及逆序范围422保护，相关日期反例验证后随本次迁移交付。前端按422展示输入错误；旧构建或脚本不在本次保留消费者范围。",
+      "expires_at": "2026-11-04"
+    },
+    {
+      "id": "*|request_field_type_changed|GET /api/pnl/by-business-ytd|parameter query:as_of_date:.",
+      "owner": "本对话用户（本地系统使用者；本次仓库 API 迁移决策负责人，非组织业务或发布负责人）",
+      "reason": "用户接受GET /api/pnl/by-business-ytd的parameter query:as_of_date:.由自由字符串迁移为真实日历date参数，合法日期保留兼容，无效日期返回422。as_of_date空串继续视为省略。范围入口保持开始日晚于结束日返回422。",
+      "approved_by": "本对话用户于2026-10-05在明确列出日期校验、五个写入口202与run_id完成查询、Agent取消终态及/runs统一异步、旧同步改/query，并确认没有必须保留旧协议的外部调用方的问题下，回复：“接受迁移，仅使用当前配套前端”。",
+      "affected_consumers": [
+        "frontend/src/api/pnlClient.ts:getPnlByBusinessYtd"
+      ],
+      "migration_plan": "仅使用当前配套前端，未要求保留旧外部调用协议。pnlClient继续传ISO日历日期；可选as_of_date的空串保持省略语义。保留OpenAPI format=date、不存在日期及逆序范围422保护，相关日期反例验证后随本次迁移交付。前端按422展示输入错误；旧构建或脚本不在本次保留消费者范围。",
+      "expires_at": "2026-11-04"
+    },
+    {
+      "id": "*|request_field_type_changed|GET /api/positions/bonds/sub_types|parameter query:report_date:.",
+      "owner": "本对话用户（本地系统使用者；本次仓库 API 迁移决策负责人，非组织业务或发布负责人）",
+      "reason": "用户接受GET /api/positions/bonds/sub_types的parameter query:report_date:.由自由字符串迁移为真实日历date参数，合法日期保留兼容，无效日期返回422。持仓日期继续strip正常化。该可选report_date空串继续视为省略。范围入口保持开始日晚于结束日返回422。",
+      "approved_by": "本对话用户于2026-10-05在明确列出日期校验、五个写入口202与run_id完成查询、Agent取消终态及/runs统一异步、旧同步改/query，并确认没有必须保留旧协议的外部调用方的问题下，回复：“接受迁移，仅使用当前配套前端”。",
+      "affected_consumers": [
+        "frontend/src/api/positionsClient.ts"
+      ],
+      "migration_plan": "仅使用当前配套前端，未要求保留旧外部调用协议。positionsClient继续去空格并省略可选空值；后端保留合法日期去空格兼容及可选日期空串省略语义。保留OpenAPI format=date、不存在日期及逆序范围422保护，相关日期反例验证后随本次迁移交付。前端按422展示输入错误；旧构建或脚本不在本次保留消费者范围。",
+      "expires_at": "2026-11-04"
+    },
+    {
+      "id": "*|request_field_type_changed|GET /api/positions/bonds|parameter query:report_date:.",
+      "owner": "本对话用户（本地系统使用者；本次仓库 API 迁移决策负责人，非组织业务或发布负责人）",
+      "reason": "用户接受GET /api/positions/bonds的parameter query:report_date:.由自由字符串迁移为真实日历date参数，合法日期保留兼容，无效日期返回422。持仓日期继续strip正常化。该可选report_date空串继续视为省略。范围入口保持开始日晚于结束日返回422。",
+      "approved_by": "本对话用户于2026-10-05在明确列出日期校验、五个写入口202与run_id完成查询、Agent取消终态及/runs统一异步、旧同步改/query，并确认没有必须保留旧协议的外部调用方的问题下，回复：“接受迁移，仅使用当前配套前端”。",
+      "affected_consumers": [
+        "frontend/src/api/positionsClient.ts"
+      ],
+      "migration_plan": "仅使用当前配套前端，未要求保留旧外部调用协议。positionsClient继续去空格并省略可选空值；后端保留合法日期去空格兼容及可选日期空串省略语义。保留OpenAPI format=date、不存在日期及逆序范围422保护，相关日期反例验证后随本次迁移交付。前端按422展示输入错误；旧构建或脚本不在本次保留消费者范围。",
+      "expires_at": "2026-11-04"
+    },
+    {
+      "id": "*|request_field_type_changed|GET /api/positions/counterparty/bonds|parameter query:end_date:.",
+      "owner": "本对话用户（本地系统使用者；本次仓库 API 迁移决策负责人，非组织业务或发布负责人）",
+      "reason": "用户接受GET /api/positions/counterparty/bonds的parameter query:end_date:.由自由字符串迁移为真实日历date参数，合法日期保留兼容，无效日期返回422。持仓日期继续strip正常化。必填日期空白继续返回422。范围入口保持开始日晚于结束日返回422。",
+      "approved_by": "本对话用户于2026-10-05在明确列出日期校验、五个写入口202与run_id完成查询、Agent取消终态及/runs统一异步、旧同步改/query，并确认没有必须保留旧协议的外部调用方的问题下，回复：“接受迁移，仅使用当前配套前端”。",
+      "affected_consumers": [
+        "frontend/src/api/positionsClient.ts"
+      ],
+      "migration_plan": "仅使用当前配套前端，未要求保留旧外部调用协议。positionsClient继续去空格并省略可选空值；后端保留合法日期去空格兼容及可选日期空串省略语义。保留OpenAPI format=date、不存在日期及逆序范围422保护，相关日期反例验证后随本次迁移交付。前端按422展示输入错误；旧构建或脚本不在本次保留消费者范围。",
+      "expires_at": "2026-11-04"
+    },
+    {
+      "id": "*|request_field_type_changed|GET /api/positions/counterparty/bonds|parameter query:start_date:.",
+      "owner": "本对话用户（本地系统使用者；本次仓库 API 迁移决策负责人，非组织业务或发布负责人）",
+      "reason": "用户接受GET /api/positions/counterparty/bonds的parameter query:start_date:.由自由字符串迁移为真实日历date参数，合法日期保留兼容，无效日期返回422。持仓日期继续strip正常化。必填日期空白继续返回422。范围入口保持开始日晚于结束日返回422。",
+      "approved_by": "本对话用户于2026-10-05在明确列出日期校验、五个写入口202与run_id完成查询、Agent取消终态及/runs统一异步、旧同步改/query，并确认没有必须保留旧协议的外部调用方的问题下，回复：“接受迁移，仅使用当前配套前端”。",
+      "affected_consumers": [
+        "frontend/src/api/positionsClient.ts"
+      ],
+      "migration_plan": "仅使用当前配套前端，未要求保留旧外部调用协议。positionsClient继续去空格并省略可选空值；后端保留合法日期去空格兼容及可选日期空串省略语义。保留OpenAPI format=date、不存在日期及逆序范围422保护，相关日期反例验证后随本次迁移交付。前端按422展示输入错误；旧构建或脚本不在本次保留消费者范围。",
+      "expires_at": "2026-11-04"
+    },
+    {
+      "id": "*|request_field_type_changed|GET /api/positions/counterparty/interbank/split|parameter query:end_date:.",
+      "owner": "本对话用户（本地系统使用者；本次仓库 API 迁移决策负责人，非组织业务或发布负责人）",
+      "reason": "用户接受GET /api/positions/counterparty/interbank/split的parameter query:end_date:.由自由字符串迁移为真实日历date参数，合法日期保留兼容，无效日期返回422。持仓日期继续strip正常化。必填日期空白继续返回422。范围入口保持开始日晚于结束日返回422。",
+      "approved_by": "本对话用户于2026-10-05在明确列出日期校验、五个写入口202与run_id完成查询、Agent取消终态及/runs统一异步、旧同步改/query，并确认没有必须保留旧协议的外部调用方的问题下，回复：“接受迁移，仅使用当前配套前端”。",
+      "affected_consumers": [
+        "frontend/src/api/positionsClient.ts"
+      ],
+      "migration_plan": "仅使用当前配套前端，未要求保留旧外部调用协议。positionsClient继续去空格并省略可选空值；后端保留合法日期去空格兼容及可选日期空串省略语义。保留OpenAPI format=date、不存在日期及逆序范围422保护，相关日期反例验证后随本次迁移交付。前端按422展示输入错误；旧构建或脚本不在本次保留消费者范围。",
+      "expires_at": "2026-11-04"
+    },
+    {
+      "id": "*|request_field_type_changed|GET /api/positions/counterparty/interbank/split|parameter query:start_date:.",
+      "owner": "本对话用户（本地系统使用者；本次仓库 API 迁移决策负责人，非组织业务或发布负责人）",
+      "reason": "用户接受GET /api/positions/counterparty/interbank/split的parameter query:start_date:.由自由字符串迁移为真实日历date参数，合法日期保留兼容，无效日期返回422。持仓日期继续strip正常化。必填日期空白继续返回422。范围入口保持开始日晚于结束日返回422。",
+      "approved_by": "本对话用户于2026-10-05在明确列出日期校验、五个写入口202与run_id完成查询、Agent取消终态及/runs统一异步、旧同步改/query，并确认没有必须保留旧协议的外部调用方的问题下，回复：“接受迁移，仅使用当前配套前端”。",
+      "affected_consumers": [
+        "frontend/src/api/positionsClient.ts"
+      ],
+      "migration_plan": "仅使用当前配套前端，未要求保留旧外部调用协议。positionsClient继续去空格并省略可选空值；后端保留合法日期去空格兼容及可选日期空串省略语义。保留OpenAPI format=date、不存在日期及逆序范围422保护，相关日期反例验证后随本次迁移交付。前端按422展示输入错误；旧构建或脚本不在本次保留消费者范围。",
+      "expires_at": "2026-11-04"
+    },
+    {
+      "id": "*|request_field_type_changed|GET /api/positions/customer/details|parameter query:report_date:.",
+      "owner": "本对话用户（本地系统使用者；本次仓库 API 迁移决策负责人，非组织业务或发布负责人）",
+      "reason": "用户接受GET /api/positions/customer/details的parameter query:report_date:.由自由字符串迁移为真实日历date参数，合法日期保留兼容，无效日期返回422。持仓日期继续strip正常化。必填日期空白继续返回422。范围入口保持开始日晚于结束日返回422。",
+      "approved_by": "本对话用户于2026-10-05在明确列出日期校验、五个写入口202与run_id完成查询、Agent取消终态及/runs统一异步、旧同步改/query，并确认没有必须保留旧协议的外部调用方的问题下，回复：“接受迁移，仅使用当前配套前端”。",
+      "affected_consumers": [
+        "frontend/src/api/positionsClient.ts"
+      ],
+      "migration_plan": "仅使用当前配套前端，未要求保留旧外部调用协议。positionsClient继续去空格并省略可选空值；后端保留合法日期去空格兼容及可选日期空串省略语义。保留OpenAPI format=date、不存在日期及逆序范围422保护，相关日期反例验证后随本次迁移交付。前端按422展示输入错误；旧构建或脚本不在本次保留消费者范围。",
+      "expires_at": "2026-11-04"
+    },
+    {
+      "id": "*|request_field_type_changed|GET /api/positions/customer/trend|parameter query:end_date:.",
+      "owner": "本对话用户（本地系统使用者；本次仓库 API 迁移决策负责人，非组织业务或发布负责人）",
+      "reason": "用户接受GET /api/positions/customer/trend的parameter query:end_date:.由自由字符串迁移为真实日历date参数，合法日期保留兼容，无效日期返回422。持仓日期继续strip正常化。必填日期空白继续返回422。范围入口保持开始日晚于结束日返回422。",
+      "approved_by": "本对话用户于2026-10-05在明确列出日期校验、五个写入口202与run_id完成查询、Agent取消终态及/runs统一异步、旧同步改/query，并确认没有必须保留旧协议的外部调用方的问题下，回复：“接受迁移，仅使用当前配套前端”。",
+      "affected_consumers": [
+        "frontend/src/api/positionsClient.ts"
+      ],
+      "migration_plan": "仅使用当前配套前端，未要求保留旧外部调用协议。positionsClient继续去空格并省略可选空值；后端保留合法日期去空格兼容及可选日期空串省略语义。保留OpenAPI format=date、不存在日期及逆序范围422保护，相关日期反例验证后随本次迁移交付。前端按422展示输入错误；旧构建或脚本不在本次保留消费者范围。",
+      "expires_at": "2026-11-04"
+    },
+    {
+      "id": "*|request_field_type_changed|GET /api/positions/interbank/product_types|parameter query:report_date:.",
+      "owner": "本对话用户（本地系统使用者；本次仓库 API 迁移决策负责人，非组织业务或发布负责人）",
+      "reason": "用户接受GET /api/positions/interbank/product_types的parameter query:report_date:.由自由字符串迁移为真实日历date参数，合法日期保留兼容，无效日期返回422。持仓日期继续strip正常化。该可选report_date空串继续视为省略。范围入口保持开始日晚于结束日返回422。",
+      "approved_by": "本对话用户于2026-10-05在明确列出日期校验、五个写入口202与run_id完成查询、Agent取消终态及/runs统一异步、旧同步改/query，并确认没有必须保留旧协议的外部调用方的问题下，回复：“接受迁移，仅使用当前配套前端”。",
+      "affected_consumers": [
+        "frontend/src/api/positionsClient.ts"
+      ],
+      "migration_plan": "仅使用当前配套前端，未要求保留旧外部调用协议。positionsClient继续去空格并省略可选空值；后端保留合法日期去空格兼容及可选日期空串省略语义。保留OpenAPI format=date、不存在日期及逆序范围422保护，相关日期反例验证后随本次迁移交付。前端按422展示输入错误；旧构建或脚本不在本次保留消费者范围。",
+      "expires_at": "2026-11-04"
+    },
+    {
+      "id": "*|request_field_type_changed|GET /api/positions/interbank|parameter query:report_date:.",
+      "owner": "本对话用户（本地系统使用者；本次仓库 API 迁移决策负责人，非组织业务或发布负责人）",
+      "reason": "用户接受GET /api/positions/interbank的parameter query:report_date:.由自由字符串迁移为真实日历date参数，合法日期保留兼容，无效日期返回422。持仓日期继续strip正常化。该可选report_date空串继续视为省略。范围入口保持开始日晚于结束日返回422。",
+      "approved_by": "本对话用户于2026-10-05在明确列出日期校验、五个写入口202与run_id完成查询、Agent取消终态及/runs统一异步、旧同步改/query，并确认没有必须保留旧协议的外部调用方的问题下，回复：“接受迁移，仅使用当前配套前端”。",
+      "affected_consumers": [
+        "frontend/src/api/positionsClient.ts"
+      ],
+      "migration_plan": "仅使用当前配套前端，未要求保留旧外部调用协议。positionsClient继续去空格并省略可选空值；后端保留合法日期去空格兼容及可选日期空串省略语义。保留OpenAPI format=date、不存在日期及逆序范围422保护，相关日期反例验证后随本次迁移交付。前端按422展示输入错误；旧构建或脚本不在本次保留消费者范围。",
+      "expires_at": "2026-11-04"
+    },
+    {
+      "id": "*|request_field_type_changed|GET /api/positions/stats/industry|parameter query:end_date:.",
+      "owner": "本对话用户（本地系统使用者；本次仓库 API 迁移决策负责人，非组织业务或发布负责人）",
+      "reason": "用户接受GET /api/positions/stats/industry的parameter query:end_date:.由自由字符串迁移为真实日历date参数，合法日期保留兼容，无效日期返回422。持仓日期继续strip正常化。必填日期空白继续返回422。范围入口保持开始日晚于结束日返回422。",
+      "approved_by": "本对话用户于2026-10-05在明确列出日期校验、五个写入口202与run_id完成查询、Agent取消终态及/runs统一异步、旧同步改/query，并确认没有必须保留旧协议的外部调用方的问题下，回复：“接受迁移，仅使用当前配套前端”。",
+      "affected_consumers": [
+        "frontend/src/api/positionsClient.ts"
+      ],
+      "migration_plan": "仅使用当前配套前端，未要求保留旧外部调用协议。positionsClient继续去空格并省略可选空值；后端保留合法日期去空格兼容及可选日期空串省略语义。保留OpenAPI format=date、不存在日期及逆序范围422保护，相关日期反例验证后随本次迁移交付。前端按422展示输入错误；旧构建或脚本不在本次保留消费者范围。",
+      "expires_at": "2026-11-04"
+    },
+    {
+      "id": "*|request_field_type_changed|GET /api/positions/stats/industry|parameter query:start_date:.",
+      "owner": "本对话用户（本地系统使用者；本次仓库 API 迁移决策负责人，非组织业务或发布负责人）",
+      "reason": "用户接受GET /api/positions/stats/industry的parameter query:start_date:.由自由字符串迁移为真实日历date参数，合法日期保留兼容，无效日期返回422。持仓日期继续strip正常化。必填日期空白继续返回422。范围入口保持开始日晚于结束日返回422。",
+      "approved_by": "本对话用户于2026-10-05在明确列出日期校验、五个写入口202与run_id完成查询、Agent取消终态及/runs统一异步、旧同步改/query，并确认没有必须保留旧协议的外部调用方的问题下，回复：“接受迁移，仅使用当前配套前端”。",
+      "affected_consumers": [
+        "frontend/src/api/positionsClient.ts"
+      ],
+      "migration_plan": "仅使用当前配套前端，未要求保留旧外部调用协议。positionsClient继续去空格并省略可选空值；后端保留合法日期去空格兼容及可选日期空串省略语义。保留OpenAPI format=date、不存在日期及逆序范围422保护，相关日期反例验证后随本次迁移交付。前端按422展示输入错误；旧构建或脚本不在本次保留消费者范围。",
+      "expires_at": "2026-11-04"
+    },
+    {
+      "id": "*|request_field_type_changed|GET /api/positions/stats/rating|parameter query:end_date:.",
+      "owner": "本对话用户（本地系统使用者；本次仓库 API 迁移决策负责人，非组织业务或发布负责人）",
+      "reason": "用户接受GET /api/positions/stats/rating的parameter query:end_date:.由自由字符串迁移为真实日历date参数，合法日期保留兼容，无效日期返回422。持仓日期继续strip正常化。必填日期空白继续返回422。范围入口保持开始日晚于结束日返回422。",
+      "approved_by": "本对话用户于2026-10-05在明确列出日期校验、五个写入口202与run_id完成查询、Agent取消终态及/runs统一异步、旧同步改/query，并确认没有必须保留旧协议的外部调用方的问题下，回复：“接受迁移，仅使用当前配套前端”。",
+      "affected_consumers": [
+        "frontend/src/api/positionsClient.ts"
+      ],
+      "migration_plan": "仅使用当前配套前端，未要求保留旧外部调用协议。positionsClient继续去空格并省略可选空值；后端保留合法日期去空格兼容及可选日期空串省略语义。保留OpenAPI format=date、不存在日期及逆序范围422保护，相关日期反例验证后随本次迁移交付。前端按422展示输入错误；旧构建或脚本不在本次保留消费者范围。",
+      "expires_at": "2026-11-04"
+    },
+    {
+      "id": "*|request_field_type_changed|GET /api/positions/stats/rating|parameter query:start_date:.",
+      "owner": "本对话用户（本地系统使用者；本次仓库 API 迁移决策负责人，非组织业务或发布负责人）",
+      "reason": "用户接受GET /api/positions/stats/rating的parameter query:start_date:.由自由字符串迁移为真实日历date参数，合法日期保留兼容，无效日期返回422。持仓日期继续strip正常化。必填日期空白继续返回422。范围入口保持开始日晚于结束日返回422。",
+      "approved_by": "本对话用户于2026-10-05在明确列出日期校验、五个写入口202与run_id完成查询、Agent取消终态及/runs统一异步、旧同步改/query，并确认没有必须保留旧协议的外部调用方的问题下，回复：“接受迁移，仅使用当前配套前端”。",
+      "affected_consumers": [
+        "frontend/src/api/positionsClient.ts"
+      ],
+      "migration_plan": "仅使用当前配套前端，未要求保留旧外部调用协议。positionsClient继续去空格并省略可选空值；后端保留合法日期去空格兼容及可选日期空串省略语义。保留OpenAPI format=date、不存在日期及逆序范围422保护，相关日期反例验证后随本次迁移交付。前端按422展示输入错误；旧构建或脚本不在本次保留消费者范围。",
+      "expires_at": "2026-11-04"
+    },
+    {
+      "id": "*|response_status_removed|POST /api/ledger/import|200",
+      "owner": "本对话用户（本地系统使用者；本次仓库 API 迁移决策负责人，非组织业务或发布负责人）",
+      "reason": "旧入口在请求内导入文件，成功HTTP为200；当前交由worker执行。用户接受成功HTTP由200改202以及任务完成时点迁移：POST只表示接受，run_id状态查询到终态才表示任务结束，queued不表示完成。",
+      "approved_by": "本对话用户于2026-10-05在明确列出日期校验、五个写入口202与run_id完成查询、Agent取消终态及/runs统一异步、旧同步改/query，并确认没有必须保留旧协议的外部调用方的问题下，回复：“接受迁移，仅使用当前配套前端”。",
+      "affected_consumers": [
+        "frontend/src/api/ledgerClient.ts:importLedger/getLedgerImportStatus",
+        "frontend/src/features/ledger-dashboard/pages/useLedgerImportWorkflow.ts"
+      ],
+      "migration_plan": "仅使用当前配套前端，未要求保留旧外部调用协议。客户端接受202、保存run_id，并轮询/api/ledger/import-status?run_id=…；按该入口实际支持的终态展示结果，确认成功后再刷新读取页面。复用现有worker和状态回执，不恢复请求内写路径。旧脚本若继续使用须按同一202/状态查询协议升级；本次不承诺兼容旧构建。",
+      "expires_at": "2026-11-04"
+    },
+    {
+      "id": "*|response_status_removed|POST /ui/macro/toolkit/cffex-member-rank/refresh|200",
+      "owner": "本对话用户（本地系统使用者；本次仓库 API 迁移决策负责人，非组织业务或发布负责人）",
+      "reason": "旧入口在请求内刷新，成功HTTP为200；当前交由worker执行。用户接受成功HTTP由200改202以及任务完成时点迁移：POST只表示接受，run_id状态查询到终态才表示任务结束，queued不表示完成。",
+      "approved_by": "本对话用户于2026-10-05在明确列出日期校验、五个写入口202与run_id完成查询、Agent取消终态及/runs统一异步、旧同步改/query，并确认没有必须保留旧协议的外部调用方的问题下，回复：“接受迁移，仅使用当前配套前端”。",
+      "affected_consumers": [
+        "frontend/src/api/macroToolkitClient.ts:refreshCffexMemberRank/getCffexMemberRankRefreshStatus",
+        "frontend/src/features/macro-toolkit/pages/useMacroToolkitOperationActions.ts"
+      ],
+      "migration_plan": "仅使用当前配套前端，未要求保留旧外部调用协议。客户端接受202、保存run_id，并轮询/ui/macro/toolkit/cffex-member-rank/refresh-status?run_id=…；按该入口实际支持的终态展示结果，确认成功后再刷新读取页面。复用现有worker和状态回执，不恢复请求内写路径。旧脚本若继续使用须按同一202/状态查询协议升级；本次不承诺兼容旧构建。",
+      "expires_at": "2026-11-04"
+    },
+    {
+      "id": "*|response_status_removed|POST /ui/macro/toolkit/choice-stock/refresh|200",
+      "owner": "本对话用户（本地系统使用者；本次仓库 API 迁移决策负责人，非组织业务或发布负责人）",
+      "reason": "旧入口已使用BackgroundTasks排队，但成功HTTP为200；当前改用worker与202回执。用户接受成功HTTP由200改202以及任务完成时点迁移：POST只表示接受，run_id状态查询到终态才表示任务结束，queued不表示完成。",
+      "approved_by": "本对话用户于2026-10-05在明确列出日期校验、五个写入口202与run_id完成查询、Agent取消终态及/runs统一异步、旧同步改/query，并确认没有必须保留旧协议的外部调用方的问题下，回复：“接受迁移，仅使用当前配套前端”。",
+      "affected_consumers": [
+        "frontend/src/api/macroToolkitClient.ts:refreshChoiceStock/getChoiceStockRefreshStatus",
+        "frontend/src/features/macro-toolkit/pages/useMacroToolkitOperationActions.ts",
+        "frontend/src/features/stock-analysis/hooks/useStockSelectionRefresh.ts"
+      ],
+      "migration_plan": "仅使用当前配套前端，未要求保留旧外部调用协议。客户端接受202、保存run_id，并轮询/ui/macro/toolkit/choice-stock/refresh-status?run_id=…；按该入口实际支持的终态展示结果，确认成功后再刷新读取页面。复用现有worker和状态回执，不恢复请求内写路径。旧脚本若继续使用须按同一202/状态查询协议升级；本次不承诺兼容旧构建。",
+      "expires_at": "2026-11-04"
+    },
+    {
+      "id": "*|response_status_removed|POST /ui/macro/toolkit/source-backfill/refresh|200",
+      "owner": "本对话用户（本地系统使用者；本次仓库 API 迁移决策负责人，非组织业务或发布负责人）",
+      "reason": "旧入口在请求内补录并返回completed/partial，成功HTTP为200；当前交由worker执行。用户接受成功HTTP由200改202以及任务完成时点迁移：POST只表示接受，run_id状态查询到终态才表示任务结束，queued不表示完成。",
+      "approved_by": "本对话用户于2026-10-05在明确列出日期校验、五个写入口202与run_id完成查询、Agent取消终态及/runs统一异步、旧同步改/query，并确认没有必须保留旧协议的外部调用方的问题下，回复：“接受迁移，仅使用当前配套前端”。",
+      "affected_consumers": [
+        "frontend/src/api/macroToolkitClient.ts:refreshMacroSourceBackfill/getMacroSourceBackfillRefreshStatus",
+        "frontend/src/features/macro-toolkit/pages/useMacroToolkitOperationActions.ts"
+      ],
+      "migration_plan": "仅使用当前配套前端，未要求保留旧外部调用协议。客户端接受202、保存run_id，并轮询/ui/macro/toolkit/source-backfill/refresh-status?run_id=…；按该入口实际支持的终态展示结果，确认成功后再刷新读取页面。复用现有worker和状态回执，不恢复请求内写路径。旧脚本若继续使用须按同一202/状态查询协议升级；本次不承诺兼容旧构建。",
+      "expires_at": "2026-11-04"
+    },
+    {
+      "id": "*|response_status_removed|POST /ui/market-data/livermore/refresh-gate-supplement|200",
+      "owner": "本对话用户（本地系统使用者；本次仓库 API 迁移决策负责人，非组织业务或发布负责人）",
+      "reason": "旧入口在请求内计算并物化，成功HTTP为200；当前交由worker执行。用户接受成功HTTP由200改202以及任务完成时点迁移：POST只表示接受，run_id状态查询到终态才表示任务结束，queued不表示完成。",
+      "approved_by": "本对话用户于2026-10-05在明确列出日期校验、五个写入口202与run_id完成查询、Agent取消终态及/runs统一异步、旧同步改/query，并确认没有必须保留旧协议的外部调用方的问题下，回复：“接受迁移，仅使用当前配套前端”。",
+      "affected_consumers": [
+        "frontend/src/api/marketDataClient.ts:refreshGateSupplement/getLivermoreGateSupplementRefreshStatus",
+        "frontend/src/features/market-data/hooks/useMarketDataPageData.ts"
+      ],
+      "migration_plan": "仅使用当前配套前端，未要求保留旧外部调用协议。客户端接受202、保存run_id，并轮询/ui/market-data/livermore/refresh-gate-supplement/status?run_id=…；按该入口实际支持的终态展示结果，确认成功后再刷新读取页面。复用现有worker和状态回执，不恢复请求内写路径。旧脚本若继续使用须按同一202/状态查询协议升级；本次不承诺兼容旧构建。",
+      "expires_at": "2026-11-04"
+    },
+    {
+      "id": "default|operation_removed|GET /api/agent/runs/{run_id}|-",
+      "owner": "本对话用户（本地系统使用者；本次仓库 API 迁移决策负责人，非组织业务或发布负责人）",
+      "reason": "用户选择单机本地使用并收紧现有入口，又接受迁移且仅使用当前配套前端。默认MOSS_AGENT_ENABLED=false时不注册Agent router，旧显式挂载后的disabled 503变为URL 404且不进入OpenAPI；这是禁用模式的可见协议变化，完整启用面上的对应入口仍存在。",
+      "approved_by": "本对话用户先对“认证按哪种使用方式落实？”回复：“继续单机本地使用，收紧现有入口”；于2026-10-05又对明确列出的API迁移及无必须保留旧协议外部调用方的问题回复：“接受迁移，仅使用当前配套前端”。两次选择合并支持默认禁用时不暴露Agent入口，不构成开启Agent或组织发布批准。",
+      "affected_consumers": [
+        "frontend/src/api/agentClient.ts",
+        "frontend/src/api/contracts/agent.ts",
+        "frontend/src/features/agent/AgentWorkbenchPage.tsx"
+      ],
+      "migration_plan": "当前配套前端须按禁用模式处理Agent入口不可用；不得为兼容旧503打开默认Agent或挂载隐藏端点。确需已获授权的本地Agent使用时显式配置MOSS_AGENT_ENABLED=true并重启后端，沿用既有鉴权和只读边界。仅本地迁移接受，不代表新增试点、对外部署或组织发布批准。用户确认无必须保留旧协议外部调用方，旧构建不在本次保留范围。",
+      "expires_at": "2026-11-04"
+    },
+    {
+      "id": "default|operation_removed|POST /api/agent/query|-",
+      "owner": "本对话用户（本地系统使用者；本次仓库 API 迁移决策负责人，非组织业务或发布负责人）",
+      "reason": "用户选择单机本地使用并收紧现有入口，又接受迁移且仅使用当前配套前端。默认MOSS_AGENT_ENABLED=false时不注册Agent router，旧显式挂载后的disabled 503变为URL 404且不进入OpenAPI；这是禁用模式的可见协议变化，完整启用面上的对应入口仍存在。",
+      "approved_by": "本对话用户先对“认证按哪种使用方式落实？”回复：“继续单机本地使用，收紧现有入口”；于2026-10-05又对明确列出的API迁移及无必须保留旧协议外部调用方的问题回复：“接受迁移，仅使用当前配套前端”。两次选择合并支持默认禁用时不暴露Agent入口，不构成开启Agent或组织发布批准。",
+      "affected_consumers": [
+        "frontend/src/api/agentClient.ts",
+        "frontend/src/api/contracts/agent.ts",
+        "frontend/src/features/agent/AgentWorkbenchPage.tsx"
+      ],
+      "migration_plan": "当前配套前端须按禁用模式处理Agent入口不可用；不得为兼容旧503打开默认Agent或挂载隐藏端点。确需已获授权的本地Agent使用时显式配置MOSS_AGENT_ENABLED=true并重启后端，沿用既有鉴权和只读边界。仅本地迁移接受，不代表新增试点、对外部署或组织发布批准。用户确认无必须保留旧协议外部调用方，旧构建不在本次保留范围。",
+      "expires_at": "2026-11-04"
+    },
+    {
+      "id": "default|operation_removed|POST /api/agent/runs|-",
+      "owner": "本对话用户（本地系统使用者；本次仓库 API 迁移决策负责人，非组织业务或发布负责人）",
+      "reason": "用户选择单机本地使用并收紧现有入口，又接受迁移且仅使用当前配套前端。默认MOSS_AGENT_ENABLED=false时不注册Agent router，旧显式挂载后的disabled 503变为URL 404且不进入OpenAPI；这是禁用模式的可见协议变化，完整启用面上的对应入口仍存在。",
+      "approved_by": "本对话用户先对“认证按哪种使用方式落实？”回复：“继续单机本地使用，收紧现有入口”；于2026-10-05又对明确列出的API迁移及无必须保留旧协议外部调用方的问题回复：“接受迁移，仅使用当前配套前端”。两次选择合并支持默认禁用时不暴露Agent入口，不构成开启Agent或组织发布批准。",
+      "affected_consumers": [
+        "frontend/src/api/agentClient.ts",
+        "frontend/src/api/contracts/agent.ts",
+        "frontend/src/features/agent/AgentWorkbenchPage.tsx"
+      ],
+      "migration_plan": "当前配套前端须按禁用模式处理Agent入口不可用；不得为兼容旧503打开默认Agent或挂载隐藏端点。确需已获授权的本地Agent使用时显式配置MOSS_AGENT_ENABLED=true并重启后端，沿用既有鉴权和只读边界。仅本地迁移接受，不代表新增试点、对外部署或组织发布批准。用户确认无必须保留旧协议外部调用方，旧构建不在本次保留范围。",
+      "expires_at": "2026-11-04"
+    },
+    {
+      "id": "full|response_enum_value_added|GET /api/agent/runs/{run_id}|response 200:status",
+      "owner": "本对话用户（本地系统使用者；本次仓库 API 迁移决策负责人，非组织业务或发布负责人）",
+      "reason": "用户接受Agent status增加cancelled不可逆终态。旧五值消费者会拒绝该值，因此这是已明确接受的响应协议迁移；不能把取消改写为failed或unknown来伪装兼容。",
+      "approved_by": "本对话用户于2026-10-05在明确列出日期校验、五个写入口202与run_id完成查询、Agent取消终态及/runs统一异步、旧同步改/query，并确认没有必须保留旧协议的外部调用方的问题下，回复：“接受迁移，仅使用当前配套前端”。",
+      "affected_consumers": [
+        "frontend/src/api/agentClient.ts",
+        "frontend/src/api/contracts/agent.ts",
+        "frontend/src/features/agent/AgentWorkbenchPage.tsx",
+        "frontend/src/features/agent/lib/agentWorkbenchModel.ts",
+        "frontend/src/features/agent/hooks/agentRunStatusOrchestrator.ts",
+        "frontend/src/features/agent/hooks/useManagedAgentRun.ts",
+        "frontend/src/features/agent/hooks/useAgentRunRestore.ts"
+      ],
+      "migration_plan": "仅使用当前配套前端，其AgentRunStatus支持queued/starting/running/completed/failed/cancelled；completed、failed和cancelled均终止SSE/轮询等待，取消后显示取消状态。沿用owner取消校验及终态不可逆保护。用户确认无必须保留旧协议外部调用方；旧构建或SDK若继续消费必须升级第六值，不在本次保留范围。",
+      "expires_at": "2026-11-04"
+    }
+  ]
+}

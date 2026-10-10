@@ -1,4 +1,4 @@
-﻿# Balance Analysis Reconciliation (2026-03-01)
+# Balance Analysis Reconciliation (2026-03-01)
 
 ## Boundary note（与阶段授权对齐）
 

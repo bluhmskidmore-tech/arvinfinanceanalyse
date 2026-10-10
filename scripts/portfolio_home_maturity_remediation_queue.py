@@ -34,12 +34,6 @@ MATURITY_CANDIDATE_SCOPE = {
 }
 
 MATURITY_REMEDIATION_ACTIONS: dict[str, dict[str, str]] = {
-    "bond_maturity_queue_not_empty": {
-        "owner": "data_owner",
-        "next_action": "Fill missing bond maturity_date values at source or capture a signed scoped exclusion.",
-        "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
-        "exit_criteria": "Bond missing-maturity queue is empty or signed exclusion evidence is captured and surfaced as a boundary.",
-    },
     "tyw_liability_maturity_queue_not_empty": {
         "owner": "data_owner",
         "next_action": "Fill missing TYW liability maturity_date values at source or capture a signed scoped exclusion.",
@@ -130,7 +124,7 @@ def _source_availability(
     return {"source_status": "available", "blockers": []}
 
 
-def _bond_missing_maturity_summary(
+def _bond_no_maturity_summary(
     connection: duckdb.DuckDBPyConnection,
     report_date: str,
 ) -> dict[str, object]:
@@ -139,14 +133,35 @@ def _bond_missing_maturity_summary(
         """
         select
           count(*) as row_count,
-          coalesce(sum(case when maturity_date is null then 1 else 0 end), 0) as missing_maturity_rows,
-          coalesce(sum(case when maturity_date is null then market_value else 0 end), 0) as missing_maturity_market_value
+          coalesce(sum(case when maturity_date is null then 1 else 0 end), 0) as no_maturity_rows,
+          coalesce(sum(case when maturity_date is null then market_value else 0 end), 0) as no_maturity_market_value
         from fact_formal_bond_analytics_daily
         where report_date = ?
         """,
         [report_date],
     ) or {
         "row_count": 0,
+        "no_maturity_rows": 0,
+        "no_maturity_market_value": "0",
+    }
+
+
+def _bond_missing_maturity_summary(
+    connection: duckdb.DuckDBPyConnection,
+    report_date: str,
+) -> dict[str, object]:
+    summary = _fetch_one(
+        connection,
+        """
+        select
+          count(*) as row_count
+        from fact_formal_bond_analytics_daily
+        where report_date = ?
+        """,
+        [report_date],
+    ) or {"row_count": 0}
+    return {
+        "row_count": _int_value(summary, "row_count"),
         "missing_maturity_rows": 0,
         "missing_maturity_market_value": "0",
     }
@@ -157,30 +172,7 @@ def _bond_missing_maturity_rows(
     report_date: str,
     limit: int,
 ) -> list[dict[str, object]]:
-    return _fetch_all(
-        connection,
-        """
-        select
-          report_date,
-          instrument_code,
-          instrument_name,
-          portfolio_name,
-          cost_center,
-          market_value,
-          dv01,
-          tenor_bucket,
-          source_version,
-          rule_version,
-          ingest_batch_id,
-          trace_id
-        from fact_formal_bond_analytics_daily
-        where report_date = ?
-          and maturity_date is null
-        order by coalesce(market_value, 0) desc, instrument_code
-        limit ?
-        """,
-        [report_date, limit],
-    )
+    return []
 
 
 def _bond_zqtz_candidate_source(
@@ -691,8 +683,6 @@ def _maturity_candidate_evidence(
     limit: int,
 ) -> dict[str, object]:
     candidate_sources = [
-        _bond_zqtz_candidate_source(connection, report_date, limit),
-        _bond_position_snapshot_candidate_source(connection, report_date, limit),
         _tyw_interbank_candidate_source(connection, report_date, limit),
     ]
     return {
@@ -701,19 +691,14 @@ def _maturity_candidate_evidence(
         "candidate_sources": candidate_sources,
         "strict_gate_effect": "none",
         "next_action": (
-            "Use candidate rows only for data-owner review; strict closure still requires "
-            "source remediation or signed scoped exclusion evidence."
+            "Use TYW candidate rows only for data-owner review; strict closure still requires "
+            "TYW source remediation or signed scoped exclusion evidence."
         ),
     }
 
 
 def _remediation_blockers(queue: dict[str, object]) -> list[str]:
     blockers: list[str] = []
-    bond_summary = queue["bond_missing_maturity_summary"]
-    assert isinstance(bond_summary, dict)
-    if _int_value(bond_summary, "missing_maturity_rows") > 0:
-        blockers.append("bond_maturity_queue_not_empty")
-
     tyw_summary = queue["tyw_liability_missing_maturity_summary"]
     assert isinstance(tyw_summary, dict)
     if _int_value(tyw_summary, "missing_maturity_rows") > 0:
@@ -721,12 +706,22 @@ def _remediation_blockers(queue: dict[str, object]) -> list[str]:
     return blockers
 
 
-def _remediation_actions(blockers: list[str]) -> list[dict[str, str]]:
-    return [
-        {"blocker": blocker, **MATURITY_REMEDIATION_ACTIONS[blocker]}
-        for blocker in blockers
-        if blocker in MATURITY_REMEDIATION_ACTIONS
-    ]
+def _remediation_actions(
+    blockers: list[str],
+    *,
+    report_date: str,
+) -> list[dict[str, str]]:
+    actions: list[dict[str, str]] = []
+    for blocker in blockers:
+        if blocker not in MATURITY_REMEDIATION_ACTIONS:
+            continue
+        action = dict(MATURITY_REMEDIATION_ACTIONS[blocker])
+        command_head, separator, command_tail = action["evidence_command"].partition(".py")
+        action["evidence_command"] = (
+            f"{command_head}{separator} --report-date {report_date}{command_tail}"
+        )
+        actions.append({"blocker": blocker, **action})
+    return actions
 
 
 def build_queue(
@@ -748,9 +743,16 @@ def build_queue(
             "duckdb_path": str(duckdb_path),
             "sample_limit": limit,
             "remediation_scope": {
-                "bond_queue": "fact_formal_bond_analytics_daily rows where maturity_date is null",
+                "bond_no_maturity_information": (
+                    "fact_formal_bond_analytics_daily rows where maturity_date is null; "
+                    "ledger null means formally no maturity date"
+                ),
+                "bond_queue": (
+                    "compatibility-only empty queue; bond ledger null maturity requires no remediation"
+                ),
                 "tyw_liability_queue": "fact_formal_tyw_balance_daily liability CNY rows where maturity_date is null",
             },
+            "bond_no_maturity_summary": _bond_no_maturity_summary(connection, report_date),
             "bond_missing_maturity_summary": _bond_missing_maturity_summary(connection, report_date),
             "tyw_liability_missing_maturity_summary": _tyw_liability_missing_maturity_summary(
                 connection,
@@ -774,7 +776,7 @@ def build_queue(
     blockers = _remediation_blockers(queue)
     queue["remediation_status"] = "clean" if not blockers else "blocked"
     queue["remediation_blockers"] = blockers
-    queue["remediation_actions"] = _remediation_actions(blockers)
+    queue["remediation_actions"] = _remediation_actions(blockers, report_date=report_date)
     return queue
 
 
@@ -795,7 +797,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--require-empty",
         action="store_true",
-        help="Return non-zero unless both maturity remediation queues are empty.",
+        help="Return non-zero unless the TYW liability maturity remediation queue is empty.",
     )
     args = parser.parse_args(argv)
 

@@ -1,4 +1,4 @@
-﻿import json
+import json
 import sys
 import time
 from pathlib import Path
@@ -607,6 +607,52 @@ def test_materialize_lock_is_not_stolen_after_ttl_while_owner_is_active(tmp_path
                 pass
 
 
+def test_acquire_lock_default_timeout_uses_definition_ttl_seconds(tmp_path):
+    """Omitting ``timeout_seconds`` should wait up to ``definition.ttl_seconds``,
+    not a fixed 1-second window."""
+    locks_module = load_module(
+        "backend.app.governance.locks",
+        "backend/app/governance/locks.py",
+    )
+    short_ttl_lock = locks_module.LockDefinition(
+        key="lock:test:default-timeout-ttl",
+        ttl_seconds=0.05,
+    )
+
+    with locks_module.acquire_lock(short_ttl_lock, base_dir=tmp_path, timeout_seconds=1.0):
+        started_at = time.monotonic()
+        with pytest.raises(TimeoutError):
+            with locks_module.acquire_lock(short_ttl_lock, base_dir=tmp_path):
+                pass
+        elapsed = time.monotonic() - started_at
+
+    # Bounded by the lock's own 0.05s TTL, well under the old hardcoded 1.0s default.
+    assert elapsed < 0.5
+
+
+def test_acquire_lock_explicit_timeout_still_overrides_definition_ttl(tmp_path):
+    """Callers may still pass ``timeout_seconds`` explicitly to opt into a
+    window shorter (or longer) than the lock's TTL."""
+    locks_module = load_module(
+        "backend.app.governance.locks",
+        "backend/app/governance/locks.py",
+    )
+    long_ttl_lock = locks_module.LockDefinition(
+        key="lock:test:explicit-timeout-override",
+        ttl_seconds=5.0,
+    )
+
+    with locks_module.acquire_lock(long_ttl_lock, base_dir=tmp_path, timeout_seconds=5.0):
+        started_at = time.monotonic()
+        with pytest.raises(TimeoutError):
+            with locks_module.acquire_lock(long_ttl_lock, base_dir=tmp_path, timeout_seconds=0.05):
+                pass
+        elapsed = time.monotonic() - started_at
+
+    # Explicit override (0.05s) must win over the lock's much longer 5s TTL.
+    assert elapsed < 0.5
+
+
 def test_materialize_uses_same_lock_for_same_duckdb_across_governance_dirs(tmp_path, monkeypatch):
     task_module = sys.modules.get("backend.app.tasks.materialize")
     if task_module is None:
@@ -675,7 +721,7 @@ def test_snapshot_and_preview_materialize_share_same_duckdb_writer_lock(tmp_path
     assert preview_task.resolve_materialize_lock(duckdb_path).key == snapshot_task.resolve_snapshot_lock(duckdb_path).key
 
 
-def test_materialize_lock_normalizes_case_for_same_duckdb_path(tmp_path):
+def test_materialize_lock_preserves_platform_case_semantics(tmp_path):
     task_module = sys.modules.get("backend.app.tasks.materialize")
     if task_module is None:
         task_module = load_module("backend.app.tasks.materialize", "backend/app/tasks/materialize.py")
@@ -686,4 +732,8 @@ def test_materialize_lock_normalizes_case_for_same_duckdb_path(tmp_path):
     first_lock = task_module.resolve_materialize_lock(mixed_case_path)
     second_lock = task_module.resolve_materialize_lock(same_path_different_case)
 
-    assert first_lock.key == second_lock.key
+    if sys.platform == "win32":
+        assert first_lock.key == second_lock.key
+    else:
+        # POSIX case differences identify independent database writer paths.
+        assert first_lock.key != second_lock.key

@@ -1,8 +1,74 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createRealMacroToolkitClient } from "../api/macroToolkitClient";
+import { createMockMacroToolkitClient } from "../mocks/macroToolkitMockClient";
 
 describe("macroToolkitClient", () => {
+  it("keeps the M9 mock capability aligned with Choice credit history", async () => {
+    const envelope = await createMockMacroToolkitClient().getMacroToolkitScripts();
+    const capability = envelope.result.capabilities.find((item) => item.key === "credit_spread_risk");
+
+    expect(capability).toMatchObject({
+      data_status: "ready",
+      data_hit_count: 3,
+      data_required_count: 3,
+    });
+    expect(capability?.evidence.map((item) => item.series_id)).toEqual([
+      "EMM00166659",
+      "EMM00166462",
+      "EMM00166683",
+    ]);
+  });
+
+  it("keeps the M7 mock policy rate aligned with fresh Choice history", async () => {
+    const envelope = await createMockMacroToolkitClient().getMacroToolkitAnalysis();
+    const capability = envelope.result.capability_results.find(
+      (item) => item.key === "monetary_policy_stance",
+    );
+    const policyRate = capability?.input_evidence?.inputs?.find(
+      (item) => item.field === "policy_rate_7d",
+    );
+
+    expect(policyRate).toMatchObject({
+      available: true,
+      stale: false,
+      row_count: 706,
+      latest_date: "2026-07-20",
+      series_id: "EMM00088132",
+      source: "choice",
+      value: 1.4,
+    });
+    expect(capability?.warnings).not.toContain("POLICY_RATE_7D_STALE");
+  });
+
+  it("keeps the dual-frequency mock candidate read-only and leaves final target unevaluated", async () => {
+    const envelope = await createMockMacroToolkitClient().getMacroToolkitStrategySummaries();
+    const snapshot = envelope.result.macro_etf_strategy;
+    const candidate = snapshot?.dual_frequency;
+
+    expect(snapshot).toMatchObject({
+      boundary: "observation_only",
+      execution_enabled: false,
+    });
+    expect(candidate).toMatchObject({
+      data_status: {
+        status: "degraded",
+      },
+      fast: {
+        state: "defense",
+        multiplier: 0.4,
+      },
+      slow: {
+        cap: 0.62775,
+      },
+      survival: {
+        status: "not_evaluated",
+      },
+      pre_survival_target_total_weight: 0.2511,
+      final_target_total_weight: null,
+    });
+  });
+
   it("surfaces a timeout when toolkit read endpoints do not answer", async () => {
     vi.useFakeTimers();
     try {
@@ -62,11 +128,15 @@ describe("macroToolkitClient", () => {
         JSON.stringify({
           result_meta: { basis: "analytical" },
           result: {
-            refresh: { row_count: 2 },
+            refresh: {
+              status: "queued",
+              run_id: "cffex_member_rank_refresh:test",
+              row_count: null,
+            },
             cffex_member_rank: { status: "ok", row_count: 2 },
           },
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
+        { status: 202, headers: { "Content-Type": "application/json" } },
       ),
     ) as unknown as typeof fetch;
     const client = createRealMacroToolkitClient({
@@ -74,16 +144,22 @@ describe("macroToolkitClient", () => {
       baseUrl: "http://localhost:8000",
     });
 
-    await client.refreshCffexMemberRank({
+    const response = await client.refreshCffexMemberRank({
       tradeDate: "2026-04-30",
       contracts: ["T.CFE"],
       sources: ["choice"],
+      idempotencyKey: "cffex-refresh-key",
     });
 
+    expect(response.result.refresh.row_count).toBeNull();
     expect(fetchImpl).toHaveBeenCalledWith(
       "http://localhost:8000/ui/macro/toolkit/cffex-member-rank/refresh",
       expect.objectContaining({
         method: "POST",
+        headers: expect.objectContaining({
+          "Content-Type": "application/json",
+          "Idempotency-Key": "cffex-refresh-key",
+        }),
         body: JSON.stringify({
           trade_date: "2026-04-30",
           contracts: ["T.CFE"],
@@ -123,6 +199,7 @@ describe("macroToolkitClient", () => {
       refreshHistory: true,
       refreshFactors: true,
       factorMaxStockCount: null,
+      idempotencyKey: "choice-stock-refresh-key",
     });
     await client.getChoiceStockRefreshStatus("choice_stock_refresh:test");
 
@@ -131,6 +208,10 @@ describe("macroToolkitClient", () => {
       "http://localhost:8000/ui/macro/toolkit/choice-stock/refresh",
       expect.objectContaining({
         method: "POST",
+        headers: expect.objectContaining({
+          "Content-Type": "application/json",
+          "Idempotency-Key": "choice-stock-refresh-key",
+        }),
         body: JSON.stringify({
           as_of_date: "2026-04-30",
           refresh_history: true,
@@ -153,11 +234,103 @@ describe("macroToolkitClient", () => {
           result_meta: { basis: "analytical" },
           result: {
             refresh: {
-              status: "completed",
+              status: "queued",
+              run_id: "macro_source_backfill_refresh:test",
               alias: "M0041813",
               series_ids: ["NCD.SHIBOR.3M"],
-              total_added: 42,
+              total_added: null,
             },
+          },
+        }),
+        { status: 202, headers: { "Content-Type": "application/json" } },
+      ),
+    ) as unknown as typeof fetch;
+    const client = createRealMacroToolkitClient({
+      fetchImpl,
+      baseUrl: "http://localhost:8000",
+    });
+
+    const response = await client.refreshMacroSourceBackfill({
+      alias: "M0041813",
+      startDate: "2026-04-01",
+      endDate: "2026-04-30",
+      sources: ["tushare_macro"],
+      idempotencyKey: "source-backfill-refresh-key",
+    });
+
+    expect(response.result.refresh.total_added).toBeNull();
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/macro/toolkit/source-backfill/refresh",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          "Content-Type": "application/json",
+          "Idempotency-Key": "source-backfill-refresh-key",
+        }),
+        body: JSON.stringify({
+          alias: "M0041813",
+          start_date: "2026-04-01",
+          end_date: "2026-04-30",
+          sources: ["tushare_macro"],
+        }),
+      }),
+    );
+  });
+
+  it("reads CFFEX and source-backfill refresh status by encoded run id", async () => {
+    const fetchImpl = vi.fn(async (url: string | URL | Request) =>
+      new Response(
+        JSON.stringify({
+          result_meta: { basis: "analytical" },
+          result: String(url).includes("cffex-member-rank")
+            ? {
+                refresh: {
+                  status: "completed",
+                  run_id: "cffex_member_rank_refresh:test",
+                  row_count: 8,
+                },
+                cffex_member_rank: { status: "ok", row_count: 8 },
+              }
+            : {
+                refresh: {
+                  status: "completed",
+                  run_id: "macro_source_backfill_refresh:test",
+                  alias: "M0041813",
+                  series_ids: ["NCD.SHIBOR.3M"],
+                  total_added: 42,
+                },
+              },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    ) as unknown as typeof fetch;
+    const client = createRealMacroToolkitClient({
+      fetchImpl,
+      baseUrl: "http://localhost:8000",
+    });
+
+    await client.getCffexMemberRankRefreshStatus("cffex_member_rank_refresh:test");
+    await client.getMacroSourceBackfillRefreshStatus("macro_source_backfill_refresh:test");
+
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/ui/macro/toolkit/cffex-member-rank/refresh-status?run_id=cffex_member_rank_refresh%3Atest",
+      expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) }),
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/ui/macro/toolkit/source-backfill/refresh-status?run_id=macro_source_backfill_refresh%3Atest",
+      expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) }),
+    );
+  });
+
+  it("omits idempotency headers for toolkit refresh writes when no key is provided", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          result_meta: { basis: "analytical" },
+          result: {
+            refresh: { status: "queued", run_id: "macro_toolkit_refresh:test" },
           },
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
@@ -168,23 +341,29 @@ describe("macroToolkitClient", () => {
       baseUrl: "http://localhost:8000",
     });
 
-    await client.refreshMacroSourceBackfill({
-      alias: "M0041813",
-      startDate: "2026-04-01",
-      endDate: "2026-04-30",
-      sources: ["tushare_macro"],
-    });
+    await client.refreshCffexMemberRank();
+    await client.refreshChoiceStock();
+    await client.refreshMacroSourceBackfill({ alias: "M0041813" });
 
-    expect(fetchImpl).toHaveBeenCalledWith(
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/ui/macro/toolkit/cffex-member-rank/refresh",
+      expect.objectContaining({
+        headers: expect.not.objectContaining({ "Idempotency-Key": expect.anything() }),
+      }),
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/ui/macro/toolkit/choice-stock/refresh",
+      expect.objectContaining({
+        headers: expect.not.objectContaining({ "Idempotency-Key": expect.anything() }),
+      }),
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      3,
       "http://localhost:8000/ui/macro/toolkit/source-backfill/refresh",
       expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({
-          alias: "M0041813",
-          start_date: "2026-04-01",
-          end_date: "2026-04-30",
-          sources: ["tushare_macro"],
-        }),
+        headers: expect.not.objectContaining({ "Idempotency-Key": expect.anything() }),
       }),
     );
   });
@@ -232,6 +411,72 @@ describe("macroToolkitClient", () => {
         }),
       }),
     );
+  });
+
+  it("gets commodity futures refresh status with an encoded run id", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          result_meta: { basis: "analytical" },
+          result: {
+            refresh: {
+              status: "completed",
+              run_id: "commodity_futures_refresh:test run/1",
+              trigger_mode: "terminal",
+              row_count: 88,
+            },
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    ) as unknown as typeof fetch;
+    const client = createRealMacroToolkitClient({
+      fetchImpl,
+      baseUrl: "http://localhost:8000",
+    });
+
+    await client.getCommodityFuturesRefreshStatus("commodity_futures_refresh:test run/1");
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/macro/toolkit/commodity-futures/refresh-status?run_id=commodity_futures_refresh%3Atest%20run%2F1",
+      expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) }),
+    );
+  });
+
+  it("keeps queued mock commodity refresh evidence separate from its terminal snapshot", async () => {
+    const client = createMockMacroToolkitClient();
+
+    const queued = await client.refreshCommodityFutures({
+      products: ["RB", "I"],
+      dryRun: false,
+    });
+
+    expect(queued.result.refresh.status).toBe("queued");
+    expect(queued.result.refresh.before_status).toBeDefined();
+    expect(queued.result.refresh).not.toHaveProperty("after_status");
+    expect(queued.result.refresh).not.toHaveProperty("summary");
+    expect(queued.result.commodity_futures_refresh?.status).toEqual(
+      queued.result.refresh.before_status,
+    );
+
+    const runId = queued.result.refresh.run_id;
+    expect(runId).toBeTruthy();
+    const terminal = await client.getCommodityFuturesRefreshStatus(runId!);
+
+    expect(terminal.result.refresh.status).toBe("completed");
+    expect(terminal.result.refresh.after_status).toBeDefined();
+    expect(terminal.result.refresh.summary).toBeDefined();
+    expect(terminal.result.commodity_futures_refresh?.status).toEqual(
+      terminal.result.refresh.after_status,
+    );
+  });
+
+  it("rejects an unknown mock commodity futures refresh run with 404 semantics", async () => {
+    const client = createMockMacroToolkitClient();
+
+    await expect(
+      client.getCommodityFuturesRefreshStatus("commodity_futures_refresh:missing"),
+    ).rejects.toThrow(/404.*Commodity futures refresh run not found/);
   });
 
   it("requests core analysis first and reads deferred strategy summaries separately", async () => {

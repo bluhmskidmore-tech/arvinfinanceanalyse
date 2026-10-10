@@ -1,0 +1,30 @@
+{
+  "cssPath": "frontend/src/features/workbench/dashboard-home/dashboardHomeShell.module.css",
+  "tsxFiles": [
+    "frontend/src/features/workbench/dashboard-home/DashboardHomePage.tsx",
+    "frontend/src/features/workbench/dashboard-home/TerminalHomeFirstScreen.tsx",
+    "frontend/src/features/workbench/dashboard-home/DeferredTerminalHomeContent.tsx",
+    "frontend/src/features/workbench/dashboard-home/DeferredEvidenceIndexPreview.tsx",
+    "frontend/src/features/workbench/dashboard-home/HomeSearchBox.tsx",
+    "frontend/src/features/workbench/dashboard-home/HomeSparkline.tsx",
+    "frontend/src/features/workbench/dashboard-home/DashboardHomeAgentDrawer.tsx",
+    "frontend/src/features/workbench/dashboard-home/sections/DashboardHomeToolbar.tsx",
+    "frontend/src/features/workbench/dashboard-home/sections/DecisionRailSection.tsx",
+    "frontend/src/features/workbench/module-home/RiskOverviewPage.tsx",
+    "frontend/src/features/stock-analysis/lib/stockAnalysisPageChrome.tsx",
+    "frontend/src/features/macro-toolkit/lib/macroToolkitPageChrome.tsx"
+  ],
+  "wildcards": [
+    "dhApiStateOk", "dhApiStateBad", "dhApiStateWarn", "dhApiStateMuted",
+    "dhUpRed", "dhDownGreen", "dhMuted",
+    "dhStatusPill", "dhStatusPillWarning",
+    "dhDot", "dhDotGreen", "dhDotOrange", "dhDotBlue",
+    "dhPage", "dhLayout", "dhMain", "dhRail",
+    "dhTopbar", "dhTopbarLeft", "dhTopbarRight",
+    "dhTitle", "dhTitleBrand", "dhStatusRow", "dhNum",
+    "dhReviewRail", "dhReviewRailHead", "dhReviewList", "dhDataNote"
+  ],
+  "finalMarker": null,
+  "mockUrl": "http://127.0.0.1:5897/",
+  "realUrl": "http://localhost:5888/"
+}

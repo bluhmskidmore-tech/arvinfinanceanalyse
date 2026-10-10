@@ -2,10 +2,25 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Literal
 
-from backend.app.api.perf_logging import timed_api_call
+from backend.app.core_finance.action_attribution import ActionAttributionPnlUnavailableError
 from backend.app.governance.settings import get_settings
+from backend.app.observability.perf_logging import timed_api_call
+from backend.app.observability.response_cache import (
+    bond_analytics_credit_spread_migration_cache_key,
+    bond_analytics_position_changes_cache_key,
+    market_home_response_cache,
+)
+from backend.app.schemas.home_bond_read_contracts import (
+    BondCreditSpreadMigrationReadEnvelope,
+    BondKRDCurveRiskReadEnvelope,
+    BondPortfolioHeadlinesReadEnvelope,
+    BondPositionChangesReadEnvelope,
+    BondReturnDecompositionReadEnvelope,
+    BondTopHoldingsReadEnvelope,
+    BondYieldCurveTermStructureReadEnvelope,
+)
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.bond_analytics_service import (
     BondAnalyticsRefreshConflictError,
@@ -25,6 +40,7 @@ from backend.app.services.bond_analytics_service import (
     get_portfolio_headlines,
     get_position_changes,
     get_return_decomposition,
+    get_return_decomposition_summary,
     get_top_holdings,
     refresh_bond_analytics,
 )
@@ -59,30 +75,39 @@ def dates(
     return bond_analytics_dates_envelope()
 
 
-@router.get("/return-decomposition")
+@router.get("/return-decomposition", response_model=BondReturnDecompositionReadEnvelope, response_model_exclude_unset=True)
 def return_decomposition(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
-    period_type: str = Query("MoM", description="MoM / YTD / TTM"),
+    period_type: Literal["MoM", "YTD", "TTM"] = Query("MoM", description="MoM / YTD / TTM"),
     asset_class: str = Query("all", description="all / rate / credit"),
     accounting_class: str = Query("all", description="all / AC / OCI / TPL"),
+    detail: Literal["full", "summary"] = Query(
+        "full",
+        description="full includes per-bond details; summary omits them",
+    ),
 ):
     _ensure_bond_analytics_read_allowed(auth)
-    return get_return_decomposition(report_date, period_type, asset_class, accounting_class)
+    try:
+        if detail == "summary":
+            return get_return_decomposition_summary(report_date, period_type, asset_class, accounting_class)
+        return get_return_decomposition(report_date, period_type, asset_class, accounting_class)
+    except ActionAttributionPnlUnavailableError as exc:
+        raise HTTPException(status_code=503, detail={"code": "pnl517_period_unavailable", "message": str(exc)}) from exc
 
 
 @router.get("/benchmark-excess")
 def benchmark_excess(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
-    period_type: str = Query("MoM", description="MoM / YTD / TTM"),
+    period_type: Literal["MoM", "YTD", "TTM"] = Query("MoM", description="MoM / YTD / TTM"),
     benchmark_id: str = Query("CDB_INDEX", description="TREASURY_INDEX / CDB_INDEX / AAA_CREDIT_INDEX"),
 ):
     _ensure_bond_analytics_read_allowed(auth)
     return get_benchmark_excess(report_date, period_type, benchmark_id)
 
 
-@router.get("/krd-curve-risk")
+@router.get("/krd-curve-risk", response_model=BondKRDCurveRiskReadEnvelope, response_model_exclude_unset=True)
 def krd_curve_risk(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -174,20 +199,28 @@ def dv01_limit_config_status(
     return get_dv01_limit_config_status(report_date)
 
 
-@router.get("/credit-spread-migration")
+@router.get("/credit-spread-migration", response_model=BondCreditSpreadMigrationReadEnvelope, response_model_exclude_unset=True)
 def credit_spread_migration(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
     spread_scenarios: str = Query("10,25,50", description="Comma-separated bp values"),
 ):
     _ensure_bond_analytics_read_allowed(auth)
+    cache_key = bond_analytics_credit_spread_migration_cache_key(
+        str(get_settings().duckdb_path),
+        report_date=report_date.isoformat(),
+        spread_scenarios=spread_scenarios,
+    )
     return timed_api_call(
         "/api/bond-analytics/credit-spread-migration",
-        lambda: get_credit_spread_migration(report_date, spread_scenarios),
+        lambda: market_home_response_cache.get_or_build(
+            cache_key,
+            lambda: get_credit_spread_migration(report_date, spread_scenarios),
+        ),
     )
 
 
-@router.get("/yield-curve-term-structure")
+@router.get("/yield-curve-term-structure", response_model=BondYieldCurveTermStructureReadEnvelope, response_model_exclude_unset=True)
 def yield_curve_term_structure(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -201,7 +234,7 @@ def yield_curve_term_structure(
     return get_yield_curve_term_structure(report_date=report_date, curve_types=types_tuple)
 
 
-@router.get("/portfolio-headlines")
+@router.get("/portfolio-headlines", response_model=BondPortfolioHeadlinesReadEnvelope, response_model_exclude_unset=True)
 def portfolio_headlines(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -213,7 +246,7 @@ def portfolio_headlines(
     )
 
 
-@router.get("/top-holdings")
+@router.get("/top-holdings", response_model=BondTopHoldingsReadEnvelope, response_model_exclude_unset=True)
 def top_holdings(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
@@ -223,24 +256,36 @@ def top_holdings(
     return get_top_holdings(report_date, top_n=top_n)
 
 
-@router.get("/position-changes")
+@router.get("/position-changes", response_model=BondPositionChangesReadEnvelope, response_model_exclude_unset=True)
 def position_changes(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
     top_n: int = Query(5, ge=1, le=100, description="Number of largest position changes by absolute MV delta"),
 ):
     _ensure_bond_analytics_read_allowed(auth)
-    return get_position_changes(report_date, top_n=top_n)
+    cache_key = bond_analytics_position_changes_cache_key(
+        str(get_settings().duckdb_path),
+        report_date=report_date.isoformat(),
+        top_n=top_n,
+    )
+    return market_home_response_cache.get_or_build(
+        cache_key,
+        lambda: get_position_changes(report_date, top_n=top_n),
+    )
 
 
 @router.get("/action-attribution")
 def action_attribution(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
-    period_type: str = Query("MoM", description="MoM / YTD"),
+    # 合法集与 resolve_period 及前端期间选择器一致（MoM/YTD/TTM）；此前描述漏写 TTM。
+    period_type: Literal["MoM", "YTD", "TTM"] = Query("MoM", description="MoM / YTD / TTM"),
 ):
     _ensure_bond_analytics_read_allowed(auth)
-    return get_action_attribution(report_date, period_type)
+    try:
+        return get_action_attribution(report_date, period_type)
+    except ActionAttributionPnlUnavailableError as exc:
+        raise HTTPException(status_code=503, detail={"code": "pnl517_period_unavailable", "message": str(exc)}) from exc
 
 
 @router.get("/accounting-class-audit")
@@ -266,11 +311,13 @@ def refresh(
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
-        return refresh_bond_analytics(
+        result = refresh_bond_analytics(
             settings,
             report_date=report_date,
             idempotency_key=idempotency_key,
         )
+        market_home_response_cache.invalidate()
+        return result
     except BondAnalyticsRefreshConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except BondAnalyticsRefreshServiceError as exc:

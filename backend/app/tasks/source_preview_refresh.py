@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TypedDict, cast
 
 from backend.app.governance.locks import acquire_lock
 from backend.app.governance.settings import get_settings
@@ -21,6 +24,11 @@ from backend.app.repositories.source_preview_repo import (
     restore_preview_tables,
     snapshot_preview_tables,
 )
+from backend.app.repositories.source_preview_reuse import (
+    build_preview_input_identity,
+    capture_preview_table_fingerprints,
+)
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.services.ingest_service import IngestService
 from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.ingest import resolve_data_input_root
@@ -40,6 +48,13 @@ SOURCE_PREVIEW_REFRESH_SOURCE_FAMILIES = (
 )
 
 
+class _PreviewIdentityArgs(TypedDict):
+    governance_dir: str
+    ingest_batch_id: str | None
+    source_families: list[str]
+    archive_root: str
+
+
 def build_source_preview_refresh_lock_key(duckdb_path: str | Path) -> str:
     return resolve_materialize_lock(Path(duckdb_path)).key
 
@@ -51,7 +66,10 @@ def _refresh_source_preview_cache(
     run_id: str | None = None,
     governance_sql_dsn: str | None = None,
     governance_backend_mode: str | None = None,
+    from_existing_manifests: bool = False,
 ) -> dict[str, object]:
+    if type(from_existing_manifests) is not bool:
+        raise ValueError("from_existing_manifests must be a boolean.")
     settings = get_settings()
     duckdb_file = Path(duckdb_path or settings.duckdb_path)
     duckdb_file.parent.mkdir(parents=True, exist_ok=True)
@@ -93,41 +111,89 @@ def _refresh_source_preview_cache(
     ingest_batch_id = ""
     snapshot_ready = False
     preview_summaries: list[dict[str, object]] = []
+    reuse_status = "rebuilt"
+    reuse_receipt: dict[str, object] | None = None
 
     try:
-        ingest_summary = _run_source_preview_ingest(
-            settings=settings,
-            governance_path=governance_path,
-            data_root=resolved_data_root,
-            governance_sql_dsn=governance_sql_dsn,
-            governance_backend_mode=governance_backend_mode,
-        )
-        ingest_batch_id = str(ingest_summary.get("ingest_batch_id") or "")
-        selected_ingest_batch_id = ingest_batch_id or None
-        with acquire_lock(materialize_lock, base_dir=duckdb_file.parent):
-            snapshot_preview_tables(str(duckdb_file))
-            snapshot_ready = True
-            preview_summaries = materialize_source_previews(
-                duckdb_path=str(duckdb_file),
-                governance_dir=str(governance_path),
-                ingest_batch_id=selected_ingest_batch_id,
-                source_families=list(SOURCE_PREVIEW_REFRESH_SOURCE_FAMILIES),
-                archive_root=str(settings.local_archive_path),
+        if not from_existing_manifests:
+            ingest_summary = _run_source_preview_ingest(
+                settings=settings,
+                governance_path=governance_path,
+                data_root=resolved_data_root,
+                governance_sql_dsn=governance_sql_dsn,
+                governance_backend_mode=governance_backend_mode,
             )
+            ingest_batch_id = str(ingest_summary.get("ingest_batch_id") or "")
+        selected_ingest_batch_id = ingest_batch_id or None
+        with repository_task_write_scope(__name__), acquire_lock(
+            materialize_lock,
+            base_dir=duckdb_file.parent,
+        ):
+            identity_args: _PreviewIdentityArgs = {
+                "governance_dir": str(governance_path),
+                "ingest_batch_id": selected_ingest_batch_id,
+                "source_families": list(SOURCE_PREVIEW_REFRESH_SOURCE_FAMILIES),
+                "archive_root": str(settings.local_archive_path),
+            }
+            inputs = build_preview_input_identity(**identity_args)
+            if inputs is not None:
+                previous_manifest = governance_repo.read_latest_manifest(SOURCE_PREVIEW_REFRESH_CACHE_KEY)
+                previous_run = governance_repo.read_latest_completed_run(
+                    SOURCE_PREVIEW_REFRESH_CACHE_KEY,
+                    job_name=SOURCE_PREVIEW_REFRESH_JOB_NAME,
+                )
+                candidate = _validated_reuse_receipt(previous_manifest, previous_run, inputs)
+                if candidate is not None:
+                    tables = capture_preview_table_fingerprints(str(duckdb_file), cast(list[str], inputs["batch_ids"]))
+                    if (
+                        tables is not None
+                        and tables == candidate["tables"]
+                        and inputs == build_preview_input_identity(**identity_args)
+                    ):
+                        preview_summaries = cast(list[dict[str, object]], candidate["summaries"])
+                        reuse_receipt = candidate
+                        reuse_status = "reused"
             try:
-                cleanup_preview_backups(str(duckdb_file))
+                if reuse_status != "reused":
+                    snapshot_preview_tables(str(duckdb_file))
+                    snapshot_ready = True
+                    preview_summaries = materialize_source_previews(
+                        duckdb_path=str(duckdb_file),
+                        governance_dir=str(governance_path),
+                        ingest_batch_id=selected_ingest_batch_id,
+                        source_families=list(SOURCE_PREVIEW_REFRESH_SOURCE_FAMILIES),
+                        archive_root=str(settings.local_archive_path),
+                    )
+                    # Only certify a completed build whose inputs stayed stable
+                    # during parsing. A missing certificate falls back next run.
+                    if inputs is not None and inputs == build_preview_input_identity(**identity_args):
+                        tables = capture_preview_table_fingerprints(str(duckdb_file), cast(list[str], inputs["batch_ids"]))
+                        if tables is not None:
+                            reuse_receipt = {
+                                "inputs": inputs,
+                                "tables": tables,
+                                "summaries": preview_summaries,
+                                "summaries_sha256": _summary_signature(preview_summaries),
+                            }
             except Exception:
-                logger.warning("cleanup_preview_backups failed after successful materialize", exc_info=True)
-    except Exception as exc:
-        if snapshot_ready:
-            try:
-                restore_preview_tables(str(duckdb_file))
-            finally:
+                # Restore/cleanup must run while the writer lock is still held;
+                # after release another writer could commit rows that a late
+                # restore would silently roll back.
+                if snapshot_ready:
+                    try:
+                        restore_preview_tables(str(duckdb_file))
+                    finally:
+                        try:
+                            cleanup_preview_backups(str(duckdb_file))
+                        except Exception:
+                            logger.warning("cleanup_preview_backups failed during error recovery", exc_info=True)
+                raise
+            if snapshot_ready:
                 try:
                     cleanup_preview_backups(str(duckdb_file))
                 except Exception:
-                    logger.warning("cleanup_preview_backups failed during error recovery", exc_info=True)
-
+                    logger.warning("cleanup_preview_backups failed after successful materialize", exc_info=True)
+    except Exception as exc:
         governance_repo.append(
             CACHE_BUILD_RUN_STREAM,
             {
@@ -172,9 +238,16 @@ def _refresh_source_preview_cache(
                 CACHE_MANIFEST_STREAM,
                 {
                     "cache_key": SOURCE_PREVIEW_REFRESH_CACHE_KEY,
+                    "run_id": run_id,
                     "source_version": source_version,
                     "vendor_version": "vv_none",
                     "rule_version": RULE_VERSION,
+                    "preview_reuse": reuse_receipt,
+                    "refresh_mode": (
+                        "existing_manifests"
+                        if from_existing_manifests
+                        else "ingest_then_materialize"
+                    ),
                 },
             ),
             (
@@ -191,6 +264,12 @@ def _refresh_source_preview_cache(
                     "ingest_batch_id": ingest_batch_id or None,
                     "report_dates": report_dates,
                     "rule_version": RULE_VERSION,
+                    "reuse_status": reuse_status,
+                    "refresh_mode": (
+                        "existing_manifests"
+                        if from_existing_manifests
+                        else "ingest_then_materialize"
+                    ),
                     "finished_at": finished_at,
                 },
             ),
@@ -215,9 +294,49 @@ def _refresh_source_preview_cache(
         "ingest_batch_id": ingest_batch_id or None,
         "report_dates": report_dates,
         "rule_version": RULE_VERSION,
+        "reuse_status": reuse_status,
         "source_version": source_version,
         "vendor_version": "vv_none",
+        "refresh_mode": (
+            "existing_manifests"
+            if from_existing_manifests
+            else "ingest_then_materialize"
+        ),
     }
+
+
+def _summary_signature(summaries: list[dict[str, object]]) -> str:
+    payload = json.dumps(summaries, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _validated_reuse_receipt(
+    manifest: dict[str, object] | None,
+    completed_run: dict[str, object] | None,
+    inputs: dict[str, object],
+) -> dict[str, object] | None:
+    if not manifest or not completed_run or not manifest.get("run_id"):
+        return None
+    if manifest["run_id"] != completed_run.get("run_id") or completed_run.get("status") != "completed":
+        return None
+    if manifest.get("source_version") != completed_run.get("source_version"):
+        return None
+    if manifest.get("rule_version") != RULE_VERSION:
+        return None
+    receipt = manifest.get("preview_reuse")
+    if not isinstance(receipt, dict) or receipt.get("inputs") != inputs:
+        return None
+    summaries = receipt.get("summaries")
+    required = {"source_family", "report_date", "source_version", "ingest_batch_id", "rule_version", "group_counts"}
+    if not isinstance(summaries, list) or not summaries:
+        return None
+    if not all(isinstance(summary, dict) and required <= summary.keys() for summary in summaries):
+        return None
+    if not isinstance(receipt.get("tables"), dict) or receipt.get("summaries_sha256") != _summary_signature(summaries):
+        return None
+    if _join_source_versions(summary["source_version"] for summary in summaries) != manifest.get("source_version"):
+        return None
+    return receipt
 
 
 def _run_source_preview_ingest(

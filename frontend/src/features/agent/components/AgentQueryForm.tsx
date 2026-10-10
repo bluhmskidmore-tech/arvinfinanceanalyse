@@ -1,7 +1,11 @@
-import { useEffect, useRef, type FormEvent, type KeyboardEvent, type MutableRefObject, type Ref } from "react";
+import { useId, useLayoutEffect, useRef, type FormEvent, type KeyboardEvent, type MutableRefObject, type Ref, type ReactNode } from "react";
+import { ArrowUpOutlined, CloseOutlined, CodeOutlined, StopOutlined } from "@ant-design/icons";
+
+import { getAgentScrollBehavior } from "../lib/agentMotion";
 
 type AgentQueryFormProps = {
   compact?: boolean;
+  modelControls?: ReactNode;
   showAdvancedTools?: boolean;
   pageContext?: { page_id: string };
   repoPath: string;
@@ -40,20 +44,22 @@ function formatQuickExampleLabel(example: string) {
 
 function buildPromptPlaceholder(pageContext?: { page_id: string }) {
   if (pageContext?.page_id) {
-    return "直接问当前页：主要结论？异常点？下一步复核什么？";
+    return "问当前页：主要结论？异常点？下一步复核什么？";
   }
-  return "问一句业务问题，例如：今天损益为什么变动？当前久期风险在哪里？";
+  return "随便问一句，例如：今天哪里最值得看？久期风险在哪？";
 }
 
 function shouldSubmitByEnter(event: KeyboardEvent<HTMLTextAreaElement>, query: string) {
   const nativeEvent = event.nativeEvent as Event & {
     isComposing?: boolean;
+    keyCode?: number;
     nativeEvent?: { isComposing?: boolean };
   };
   return (
     query.trim().length > 0 &&
     event.key === "Enter" &&
     !event.shiftKey &&
+    nativeEvent.keyCode !== 229 &&
     !nativeEvent.isComposing &&
     !nativeEvent.nativeEvent?.isComposing
   );
@@ -83,6 +89,7 @@ const primaryQuickExampleCount = 2;
 
 export function AgentQueryForm({
   compact = false,
+  modelControls,
   showAdvancedTools = true,
   pageContext,
   repoPath,
@@ -112,17 +119,19 @@ export function AgentQueryForm({
   inputRef,
 }: AgentQueryFormProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const composingRef = useRef(false);
+  const hintId = useId();
   const primaryQuickExamples = quickExamples.slice(0, primaryQuickExampleCount);
-  const advancedQuickExamples = quickExamples.slice(primaryQuickExampleCount);
+  const advancedQuickExamples = compact || modelControls ? quickExamples : quickExamples.slice(primaryQuickExampleCount);
   const hasQuery = query.trim().length > 0;
   const submitHint = loading
     ? onQueueSubmit
-      ? "回答中 · Enter 排队下一句 · Shift+Enter 换行"
+      ? "回答中按 Enter 排队下一句 · Shift+Enter 换行"
       : "正在回答 · Shift+Enter 换行"
     : "Enter 发送 · Shift+Enter 换行";
   const visibleComposerHint = composerHint ?? submitHint;
   const quickExampleRow =
-    primaryQuickExamples.length > 0 ? (
+    !compact && primaryQuickExamples.length > 0 ? (
       <div
         className={
           compact
@@ -152,11 +161,11 @@ export function AgentQueryForm({
     textarea.focus();
     const scrollIntoView = textarea.scrollIntoView;
     if (typeof scrollIntoView === "function" && shouldScrollTextareaIntoView(textarea)) {
-      scrollIntoView.call(textarea, { behavior: "smooth", block: "nearest" });
+      scrollIntoView.call(textarea, { behavior: getAgentScrollBehavior(), block: "nearest" });
     }
   }
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) {
       return;
@@ -169,17 +178,123 @@ export function AgentQueryForm({
     textarea.style.height = `${textarea.scrollHeight}px`;
   }, [query]);
 
+  const advancedTools = showAdvancedTools ? (
+    <details
+      className="agent-chat-composer__advanced"
+      onBlur={(event) => {
+        if (modelControls && !event.currentTarget.contains(event.relatedTarget)) {
+          event.currentTarget.open = false;
+        }
+      }}
+      onKeyDown={(event) => {
+        if (modelControls && event.key === "Enter" && event.target instanceof HTMLInputElement) {
+          event.preventDefault();
+        }
+        if (modelControls && event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          event.currentTarget.open = false;
+          event.currentTarget.querySelector("summary")?.focus();
+        }
+      }}
+    >
+      <summary aria-label="高级工具" title="高级工具">
+        {modelControls ? <><CodeOutlined aria-hidden="true" /><span>工具</span></> : "高级工具"}
+      </summary>
+      <div className="agent-chat-composer__advanced-body">
+        <label className="agent-chat-composer__field">
+          <span>GitNexus 仓库路径</span>
+          <input
+            aria-label="GitNexus 仓库路径"
+            type="text"
+            placeholder="例如：F:\\MOSS-SYSTEM-V1"
+            value={repoPath}
+            onChange={(event) => onRepoPathChange(event.target.value)}
+          />
+        </label>
+
+        <div className="agent-chat-composer__tool-row">
+          {advancedQuickExamples.map((example) => (
+            <button
+              key={example}
+              type="button"
+              className="agent-chat-composer__tool-button"
+              onClick={() => onQuickExample(example)}
+            >
+              {formatQuickExampleLabel(example)}
+            </button>
+          ))}
+          <button
+            type="button"
+            className="agent-chat-composer__tool-button"
+            onClick={isCurrentRepoPinned ? onUnpinCurrentRepo : onPinCurrentRepo}
+          >
+            {isCurrentRepoPinned ? "取消固定当前仓库" : "固定当前仓库"}
+          </button>
+          <button
+            type="button"
+            className="agent-chat-composer__tool-button"
+            onClick={onLoadProcesses}
+            disabled={processLoading}
+          >
+            {processLoading ? "读取中..." : "读取流程"}
+          </button>
+        </div>
+
+        <details className="agent-chat-composer__process-details">
+          <summary>{filteredProcesses.length > 0 ? `流程筛选与查看 · ${filteredProcesses.length} 项` : "流程筛选与查看"}</summary>
+          <div className="agent-chat-composer__process-grid">
+            <label className="agent-chat-composer__field">
+              <span>流程搜索</span>
+              <input
+                aria-label="流程搜索"
+                type="text"
+                placeholder="按流程名过滤"
+                value={processSearch}
+                onChange={(event) => onProcessSearchChange(event.target.value)}
+              />
+            </label>
+            <label className="agent-chat-composer__field">
+              <span>流程名称</span>
+              <select
+                aria-label="流程名称"
+                value={selectedProcess}
+                onChange={(event) => onSelectedProcessChange(event.target.value)}
+              >
+                <option value="">请选择流程</option>
+                {filteredProcesses.map((processName) => (
+                  <option key={processName} value={processName}>
+                    {processName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="agent-chat-composer__secondary-action"
+              onClick={onViewSelectedProcess}
+              disabled={loading}
+            >
+              查看所选流程
+            </button>
+          </div>
+        </details>
+      </div>
+    </details>
+  ) : null;
+
   return (
-    <div className={compact ? "agent-chat-composer agent-chat-composer--compact" : "agent-chat-composer"}>
-      {!compact ? (
+    <div className={`agent-chat-composer${compact ? " agent-chat-composer--compact" : ""}${modelControls ? " agent-chat-composer--chat" : ""}`}>
+      {!compact && !modelControls ? (
         <>
           <div className="agent-chat-composer__header">
             <div>
-              <div className="agent-chat-composer__title">问 Agent</div>
+              <div className="agent-chat-composer__title">问我</div>
             </div>
-            <div
-              className="agent-chat-composer__hint"
-              role="status"
+          <div
+            className="agent-chat-composer__hint"
+            id={hintId}
+            role="status"
               aria-label="输入提示"
               aria-live="polite"
               aria-atomic="true"
@@ -191,24 +306,26 @@ export function AgentQueryForm({
           {quickExampleRow}
         </>
       ) : null}
-      {compact ? quickExampleRow : null}
 
       <form className="agent-chat-composer__form" onSubmit={(event) => void onSubmit(event)}>
         <div className="agent-chat-composer__input-wrap">
           <textarea
             aria-label="向 Agent 提问"
+            aria-describedby={hintId}
             data-testid="agent-panel-question"
             className="agent-chat-composer__input"
             ref={(element) => {
               textareaRef.current = element;
               assignTextAreaRef(inputRef, element);
             }}
-            rows={compact ? 2 : 3}
-            placeholder={buildPromptPlaceholder(pageContext)}
+            rows={modelControls ? 1 : compact ? 2 : 3}
+            placeholder={modelControls && !pageContext?.page_id ? "问问 MOSS" : buildPromptPlaceholder(pageContext)}
             value={query}
+            onCompositionStart={() => { composingRef.current = true; }}
+            onCompositionEnd={() => { composingRef.current = false; }}
             onChange={(event) => onQueryChange(event.target.value)}
             onKeyDown={(event) => {
-              if (shouldSubmitByEnter(event, query)) {
+              if (!composingRef.current && shouldSubmitByEnter(event, query)) {
                 event.preventDefault();
                 if (loading && onQueueSubmit) {
                   onQueueSubmit();
@@ -223,6 +340,7 @@ export function AgentQueryForm({
               type="button"
               className="agent-chat-composer__clear"
               aria-label={`清空输入：${query}`}
+              title="清空输入"
               onClick={() => {
                 if (onClearQuery) {
                   onClearQuery();
@@ -232,13 +350,17 @@ export function AgentQueryForm({
                 focusTextarea();
               }}
             >
-              清空输入
+              {modelControls ? <CloseOutlined aria-hidden="true" /> : "清空输入"}
             </button>
           ) : null}
         </div>
-        {compact ? (
+        {modelControls ? advancedTools : null}
+        {modelControls}
+        {compact || modelControls ? (
           <div
             className="agent-chat-composer__hint"
+            id={hintId}
+            data-assist-hint={composerHint ? "true" : undefined}
             role="status"
             aria-label="输入提示"
             aria-live="polite"
@@ -271,10 +393,15 @@ export function AgentQueryForm({
                 type="button"
                 data-testid="agent-panel-submit"
                 className="agent-chat-composer__send agent-chat-composer__send--stop"
-                aria-label={activeQuestion.trim() ? `停止当前回答：${activeQuestion.trim()}` : "停止"}
+                aria-label={
+                  activeQuestion.trim()
+                    ? `停止等待当前回答：${activeQuestion.trim()}`
+                    : "停止等待"
+                }
+                title="停止回答（Esc）"
                 onClick={onStop}
               >
-                停止
+                {modelControls ? <><StopOutlined aria-hidden="true" /><span className="agent-composer-action-label">停止等待</span></> : "停止等待"}
               </button>
             </>
           ) : (
@@ -283,97 +410,15 @@ export function AgentQueryForm({
               data-testid="agent-panel-submit"
               disabled={loading || !hasQuery}
               className="agent-chat-composer__send"
+              title="发送（Enter）"
             >
-              {loading ? "发送中..." : "发送"}
+              {modelControls ? <><ArrowUpOutlined aria-hidden="true" /><span className="agent-composer-action-label">发送</span></> : loading ? "发送中..." : "发送"}
             </button>
           )}
         </div>
       </form>
 
-      {showAdvancedTools ? (
-        <details className="agent-chat-composer__advanced">
-          <summary>GitNexus 工具</summary>
-          <div className="agent-chat-composer__advanced-body">
-            <label className="agent-chat-composer__field">
-              <span>GitNexus 仓库路径</span>
-              <input
-                aria-label="GitNexus 仓库路径"
-                type="text"
-                placeholder="例如：F:\\MOSS-SYSTEM-V1"
-                value={repoPath}
-                onChange={(event) => onRepoPathChange(event.target.value)}
-              />
-            </label>
-
-            <div className="agent-chat-composer__tool-row">
-              {advancedQuickExamples.map((example) => (
-                <button
-                  key={example}
-                  type="button"
-                  className="agent-chat-composer__tool-button"
-                  onClick={() => onQuickExample(example)}
-                >
-                  {formatQuickExampleLabel(example)}
-                </button>
-              ))}
-              <button
-                type="button"
-                className="agent-chat-composer__tool-button"
-                onClick={isCurrentRepoPinned ? onUnpinCurrentRepo : onPinCurrentRepo}
-              >
-                {isCurrentRepoPinned ? "取消固定当前仓库" : "固定当前仓库"}
-              </button>
-              <button
-                type="button"
-                className="agent-chat-composer__tool-button"
-                onClick={onLoadProcesses}
-                disabled={processLoading}
-              >
-                {processLoading ? "读取中..." : "读取流程"}
-              </button>
-            </div>
-
-            <details className="agent-chat-composer__process-details">
-              <summary>{filteredProcesses.length > 0 ? `流程筛选与查看 · ${filteredProcesses.length} 项` : "流程筛选与查看"}</summary>
-              <div className="agent-chat-composer__process-grid">
-                <label className="agent-chat-composer__field">
-                  <span>流程搜索</span>
-                  <input
-                    aria-label="流程搜索"
-                    type="text"
-                    placeholder="按流程名过滤"
-                    value={processSearch}
-                    onChange={(event) => onProcessSearchChange(event.target.value)}
-                  />
-                </label>
-                <label className="agent-chat-composer__field">
-                  <span>流程名称</span>
-                  <select
-                    aria-label="流程名称"
-                    value={selectedProcess}
-                    onChange={(event) => onSelectedProcessChange(event.target.value)}
-                  >
-                    <option value="">请选择流程</option>
-                    {filteredProcesses.map((processName) => (
-                      <option key={processName} value={processName}>
-                        {processName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  className="agent-chat-composer__secondary-action"
-                  onClick={onViewSelectedProcess}
-                  disabled={loading}
-                >
-                  查看所选流程
-                </button>
-              </div>
-            </details>
-          </div>
-        </details>
-      ) : null}
+      {!modelControls ? advancedTools : null}
     </div>
   );
 }

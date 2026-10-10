@@ -1,0 +1,333 @@
+# 经营分析  /operations-analysis
+final_url: http://127.0.0.1:5888/operations-analysis
+title: MOSS Workbench
+
+## innerText (first ~3000 chars)
+Skip to main content
+M
+MOSS
+工作台
+经营日报
+首页
+组合工作台
+首页
+市场工作台
+首页
+风险工作台
+首页
+绩效工作台
+首页
+报表与数据
+首页
+对话
+MOSS Chat
+可用
+直接提问
+支持入口
+报表中心
+中台配置
+帮助文档
+经营分析
+报告日 默认路由
+管理视角
+报表中心
+中台配置
+市场快讯
+10年国债
+1.74%
++0.2bp
+10年国开
+1.79%
+--
+10年美债
+4.56%
++2bp
+中美10年利差
+-282bp
+-2bp
+DR007
+1.38%
+0bp
+美元/人民币
+6.8CNY/USD
+-0CNY/USD
+当前工作台页面
+经营日报
+经营日报
+经营分析
+决策事项
+临时例外
+临时例外：该路由仅在第一阶段 PAGE-OPS-001 收口期间保持可见；如收口延期，下一轮 readiness 梳理需降级。
+第一阶段仅在页面契约收口期间保留该路由可见；不要把它视为已完全治理的页面。
+受治理经营视图
+经营分析
+
+从产品分类损益正式读模型出发，先给经营判断与可执行动作；资产负债余额读面只保留为专题入口。
+
+真实只读链路
+范围
+金融市场条线
+口径
+产品分类损益
+币种
+全部
+周期
+月度
+
+链路：真实只读 API。首屏只放总账对账 + 日均配对链路产出的 /ui/pnl/product-category formal 经营口径；源批次、宏观、新闻与正式 FX 物化/候选对账只作为可核验证据，不在这里展开明细。 下方「本期关注事项」「近期经营日历」仍为静态示例。
+
+资产净收入
+
+2.07
+亿元
+
+正式经营口径 /ui/pnl/product-category · view monthly · 口径 正式口径 · 质量 正常 · 供应 正常
+
+负债净收入
+
+0.07
+亿元
+
+正式经营口径 /ui/pnl/product-category · view monthly · 口径 正式口径 · 质量 正常 · 供应 正常
+
+经营净收入
+
+2.13
+亿元
+
+正式经营口径 /ui/pnl/product-category · view monthly · 口径 正式口径 · 质量 正常 · 供应 正常
+
+报告月份
+
+2026-06-30
+
+总账对账 + 日均配对链路 · 口径 正式口径 · 质量 正常 · 供应 正常
+
+产品行数
+
+18
+
+正式产品分类行（不含 grand_total）· 口径 正式口径 · 质量 正常 · 供应 正常
+
+源批次
+
+不可用
+
+当前查询失败，请在下方面板重试。
+
+宏观点位
+
+132
+
+宏观目录 145 条，最新交易日 2026-07-10 · 口径 分析口径 · 质量 正常 · 供应 正常
+
+正式 FX
+
+5 / 5
+
+物化/候选（对账）5 / 5 · 最新交易日 2026-06-30 · 沿用前值 0 · 口径 正式口径 · 质量 正常 · 供应 正常
+
+新闻事件
+
+12418
+
+来自 Choice 新闻事件流的当前查询总行数。 · 口径 分析口径 · 质量 正常 · 供应 正常
+
+核心视图
+结论、桥接与质量观察
+
+先阅读已被正式读链路支撑的判断，再看质量观察提示哪些口径仍待补齐。收益成本桥明确保留为示意。
+
+本期经营结论
+
+当前经营页首屏已切回产品分类损益正式读模型。报告日 2026-06-30，视图 monthly，产品分类行 18 行；资产净收入 2.07、负债净收入 0.07、经营净收入 2.13。资产负债余额读面降为专题入口，不作为首屏经营口径。
+
+经营口径: 产品分类损益
+外汇覆盖: 可用
+余额读面: 专题入口
+收益成本桥（示意）
+
+债券与同业资产收益合计约 72.87 亿，抵减负债成本后得到净贡献（柱状为示意瀑布，单位亿元）。
+
+经营质量观察
+源批次数
+0
+待确认
+宏观最新点位
+132
+已到位
+新闻事件
+12418
+可读
+正式外汇覆盖
+5/5
+完整
+缺失货币对
+0
+正常
+经营口径证据链不完整
+
+产品分类损益正式读模型或源批次预览未形成可读结果。先核验总账对账 + 日均配对链路，再下经营判断。
+
+复核源预览
+本期关注事项（静态示例）
+4月短端缺口压力较大
+1年内缺口对负债占比仍处高位，需跟踪滚续与定价。
+发行负债集中度偏高
+CD 占发行类负债约八成，结构弹性有限。
+短端缺口已覆盖率 81.8%
+覆盖率改善但仍有尾部情景需压力测试。
+异常资产跟踪
+按正式读面异常资产清单持续跟踪。
+贡献
+经营贡献与行动项
+
+产品分类损益行、管理动作和近期日历放在同一层，方便从经营判断进入执行。
+
+经营贡献（产品分类损益读面）
+进入产品分类损益
+
+报告日 2026-06-30，数据来自 /ui/pnl/product-category，view=monthly；由总账对账 + 日均配对链路生成，表格直接展示后端产品分类行，不在前端重算合计或改写类别。
+本表受治理元数据：口径 正式口径 · 质量 正常 · 供应 正常
+
+总收益（合计）
+2.13亿元
+当前场景：1.6%
+基准场景：1.6%
+资产 / 负债：2.07 / 0.07
+产品分类	侧别	综本日均	人民币FTP	人民币净收入	外币净收入	经营净收入	加权收益率
+拆放同业	资产	180.09	0.20	0.06	0.07	0.13	2.49
+买入返售	资产	263.83	0.35	-0.04	0.00	-0.04	1.42
+债券投资	资产	3353.18	4.34	1.82	0.08	1.90	2.29
+TPL	资产	819.19	1.08	0.24	0.01	0.25	1.97
+AC债券投资	资产	1443.68	1.90	0.98	0.01	0.98	2.43
+AC其他投资	资产	53.07	0.03	0.01	-0.04	-0.03	0.89
+FVOCI	资产	1037.24	1.33	0.61	0.10	0.71	2.43
+估值及买卖价差等	资产	0.00	0.00	-0.01	0.00	-0.01	-
+生息资产	资产	2977.91	3.80	1.61	0.14	1.76	2.32
+汇兑损益及衍生	资产	0.00	0.00	0.01	0.00	0.01	-
+中间业务收入	资产	0.00	0.00	0.07	0.00	0.07	-
+资产端合计	资产	3797.10	4.88	1.92	0.15	2.07	2.26
+同业存放	负债	532.12	0.70	0.06	0.00	0.06	1.46
+同业拆入	负债	100.70	0.11	0.04	0.03	0.01	1.52
+卖出回购	负债	157.64	0.21	0.03	-0.00	0.03	1.37
+同业存单	负债	937.92	1.23	0.01	-0.00	0.01	1.62
+信用联结票据	负债	22.19	0.03	0.02	0.00	0.02	2.46
+负债端合计	负债	1750.57	2.28	0.10	0.03	0.07	1.55
+全部市场科目 + 投资收益合计：2.13
+近期经营日历（静态示例）
+04-18
+大额同业负债到期
+180亿
+高
+提前确认滚续额度
+04-22
+同业存单集中缴款
+95亿
+中
+关注发行利差
+04-28
+月内缺口复盘会
+
+## computed styles
+{
+  "body_backgroundColor": "rgb(244, 243, 240)",
+  "body_color": "rgb(31, 41, 55)",
+  "body_fontFamily": "\"PingFang SC\", \"Microsoft YaHei UI\", \"Noto Sans SC\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", Arial, sans-serif",
+  "body_fontSize": "16px",
+  "root_backgroundColor": "rgb(245, 247, 249)",
+  "main_backgroundColor": "rgb(255, 255, 255)",
+  "body_borderRadius_first": "0px",
+  "css_vars": {
+    "--background": "oklch(0.9702 0 0)",
+    "--foreground": "oklch(0.2103 0.0059 285.89)",
+    "--border": "oklch(90% 0.004 286.32)",
+    "--font-sans": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\",\n      \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+    "--radius": "0.5rem",
+    "--moss-color-primary-50": "#e8f1fb",
+    "--moss-color-primary-100": "#d0e3f6",
+    "--moss-color-primary-200": "#a8c9ec",
+    "--moss-color-primary-300": "#79a7de",
+    "--moss-color-primary-400": "#4d84cc",
+    "--moss-color-primary-500": "#2f68b8",
+    "--moss-color-primary-600": "#1850a1",
+    "--moss-color-primary-700": "#144287",
+    "--moss-color-primary-800": "#10356a",
+    "--moss-color-primary-900": "#0c2a54",
+    "--moss-color-info-50": "#eff6ff",
+    "--moss-color-info-100": "#dbeafe",
+    "--moss-color-info-200": "#bfdbfe",
+    "--moss-color-info-300": "#93c5fd",
+    "--moss-color-info-400": "#60a5fa",
+    "--moss-color-info-500": "#3b82f6",
+    "--moss-color-info-600": "#2563eb",
+    "--moss-color-info-700": "#1d4ed8",
+    "--moss-color-info-800": "#1e40af",
+    "--moss-color-info-900": "#1e3a8a",
+    "--moss-color-success-50": "#ecf8f2",
+    "--moss-color-success-100": "#d5efe0",
+    "--moss-color-success-200": "#aedfc8",
+    "--moss-color-success-300": "#7fc8a4",
+    "--moss-color-success-400": "#52ad84",
+    "--moss-color-success-500": "#2d8a5e",
+    "--moss-color-success-600": "#25714d",
+    "--moss-color-success-700": "#1d5c40",
+    "--moss-color-success-800": "#174833",
+    "--moss-color-success-900": "#123828",
+    "--moss-color-warning-50": "#fff9eb",
+    "--moss-color-warning-100": "#fef0d4",
+    "--moss-color-warning-200": "#fde0a8",
+    "--moss-color-warning-300": "#fbc874",
+    "--moss-color-warning-400": "#f8a93a",
+    "--moss-color-warning-500": "#d97706",
+    "--moss-color-warning-600": "#b35c05",
+    "--moss-color-warning-700": "#8f4708",
+    "--moss-color-warning-800": "#713a0c",
+    "--moss-color-warning-900": "#5c300e"
+  }
+}
+
+## api calls (40)
+200  /src/api/clientContext.ts
+200  /src/api/homeMarketTickerClient.ts
+200  /src/api/httpResponseError.ts
+200  /src/api/client.ts
+200  /src/api/balanceAnalysisClient.ts
+200  /src/api/bondAnalyticsClient.ts
+200  /src/api/cashflowClient.ts
+200  /src/api/executiveClient.ts
+200  /src/api/healthClient.ts
+200  /src/api/liabilityAdbClient.ts
+200  /src/api/pnlClient.ts
+200  /ui/macro/choice-series/latest
+200  /src/api/pnlCoreClient.ts
+200  /src/api/pnlAttributionClient.ts
+200  /src/api/productCategoryClient.ts
+200  /src/api/positionsClient.ts
+200  /src/api/qdbGlMonthlyAnalysisClient.ts
+200  /src/api/balanceMovementClient.ts
+200  /src/api/ledgerClient.ts
+200  /src/api/kpiClient.ts
+200  /src/api/cubeClient.ts
+200  /src/api/marketDataClient.ts
+200  /src/api/macroToolkitClient.ts
+200  /src/api/bondDashboardWorkbenchEndpoints.ts
+200  /src/api/bondAnalyticsYieldCurveTermStructureMock.ts
+200  /src/api/agentClient.ts
+200  /src/api/bondDashboardBundleMock.ts
+200  /src/api/executiveHomeSnapshotFetch.ts
+200  /src/api/workbenchDashboardApi.ts
+200  /src/api/numeric.ts
+200  /src/api/marketDataMocks.ts
+200  /ui/macro/choice-series/latest
+503  /ui/preview/source-foundation
+200  /ui/news/choice-events/latest?limit=3&offset=0
+200  /ui/market-data/catalog
+200  /ui/market-data/fx/formal-status
+200  /ui/balance-analysis/dates
+200  /ui/pnl/product-category/dates
+200  /ui/balance-analysis/overview?report_date=2026-06-30&position_scope=all&currency_basis=CNY
+200  /ui/pnl/product-category?report_date=2026-06-30&view=monthly
+
+## console errors (1)
+Failed to load resource: the server responded with a status of 503 (Service Unavailable)

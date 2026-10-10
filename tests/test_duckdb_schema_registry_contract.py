@@ -55,5 +55,6 @@ def test_livermore_candidate_history_registry_declares_runtime_tables() -> None:
         conn.close()
 
     assert "livermore_stock_candidate_universe_history" in tables
+    assert "livermore_matched_baseline_history" in tables
     assert {"forward_trade_date_10d", "return_10d", "market_state", "gap_norm"} <= history_columns
     assert {"forward_trade_date_10d", "return_10d", "evidence_json"} <= universe_columns

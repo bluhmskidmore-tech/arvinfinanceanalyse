@@ -12,6 +12,14 @@ from backend.app.tasks.livermore_position_snapshot_materialize import (
     ensure_livermore_position_snapshot_schema,
 )
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_livermore,
+]
+
+
 
 def test_market_data_risk_exit_reads_only_active_stock_position_facts(tmp_path) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
@@ -109,6 +117,85 @@ def test_market_data_risk_exit_reads_only_active_stock_position_facts(tmp_path) 
     assert "sv_position_closed" not in source_versions
     assert "vv_position_active" in vendor_versions
     assert "vv_position_closed" not in vendor_versions
+
+
+def test_risk_exit_history_keeps_zero_volume_suspension_days(tmp_path) -> None:
+    """volume=0 的停牌日必须保留整行，EMA/量均窗口日历才不会错位。"""
+    duckdb_path = tmp_path / "moss.duckdb"
+    as_of_date = "2026-04-29"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        ensure_livermore_position_snapshot_schema(conn)
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              stock_code varchar,
+              trade_date varchar,
+              close_value double,
+              volume double,
+              source_version varchar,
+              vendor_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into livermore_position_snapshot (
+              as_of_date, stock_code, stock_name, entry_cost, bars_since_entry,
+              entry_date, position_quantity, position_status, source_system,
+              source_file_hash, source_row_no, source_version, vendor_version,
+              rule_version, run_id
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                as_of_date,
+                "000001.SZ",
+                "Alpha",
+                10.5,
+                6,
+                "2026-04-21",
+                10000.0,
+                "ACTIVE",
+                "stock_position_book",
+                "sha256:test",
+                2,
+                "sv_position_active",
+                "vv_position_active",
+                "rv_livermore_position_snapshot_v1",
+                "run-test",
+            ],
+        )
+        start_date = date.fromisoformat(as_of_date) - timedelta(days=30)
+        daily_rows = [
+            (
+                "000001.SZ",
+                (start_date + timedelta(days=offset)).isoformat(),
+                10.0 + offset,
+                0.0 if offset == 15 else 1_000_000.0 + offset * 1000.0,
+                "sv_daily",
+                # 消费端按 vendor 显式定标(fail-closed),夹具须用合法 native 模式
+                "vv_choice_stock_20260429_0123456789ab",
+            )
+            for offset in range(31)
+        ]
+        conn.executemany(
+            "insert into choice_stock_daily_observation values (?, ?, ?, ?, ?, ?)",
+            daily_rows,
+        )
+    finally:
+        conn.close()
+
+    snapshots, _tables_used, _source_versions, _vendor_versions = _load_risk_exit_snapshots(
+        duckdb_path=str(duckdb_path),
+        as_of_date=as_of_date,
+    )
+
+    assert len(snapshots) == 1
+    snapshot = snapshots[0]
+    assert len(snapshot.close_history) == 31
+    assert len(snapshot.volume_history) == 31
+    assert snapshot.close_history[15] == 25.0
+    assert snapshot.volume_history[15] == 0.0
 
 
 def test_risk_exit_input_block_reason_reports_missing_position_table(tmp_path) -> None:

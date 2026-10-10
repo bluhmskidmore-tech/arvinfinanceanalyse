@@ -1,0 +1,201 @@
+# 报表中心  /reports
+final_url: http://127.0.0.1:5888/reports
+title: MOSS Workbench
+
+## innerText (first ~3000 chars)
+Skip to main content
+M
+MOSS
+工作台
+经营日报
+首页
+组合工作台
+首页
+市场工作台
+首页
+风险工作台
+首页
+绩效工作台
+首页
+报表与数据
+首页
+对话
+MOSS Chat
+可用
+直接提问
+支持入口
+报表中心
+中台配置
+帮助文档
+报表与数据
+读取失败
+
+当前数据健康、来源状态和报表能力是否可支撑交付？
+
+首页聚合数据中心健康、数据源状态、自助查询和报表中心规划状态；未接入报表能力保持规划中。
+
+来源
+健康检查 / 数据源 / Cube 查询 / 报表规划 / real
+状态
+数据中心读链路失败，不使用前端补数。
+Live
+ok
+GET /health/live。
+Health
+ok
+GET /health。
+数据源
+0
+source foundation sources。
+Cube 维度
+0
+cube dimensions 未返回。
+实时健康
+已返回
+live probe 已返回。
+数据源状态
+读取失败
+不使用前端补数，请进入下钻页或重试读链路。
+自助查询
+读取失败
+不使用前端补数，请进入下钻页或重试读链路。
+报表中心
+规划中
+未接入统一报表后端接口，不伪造报表数据。
+主结论区
+系统健康
+live=ok，summary=ok。
+来自既有 health endpoints。
+数据源状态
+暂无 source 列表。
+使用 source foundation，不在首页扫描数据库。
+报表规划
+统一报表中心仍显示规划/待接入状态。
+当前只保留下钻和数据说明，不构造报表 payload。
+数据源状态
+来源 source-foundation · 无元数据
+读取失败
+
+不使用前端补数，请进入下钻页或重试读链路。
+
+Cube 维度与度量
+来源 cube / bond_analytics
+读取失败
+
+不使用前端补数，请进入下钻页或重试读链路。
+
+下钻入口
+
+首页只做摘要和状态聚合，明细解释进入对应页面继续看。
+
+数据中心
+已开放
+查看系统健康检查、数据源状态和中台配置。
+自助查询
+正式链路
+对已覆盖事实表做维度聚合、筛选和下钻。
+报表中心规划
+规划中
+统一报表与导出清单仍在规划；不伪造报表数据。
+数据说明
+没有后端正式接口的报表能力只显示为规划/待接入状态。
+数据健康和来源状态来自既有健康检查与 source foundation 读链路。
+读取失败：不使用前端补数。
+读取失败：不使用前端补数。
+
+## computed styles
+{
+  "body_backgroundColor": "rgb(244, 243, 240)",
+  "body_color": "rgb(31, 41, 55)",
+  "body_fontFamily": "\"PingFang SC\", \"Microsoft YaHei UI\", \"Noto Sans SC\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", Arial, sans-serif",
+  "body_fontSize": "16px",
+  "root_backgroundColor": "rgb(245, 247, 249)",
+  "main_backgroundColor": "rgb(255, 255, 255)",
+  "body_borderRadius_first": "0px",
+  "css_vars": {
+    "--background": "oklch(0.9702 0 0)",
+    "--foreground": "oklch(0.2103 0.0059 285.89)",
+    "--border": "oklch(90% 0.004 286.32)",
+    "--font-sans": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\",\n      \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+    "--radius": "0.5rem",
+    "--moss-color-primary-50": "#e8f1fb",
+    "--moss-color-primary-100": "#d0e3f6",
+    "--moss-color-primary-200": "#a8c9ec",
+    "--moss-color-primary-300": "#79a7de",
+    "--moss-color-primary-400": "#4d84cc",
+    "--moss-color-primary-500": "#2f68b8",
+    "--moss-color-primary-600": "#1850a1",
+    "--moss-color-primary-700": "#144287",
+    "--moss-color-primary-800": "#10356a",
+    "--moss-color-primary-900": "#0c2a54",
+    "--moss-color-info-50": "#eff6ff",
+    "--moss-color-info-100": "#dbeafe",
+    "--moss-color-info-200": "#bfdbfe",
+    "--moss-color-info-300": "#93c5fd",
+    "--moss-color-info-400": "#60a5fa",
+    "--moss-color-info-500": "#3b82f6",
+    "--moss-color-info-600": "#2563eb",
+    "--moss-color-info-700": "#1d4ed8",
+    "--moss-color-info-800": "#1e40af",
+    "--moss-color-info-900": "#1e3a8a",
+    "--moss-color-success-50": "#ecf8f2",
+    "--moss-color-success-100": "#d5efe0",
+    "--moss-color-success-200": "#aedfc8",
+    "--moss-color-success-300": "#7fc8a4",
+    "--moss-color-success-400": "#52ad84",
+    "--moss-color-success-500": "#2d8a5e",
+    "--moss-color-success-600": "#25714d",
+    "--moss-color-success-700": "#1d5c40",
+    "--moss-color-success-800": "#174833",
+    "--moss-color-success-900": "#123828",
+    "--moss-color-warning-50": "#fff9eb",
+    "--moss-color-warning-100": "#fef0d4",
+    "--moss-color-warning-200": "#fde0a8",
+    "--moss-color-warning-300": "#fbc874",
+    "--moss-color-warning-400": "#f8a93a",
+    "--moss-color-warning-500": "#d97706",
+    "--moss-color-warning-600": "#b35c05",
+    "--moss-color-warning-700": "#8f4708",
+    "--moss-color-warning-800": "#713a0c",
+    "--moss-color-warning-900": "#5c300e"
+  }
+}
+
+## api calls (31)
+200  /src/api/clientContext.ts
+200  /src/api/client.ts
+200  /src/api/cashflowClient.ts
+200  /src/api/healthClient.ts
+200  /src/api/bondAnalyticsClient.ts
+200  /src/api/executiveClient.ts
+200  /src/api/balanceAnalysisClient.ts
+200  /src/api/pnlCoreClient.ts
+200  /src/api/pnlClient.ts
+200  /src/api/liabilityAdbClient.ts
+200  /src/api/pnlAttributionClient.ts
+200  /src/api/productCategoryClient.ts
+200  /src/api/positionsClient.ts
+200  /src/api/qdbGlMonthlyAnalysisClient.ts
+200  /src/api/ledgerClient.ts
+200  /src/api/balanceMovementClient.ts
+200  /src/api/kpiClient.ts
+200  /src/api/marketDataClient.ts
+200  /src/api/bondDashboardWorkbenchEndpoints.ts
+200  /src/api/cubeClient.ts
+200  /src/api/workbenchDashboardApi.ts
+200  /src/api/agentClient.ts
+200  /src/api/macroToolkitClient.ts
+200  /src/api/bondDashboardBundleMock.ts
+200  /src/api/numeric.ts
+200  /src/api/bondAnalyticsYieldCurveTermStructureMock.ts
+200  /src/api/executiveHomeSnapshotFetch.ts
+200  /src/api/httpResponseError.ts
+200  /src/api/marketDataMocks.ts
+503  /ui/preview/source-foundation
+403  /api/cube/dimensions/bond_analytics
+
+## console errors (3)
+Failed to load resource: the server responded with a status of 503 (Service Unavailable)
+Failed to load resource: the server responded with a status of 403 (Forbidden)
+Warning: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.%s 读取失败：不使用前端补数。 
+    at u

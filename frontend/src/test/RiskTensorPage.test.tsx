@@ -31,9 +31,8 @@ vi.mock("../lib/echarts", () => ({
 }));
 
 import { ApiClientProvider, createApiClient } from "../api/client";
-import type { ResultMeta, RiskTensorPayload } from "../api/contracts";
+import type { ResultMeta, RiskScenarioStressPayload, RiskTensorPayload } from "../api/contracts";
 import { routerFuture } from "../router/routerFuture";
-import { displayTokens } from "../theme/displayTokens";
 import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
 import { createWorkbenchMemoryRouter } from "./renderWorkbenchApp";
 
@@ -66,6 +65,17 @@ function buildMeta(resultKind: string, traceId: string): ResultMeta {
   };
 }
 
+function buildScenarioMeta(resultKind: string, traceId: string): ResultMeta {
+  return {
+    ...buildMeta(resultKind, traceId),
+    basis: "scenario",
+    formal_use_allowed: false,
+    scenario_flag: true,
+    rule_version: "rv_risk_tensor_scenario_stress_v2",
+    cache_version: "cv_risk_tensor_scenario_stress_v2",
+  };
+}
+
 function tensorResult(reportDate: string): RiskTensorPayload {
   return {
     report_date: reportDate,
@@ -89,108 +99,151 @@ function tensorResult(reportDate: string): RiskTensorPayload {
     liquidity_gap_90d: "200.2",
     liquidity_gap_30d_ratio: "0.05",
     total_market_value: "999.99",
+    rate_risk_market_value: "900.00",
+    rate_risk_dv01: "11.11",
+    rate_risk_modified_duration: "4.20",
+    duration_excluded_market_value: "99.99",
+    duration_excluded_count: 2,
+    missing_maturity_market_value: "0",
+    missing_maturity_count: 0,
+    floating_rate_proxy_market_value: "0",
+    floating_rate_proxy_count: 0,
+    payment_frequency_fallback_market_value: "0",
+    payment_frequency_fallback_count: 0,
+    bullet_value_date_fallback_market_value: "0",
+    bullet_value_date_fallback_count: 0,
+    projection_quality_status: "available",
     bond_count: 12,
     quality_flag: "warning",
     warnings: ["Issuer concentration above desk threshold"],
-    prior_period_change: {
-      status: "available",
-      comparison_report_date: "2026-02-27",
-      summary: "较上一报告日 2026-02-27：监管口径 DV01 增加 +4.34；主风险桶由 3Y 切至 5Y。",
-      dominant_krd_bucket: "5Y",
-      previous_dominant_krd_bucket: "3Y",
-      dominant_krd_shifted: true,
-      metrics: [
-        {
-          key: "regulatory_dv01",
-          label: "监管口径 DV01",
-          current: {
-            raw: 12.34,
-            unit: "dv01" as const,
-            display: "12.34",
-            precision: 2,
-            sign_aware: false,
-          },
-          previous: {
-            raw: 8,
-            unit: "dv01" as const,
-            display: "8.00",
-            precision: 2,
-            sign_aware: false,
-          },
-          delta: {
-            raw: 4.34,
-            unit: "dv01" as const,
-            display: "+4.34",
-            precision: 2,
-            sign_aware: true,
-          },
-          current_display: "12.34",
-          previous_display: "8.00",
-          delta_display: "+4.34",
-          direction: "up",
-          tone: "warning",
-          interpretation: "监管口径 DV01 扩大",
-        },
-        {
-          key: "liquidity_gap_30d_ratio",
-          label: "30 日流动性缺口比例",
-          current: {
-            raw: 0.05,
-            unit: "ratio" as const,
-            display: "0.05",
-            precision: 4,
-            sign_aware: true,
-          },
-          previous: {
-            raw: 0.03,
-            unit: "ratio" as const,
-            display: "0.03",
-            precision: 4,
-            sign_aware: true,
-          },
-          delta: {
-            raw: 0.02,
-            unit: "ratio" as const,
-            display: "+0.02",
-            precision: 4,
-            sign_aware: true,
-          },
-          current_display: "5.0%",
-          previous_display: "3.0%",
-          delta_display: "+2.0%",
-          direction: "up",
-          tone: "good",
-          interpretation: "30 日流动性缓冲改善",
-        },
-      ],
-    },
   };
 }
 
-function dv01ControlsFixture(
-  overrides: Partial<NonNullable<RiskTensorPayload["dv01_controls"]>> = {},
-): NonNullable<RiskTensorPayload["dv01_controls"]> {
+function scenarioStressResult(reportDate: string): RiskScenarioStressPayload {
+  const yuan = (raw: number | null, display = raw === null ? "待接入" : `${raw}`) => ({
+    raw,
+    unit: "yuan" as const,
+    display,
+    precision: 2,
+    sign_aware: true,
+  });
+  const bp = (raw: number) => ({
+    raw,
+    unit: "bp" as const,
+    display: `${raw > 0 ? "+" : ""}${raw} bp`,
+    precision: 0,
+    sign_aware: true,
+  });
+  const pct = (raw: number | null) => ({
+    raw,
+    unit: "pct" as const,
+    display: raw === null ? "待接入" : `${(raw * 100).toFixed(1)}%`,
+    precision: 1,
+    sign_aware: true,
+  });
   return {
-    basis: "regulatory_dv01",
-    limit_status: "pending_configuration",
-    approved_limit_dv01: null,
-    limit_usage_ratio: null,
-    volatility_status: "pending_market_volatility",
-    daily_rate_volatility_bp: null,
-    dominant_krd_bucket: "5Y",
-    dominant_krd: {
-      raw: 3,
-      unit: "dv01",
-      display: "+3.00",
-      precision: 2,
-      sign_aware: true,
+    report_date: reportDate,
+    basis: "scenario",
+    scenario_set_id: "standard_risk_tensor_scenario_v1",
+    rule_version: "rv_risk_tensor_scenario_stress_v2",
+    source: {
+      result_kind: "risk.tensor",
+      trace_id: "tr_tensor_source",
+      source_version: "sv_tensor_test",
+      rule_version: "rv_tensor_test",
+      cache_version: "cv_tensor_test",
+      quality_flag: "warning",
     },
-    stress_scenarios: [],
-    operating_judgement: "DV01 controls require configuration.",
-    control_actions: [],
-    control_message: "Limit configuration is pending.",
-    action_hint: "Configure approved DV01 limit.",
-    ...overrides,
+    summary: {
+      scenario_count: 4,
+      available_count: 3,
+      review_required_count: 4,
+      worst_estimated_impact: yuan(-1_200_000, "-1,200,000.00"),
+      worst_scenario_key: "parallel_rate_up_10bp",
+      comparison_measure: "estimated_pnl_impact",
+      message: "已生成标准多情景压力估算；所有结果均为情景口径，需复核后再用于经营判断。",
+    },
+    scenarios: [
+      {
+        scenario_key: "parallel_rate_up_10bp",
+        category: "rate",
+        label: "利率平行上行 10bp",
+        source_field: "regulatory_dv01",
+        shock: bp(10),
+        estimated_impact: yuan(-1_200_000, "-1,200,000.00"),
+        measure: "estimated_pnl_impact",
+        calculation: "-regulatory_dv01 * shock_bp",
+        interpretation: "利率上行时，按监管口径 DV01 估算组合价格影响。",
+        data_status: "available",
+        human_review_required: true,
+      },
+      {
+        scenario_key: "credit_spread_up_10bp",
+        category: "credit",
+        label: "信用利差走阔 10bp",
+        source_field: "cs01",
+        shock: bp(10),
+        estimated_impact: yuan(-180_000, "-180,000.00"),
+        measure: "estimated_pnl_impact",
+        calculation: "-cs01 * shock_bp",
+        interpretation: "信用利差走阔时，按 CS01 估算信用敏感性影响。",
+        data_status: "available",
+        human_review_required: true,
+      },
+      {
+        scenario_key: "liquidity_30d_cashflow_10pct",
+        category: "liquidity",
+        label: "30天现金流压力 10%",
+        source_field: "asset_cashflow_30d/liability_cashflow_30d/liquidity_gap_30d",
+        shock: pct(0.1),
+        estimated_impact: yuan(-50_000_000, "-50,000,000.00"),
+        measure: "stressed_30d_liquidity_gap_delta",
+        calculation:
+          "asset_cashflow_30d * (1 - shock_pct) - liability_cashflow_30d * (1 + shock_pct) - liquidity_gap_30d",
+        interpretation: "现金流压力下的30天流动性缺口变化；负值表示缓冲收窄。",
+        data_status: "available",
+        human_review_required: true,
+        baseline_value: yuan(100_000_000, "100,000,000.00"),
+        stressed_value: yuan(50_000_000, "50,000,000.00"),
+        baseline_ratio: pct(0.05),
+        stressed_ratio: pct(0.025),
+      },
+      {
+        scenario_key: "fx_usdcny_move_candidate",
+        category: "fx",
+        label: "汇率波动情景",
+        source_field: "fx_exposure",
+        shock: pct(null),
+        estimated_impact: yuan(null),
+        measure: "estimated_pnl_impact",
+        calculation: "fx_exposure * fx_shock",
+        interpretation: "当前风险张量未提供汇率敞口，需接入 FX exposure 后再估算。",
+        data_status: "source_missing",
+        human_review_required: true,
+      },
+    ],
+    warnings: ["情景压力结果为基于正式风险张量的敏感性覆盖层，不是正式损益、正式限额判定或交易建议。"],
+    source_warnings: [],
+    evidence: {
+      requested_report_date: reportDate,
+      actual_risk_date: reportDate,
+      date_status: "verified",
+      fallback_status: "none",
+      fallback_date: null,
+      metric_id: "MTR-RSK-001R",
+      scope_label: "正式债券分析持仓，按监管 DV01 纳入规则；不代表全行所有资产",
+      scope_rule_ids: ["reg_dv01_include_all_formal_bond_analytics_v1"],
+      coverage: {
+        status: "complete",
+        total_position_count: 12,
+        included_position_count: 12,
+        excluded_position_count: 0,
+        missing_risk_position_count: 0,
+        reasons: [],
+      },
+      amount_display_allowed: true,
+      human_review_required: true,
+    },
   };
 }
 
@@ -250,6 +303,8 @@ describe("RiskTensorPage", () => {
         liability_cashflow_90d: "250000000",
         liquidity_gap_30d: "100000000",
         liquidity_gap_90d: "250000000",
+        missing_liability_maturity_principal_amount: "44307000000",
+        missing_liability_maturity_count: 1748,
       },
     }));
 
@@ -259,11 +314,15 @@ describe("RiskTensorPage", () => {
       getRiskTensor,
     });
 
+    expect(await screen.findByTestId("risk-tensor-page")).toHaveClass("theme-dh-api");
     const kpi = await screen.findByTestId("risk-tensor-kpi-grid");
     expect(kpi).toHaveTextContent(new RegExp(`12\\.00\\s*${WAN_YUAN_UNIT}`));
     expect(kpi).toHaveTextContent(new RegExp(`88\\.00\\s*${WAN_YUAN_UNIT}`));
     expect(kpi).toHaveTextContent(new RegExp(`4\\.56\\s*${WAN_YUAN_UNIT}`));
     expect(kpi).toHaveTextContent(new RegExp(`3\\.00\\s*${YI_YUAN_UNIT}`));
+    expect(kpi).toHaveTextContent("持仓记录数");
+    expect(kpi).toHaveTextContent(/12\s*条/);
+    expect(within(kpi).queryByText("债券只数")).not.toBeInTheDocument();
 
     const cashflowGrid = await screen.findByTestId("risk-tensor-cashflow-grid");
     expect(within(cashflowGrid).getAllByText("3.00").length).toBeGreaterThanOrEqual(1);
@@ -273,6 +332,214 @@ describe("RiskTensorPage", () => {
     expect(screen.getByTestId("risk-tensor-tenor-drill")).toHaveTextContent(
       new RegExp(`3\\.00\\s*${WAN_YUAN_UNIT}`),
     );
+    const excludedLiability = screen.getByTestId("risk-tensor-missing-liability-maturity");
+    expect(excludedLiability).toHaveTextContent("无到期日负债排除");
+    expect(excludedLiability).toHaveTextContent(new RegExp(`443\\.07\\s*${YI_YUAN_UNIT}`));
+    expect(excludedLiability).toHaveTextContent(/1,748\s*条/);
+    expect(excludedLiability).toHaveTextContent("未纳入 30/90 日负债现金流与流动性缺口");
+  });
+
+  it("shows unavailable instead of zero when legacy facts omit liability maturity exclusions", async () => {
+    const base = createApiClient({ mode: "mock" });
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates: vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_missing_liability_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      })),
+      getRiskTensor: vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_missing_liability_${reportDate}`),
+        result: tensorResult(reportDate),
+      })),
+    });
+
+    const excludedLiability = await screen.findByTestId("risk-tensor-missing-liability-maturity");
+    expect(excludedLiability).toHaveTextContent("不可用/待重算");
+    expect(excludedLiability).toHaveTextContent("条数不可用");
+    expect(excludedLiability).not.toHaveTextContent(new RegExp(`0\\.00\\s*${YI_YUAN_UNIT}`));
+  });
+
+  it("renders scenario-basis stress tests from the selected risk tensor date", async () => {
+    const base = createApiClient({ mode: "mock" });
+    let resolveScenarioStress: (() => void) | undefined;
+    const scenarioStressReady = new Promise<void>((resolve) => {
+      resolveScenarioStress = resolve;
+    });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_stress_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_stress_${reportDate}`),
+      result: tensorResult(reportDate),
+    }));
+    const getRiskScenarioStress = vi.fn(async (reportDate: string) => {
+      await scenarioStressReady;
+      return {
+        result_meta: buildScenarioMeta("risk.tensor.scenario_stress", `tr_scenario_stress_${reportDate}`),
+        result: scenarioStressResult(reportDate),
+      };
+    });
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+      getRiskScenarioStress,
+    });
+
+    const panel = await screen.findByTestId("risk-tensor-scenario-stress");
+    await waitFor(() => {
+      expect(getRiskScenarioStress).toHaveBeenCalledWith("2026-02-28");
+    });
+    expect(panel).toHaveTextContent("正在读取压力测试");
+    expect(panel).toHaveTextContent("正在准备 2026-02-28 的情景估算。");
+    expect(panel).toHaveTextContent("多情景压力测试");
+    await act(async () => {
+      resolveScenarioStress?.();
+    });
+    const rateScenario = await within(panel).findByTestId("risk-scenario-stress-row-parallel_rate_up_10bp");
+    expect(panel).toHaveTextContent("利率平行上行 10bp");
+    expect(panel).toHaveTextContent("信用利差走阔 10bp");
+    expect(panel).toHaveTextContent("30天现金流压力 10%");
+    expect(panel).toHaveTextContent("汇率波动情景");
+    expect(panel).toHaveTextContent("已估算");
+    expect(rateScenario).toHaveTextContent(
+      new RegExp(`-120\\.00\\s*${WAN_YUAN_UNIT}`),
+    );
+    const worstEstimate = within(panel).getByTestId("risk-tensor-scenario-worst-estimate");
+    expect(worstEstimate).toHaveTextContent("最不利损益估算");
+    expect(worstEstimate).toHaveTextContent("利率平行上行 10bp");
+    expect(worstEstimate).not.toHaveTextContent("30天现金流压力 10%");
+    expect(panel).toHaveTextContent("human_review_required=true");
+    expect(panel).toHaveTextContent("scenario_set_id standard_risk_tensor_scenario_v1");
+    expect(await screen.findByTestId("risk-tensor-result-meta-panel")).toHaveTextContent("tr_scenario_stress_2026-02-28");
+  });
+
+  it("hides every scenario amount when coverage evidence rejects amount display", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const blockedScenario = scenarioStressResult("2026-02-28");
+    blockedScenario.evidence = {
+      ...blockedScenario.evidence!,
+      coverage: {
+        ...blockedScenario.evidence!.coverage,
+        status: "incomplete",
+        missing_risk_position_count: 1,
+        reasons: ["适用范围内有 1 项缺少有限数值 DV01。"],
+      },
+      amount_display_allowed: false,
+    };
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates: vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_stress_blocked_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      })),
+      getRiskTensor: vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_stress_blocked_${reportDate}`),
+        result: tensorResult(reportDate),
+      })),
+      getRiskScenarioStress: vi.fn(async () => ({
+        result_meta: buildScenarioMeta("risk.tensor.scenario_stress", "tr_scenario_stress_blocked"),
+        result: blockedScenario,
+      })),
+    });
+
+    const panel = await screen.findByTestId("risk-tensor-scenario-stress");
+    const gate = await within(panel).findByTestId("risk-tensor-scenario-amount-gate");
+    const worstEstimate = within(panel).getByTestId("risk-tensor-scenario-worst-estimate");
+    const rateScenario = within(panel).getByTestId("risk-scenario-stress-row-parallel_rate_up_10bp");
+    const creditScenario = within(panel).getByTestId("risk-scenario-stress-row-credit_spread_up_10bp");
+    const liquidityScenario = within(panel).getByTestId("risk-scenario-stress-row-liquidity_30d_cashflow_10pct");
+
+    expect(gate).toHaveTextContent("情景金额暂不展示");
+    expect(gate).toHaveTextContent("监管 DV01 覆盖不完整");
+    expect(gate).toHaveTextContent("适用范围内有 1 项缺少有限数值 DV01");
+    expect(worstEstimate).toHaveTextContent("暂不展示");
+    expect(worstEstimate).toHaveTextContent("覆盖证据未通过");
+    expect(rateScenario).toHaveTextContent("金额待核验");
+    expect(creditScenario).toHaveTextContent("金额待核验");
+    expect(liquidityScenario).toHaveTextContent("金额待核验");
+    expect(panel).not.toHaveTextContent("已估算");
+    expect(rateScenario).not.toHaveTextContent(new RegExp(`-120\\.00\\s*${WAN_YUAN_UNIT}`));
+    expect(creditScenario).not.toHaveTextContent(new RegExp(`-18\\.00\\s*${WAN_YUAN_UNIT}`));
+    expect(liquidityScenario).not.toHaveTextContent(new RegExp(`-5,000\\.00\\s*${WAN_YUAN_UNIT}`));
+    expect(liquidityScenario).not.toHaveTextContent(new RegExp(`5,000\\.00\\s*${WAN_YUAN_UNIT}`));
+    expect(liquidityScenario).not.toHaveTextContent("压力后");
+  });
+
+  it("fails closed when scenario amount evidence is absent", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const scenarioWithoutEvidence = scenarioStressResult("2026-02-28");
+    delete scenarioWithoutEvidence.evidence;
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates: vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_stress_no_evidence_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      })),
+      getRiskTensor: vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_stress_no_evidence_${reportDate}`),
+        result: tensorResult(reportDate),
+      })),
+      getRiskScenarioStress: vi.fn(async () => ({
+        result_meta: buildScenarioMeta("risk.tensor.scenario_stress", "tr_scenario_stress_no_evidence"),
+        result: scenarioWithoutEvidence,
+      })),
+    });
+
+    const panel = await screen.findByTestId("risk-tensor-scenario-stress");
+    expect(await within(panel).findByTestId("risk-tensor-scenario-amount-gate")).toHaveTextContent(
+      "后端未返回监管 DV01 覆盖证据",
+    );
+    expect(within(panel).getByTestId("risk-tensor-scenario-worst-estimate")).toHaveTextContent("暂不展示");
+    expect(within(panel).getByTestId("risk-scenario-stress-row-parallel_rate_up_10bp")).not.toHaveTextContent(
+      new RegExp(`-120\\.00\\s*${WAN_YUAN_UNIT}`),
+    );
+  });
+
+  it("keeps a verified zero scenario amount visible when the evidence gate allows display", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const zeroScenario = scenarioStressResult("2026-02-28");
+    const rateScenario = zeroScenario.scenarios.find((row) => row.scenario_key === "parallel_rate_up_10bp");
+    if (!rateScenario) throw new Error("rate scenario fixture missing");
+    rateScenario.estimated_impact = {
+      raw: 0,
+      unit: "yuan",
+      display: "0.00",
+      precision: 2,
+      sign_aware: true,
+    };
+    zeroScenario.summary.worst_estimated_impact = {
+      raw: -180_000,
+      unit: "yuan",
+      display: "-180,000.00",
+      precision: 2,
+      sign_aware: true,
+    };
+    zeroScenario.summary.worst_scenario_key = "credit_spread_up_10bp";
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates: vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_stress_zero_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      })),
+      getRiskTensor: vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_stress_zero_${reportDate}`),
+        result: tensorResult(reportDate),
+      })),
+      getRiskScenarioStress: vi.fn(async () => ({
+        result_meta: buildScenarioMeta("risk.tensor.scenario_stress", "tr_scenario_stress_zero"),
+        result: zeroScenario,
+      })),
+    });
+
+    const rateCard = await screen.findByTestId("risk-scenario-stress-row-parallel_rate_up_10bp");
+    expect(rateCard).toHaveTextContent("已估算");
+    expect(rateCard).toHaveTextContent(new RegExp(`0\\.00\\s*${WAN_YUAN_UNIT}`));
   });
 
   it("surfaces the backend rate-risk duration denominator scope", async () => {
@@ -302,12 +569,168 @@ describe("RiskTensorPage", () => {
 
     const durationScope = await screen.findByTestId("risk-tensor-duration-scope");
     expect(durationScope).toHaveTextContent("利率风险适用资产覆盖");
-    expect(durationScope).toHaveTextContent("无到期日或零久期资产不造期限");
+    expect(durationScope).toHaveTextContent("基金不编造合同期限");
     expect(durationScope).toHaveTextContent(new RegExp(`4\\.00\\s*${YI_YUAN_UNIT}`));
     expect(durationScope).toHaveTextContent(new RegExp(`12\\.00\\s*${WAN_YUAN_UNIT}`));
     expect(durationScope).toHaveTextContent(new RegExp(`4\\.2\\s*年`));
     expect(durationScope).toHaveTextContent(new RegExp(`1\\.00\\s*${YI_YUAN_UNIT}`));
-    expect(durationScope).toHaveTextContent("排除行数 2");
+    expect(durationScope).toHaveTextContent("2 条持仓未计入久期");
+    expect(durationScope).toHaveTextContent("旧版物化行尚未提供排除原因拆分");
+  });
+
+  it("displays the four materialized exclusion reasons without treating fund risk as zero", async () => {
+    const base = createApiClient({ mode: "mock" });
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates: vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_breakdown_dates"),
+        result: { report_dates: ["2026-02-28"] },
+      })),
+      getRiskTensor: vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_breakdown_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          maturity_breakdown_status: "available" as const,
+          fund_no_maturity_market_value: "60000000",
+          fund_no_maturity_count: 1,
+          unknown_maturity_market_value: "10000000",
+          unknown_maturity_count: 1,
+          matured_outstanding_market_value: "30000000",
+          matured_outstanding_count: 1,
+          nonpositive_duration_market_value: "0",
+          nonpositive_duration_count: 0,
+        },
+      })),
+    });
+
+    const durationScope = await screen.findByTestId("risk-tensor-duration-scope");
+    expect(durationScope).toHaveTextContent("基金未列固定到期日");
+    expect(durationScope).toHaveTextContent("底层利率风险尚未穿透");
+    expect(durationScope).toHaveTextContent("期限属性待核实");
+    expect(durationScope).toHaveTextContent("已到期仍有余额");
+    expect(durationScope).toHaveTextContent("未来到期但久期非正");
+    expect(durationScope).not.toHaveTextContent("旧版物化行尚未提供");
+  });
+
+  it("renders projection quality disclosures separately from duration exclusions", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_projection_quality_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_projection_quality_${reportDate}`),
+      result: {
+        ...tensorResult(reportDate),
+        duration_excluded_market_value: "100000000",
+        duration_excluded_count: 2,
+        missing_maturity_market_value: "30000000",
+        missing_maturity_count: 3,
+        floating_rate_proxy_market_value: "50000000",
+        floating_rate_proxy_count: 5,
+        payment_frequency_fallback_market_value: "70000000",
+        payment_frequency_fallback_count: 7,
+        bullet_value_date_fallback_market_value: "90000000",
+        bullet_value_date_fallback_count: 9,
+        projection_quality_status: "available",
+      },
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const projectionQuality = await screen.findByTestId("risk-tensor-projection-quality");
+    const durationScope = await screen.findByTestId("risk-tensor-duration-scope");
+
+    expect(projectionQuality).toHaveTextContent("可用");
+    expect(projectionQuality).toHaveTextContent(new RegExp(`0\\.30\\s*${YI_YUAN_UNIT}`));
+    expect(projectionQuality).toHaveTextContent("3 笔");
+    expect(projectionQuality).toHaveTextContent(new RegExp(`0\\.50\\s*${YI_YUAN_UNIT}`));
+    expect(projectionQuality).toHaveTextContent("5 笔");
+    expect(projectionQuality).toHaveTextContent(new RegExp(`0\\.70\\s*${YI_YUAN_UNIT}`));
+    expect(projectionQuality).toHaveTextContent("7 笔");
+    expect(projectionQuality).toHaveTextContent(new RegExp(`0\\.90\\s*${YI_YUAN_UNIT}`));
+    expect(projectionQuality).toHaveTextContent("9 笔");
+    expect(projectionQuality).not.toHaveTextContent("1.00");
+    expect(durationScope).toHaveTextContent(new RegExp(`1\\.00\\s*${YI_YUAN_UNIT}`));
+    expect(durationScope).toHaveTextContent("2 条持仓未计入久期");
+  });
+
+  it("shows unavailable projection quality placeholders for legacy payloads without optional fields", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_projection_quality_legacy_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => {
+      const {
+        missing_maturity_market_value: _missingMaturityMarketValue,
+        missing_maturity_count: _missingMaturityCount,
+        floating_rate_proxy_market_value: _floatingRateProxyMarketValue,
+        floating_rate_proxy_count: _floatingRateProxyCount,
+        payment_frequency_fallback_market_value: _paymentFrequencyFallbackMarketValue,
+        payment_frequency_fallback_count: _paymentFrequencyFallbackCount,
+        bullet_value_date_fallback_market_value: _bulletValueDateFallbackMarketValue,
+        bullet_value_date_fallback_count: _bulletValueDateFallbackCount,
+        projection_quality_status: _projectionQualityStatus,
+        ...legacyPayload
+      } = tensorResult(reportDate);
+      return {
+        result_meta: buildMeta("risk.tensor", `tr_tensor_projection_quality_legacy_${reportDate}`),
+        result: legacyPayload,
+      };
+    });
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const projectionQuality = await screen.findByTestId("risk-tensor-projection-quality");
+    expect(projectionQuality).toHaveTextContent("不可用/待重算");
+    expect(projectionQuality).toHaveTextContent("笔数不可用");
+    expect(projectionQuality).not.toHaveTextContent(new RegExp(`0\\.00\\s*${YI_YUAN_UNIT}`));
+    expect(projectionQuality).not.toHaveTextContent("0 笔");
+  });
+
+  it("surfaces explicit unavailable_legacy projection status from the payload", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_projection_quality_unavailable_legacy_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_projection_quality_unavailable_legacy_${reportDate}`),
+      result: {
+        ...tensorResult(reportDate),
+        missing_maturity_market_value: null,
+        missing_maturity_count: null,
+        floating_rate_proxy_market_value: null,
+        floating_rate_proxy_count: null,
+        payment_frequency_fallback_market_value: null,
+        payment_frequency_fallback_count: null,
+        bullet_value_date_fallback_market_value: null,
+        bullet_value_date_fallback_count: null,
+        projection_quality_status: "unavailable_legacy",
+      },
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const projectionQuality = await screen.findByTestId("risk-tensor-projection-quality");
+    expect(projectionQuality).toHaveTextContent("历史版本未提供投影质量字段/待重算");
+    expect(projectionQuality).toHaveTextContent("不可用/待重算");
+    expect(projectionQuality).toHaveTextContent("笔数不可用");
+    expect(projectionQuality).not.toHaveTextContent(new RegExp(`0\\.00\\s*${YI_YUAN_UNIT}`));
+    expect(projectionQuality).not.toHaveTextContent("0 笔");
   });
 
   it("uses latest available report date when querystring is absent", async () => {
@@ -317,7 +740,11 @@ describe("RiskTensorPage", () => {
       result: { report_dates: ["2026-02-28", "2026-01-31"] },
     }));
     const getRiskTensor = vi.fn(async (reportDate: string) => ({
-      result_meta: buildMeta("risk.tensor", `tr_tensor_${reportDate}`),
+      result_meta: {
+        ...buildMeta("risk.tensor", `tr_tensor_${reportDate}`),
+        rule_version: "rv_risk_tensor_formal_materialize_v7",
+        cache_version: "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v7",
+      },
       result: tensorResult(reportDate),
     }));
 
@@ -335,9 +762,15 @@ describe("RiskTensorPage", () => {
     expect(brief).toHaveTextContent("30 日缺口为正");
     expect(brief).toHaveTextContent("质量标记：预警");
     expect(brief).toHaveTextContent("报告日 2026-02-28");
-    expect(brief).toHaveTextContent("未降级");
-    expect(brief).toHaveTextContent("来源 sv_tensor_test");
-    expect(brief).toHaveTextContent("控制项未接入");
+    expect(brief).not.toHaveTextContent("未降级");
+    expect(brief).not.toHaveTextContent("来源 sv_tensor_test");
+    expect(screen.getByTestId("risk-tensor-quality-evidence")).toHaveTextContent("sv_tensor_test");
+    expect(screen.getByTestId("risk-tensor-quality-detail")).not.toHaveAttribute("open");
+    expect(screen.getByTestId("risk-tensor-technical-details")).not.toHaveAttribute("open");
+    expect(kpi).not.toHaveTextContent("portfolio_dv01");
+    expect(brief).toHaveTextContent("1 条需核对");
+    expect(brief).not.toHaveTextContent("控制项未接入");
+    expect(brief).not.toHaveTextContent("上期变化载荷");
     expect(kpi).toHaveTextContent(new RegExp(`0\\.00\\s*${WAN_YUAN_UNIT}`));
     expect(kpi).toHaveTextContent("监管口径 DV01");
     expect(kpi).toHaveTextContent("待接入");
@@ -356,15 +789,18 @@ describe("RiskTensorPage", () => {
     expect(screen.getByText("90 日负债现金流")).toBeInTheDocument();
     expect(screen.getAllByText("Issuer concentration above desk threshold").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("质量标记：预警")).toBeInTheDocument();
-    const priorChange = screen.getByTestId("risk-tensor-prior-period-change");
-    expect(priorChange).toHaveTextContent("较上一报告日 2026-02-27");
-    expect(priorChange).toHaveTextContent("监管口径 DV01");
-    expect(priorChange).toHaveTextContent("+4.34");
-    expect(priorChange).toHaveTextContent("30 日流动性缺口比例");
-    expect(priorChange).toHaveTextContent("+2.0%");
-    expect(priorChange).toHaveTextContent("30 日流动性缓冲改善");
+    expect(screen.queryByTestId("risk-tensor-prior-period-change")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("risk-tensor-dv01-controls")).not.toBeInTheDocument();
+    const scenarioPanel = await screen.findByTestId("risk-tensor-scenario-stress");
+    expect(scenarioPanel).toBeVisible();
+    await waitFor(() => {
+      expect(scenarioPanel).toHaveTextContent("利率平行上行 10bp");
+      expect(scenarioPanel).toHaveTextContent("30天现金流压力 10%");
+    });
     expect(screen.getByTestId("risk-tensor-tenor-drill")).toHaveTextContent("5Y");
     expect(screen.getByTestId("risk-tensor-tenor-drill")).toHaveTextContent("3");
+    expect(screen.getByTestId("risk-tensor-result-meta-panel")).not.toBeVisible();
+    await userEvent.click(screen.getByText("技术信息与数据血缘"));
     expect(screen.getByTestId("risk-tensor-result-meta-panel")).toBeVisible();
     expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent("tr_tensor_2026-02-28");
     expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent("sv_tensor_test");
@@ -373,6 +809,43 @@ describe("RiskTensorPage", () => {
       expect(getRiskTensorDates).toHaveBeenCalled();
       expect(getRiskTensor).toHaveBeenCalledWith("2026-02-28");
     });
+  });
+
+  it("uses raw_text for the first-screen liquidity conclusion and dominant tenor", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const exact = (raw: number, rawText: string) => ({
+      raw,
+      raw_text: rawText,
+      unit: "yuan" as const,
+      display: rawText,
+      precision: 8,
+      sign_aware: true,
+    });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_exact_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_exact_${reportDate}`),
+      result: {
+        ...tensorResult(reportDate),
+        liquidity_gap_30d: exact(100, "-0.00000001"),
+        krd_5y: exact(5, "1.00000000"),
+        krd_7y: exact(4, "6.00000000"),
+        krd_10y: exact(3, "6.00000000"),
+      },
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const brief = await screen.findByTestId("risk-tensor-brief");
+    expect(brief).toHaveTextContent("主风险桶 7Y");
+    expect(brief).toHaveTextContent("30 日缺口为负");
+    expect(screen.getByTestId("risk-tensor-tenor-drill")).toHaveTextContent("7Y");
   });
 
   it("summarizes hidden warnings in the first-screen risk judgement", async () => {
@@ -710,487 +1183,6 @@ describe("RiskTensorPage", () => {
     }
   });
 
-  it("lets users jump from the first-screen DV01 control tile to the control detail", async () => {
-    const user = userEvent.setup();
-    const scrollTargets: HTMLElement[] = [];
-    const scrollOptions: unknown[] = [];
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
-      scrollTargets.push(this);
-      scrollOptions.push(options);
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_jump_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_dv01_jump_${reportDate}`),
-        result: {
-          ...tensorResult(reportDate),
-          dv01_controls: dv01ControlsFixture(),
-        } as RiskTensorPayload,
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const brief = await screen.findByTestId("risk-tensor-brief");
-      const dv01Action = within(brief).getByTestId("risk-tensor-dv01-controls-action");
-      const controls = await screen.findByTestId("risk-tensor-dv01-controls");
-
-      await user.click(dv01Action);
-
-      expect(scrollTargets).toContain(controls);
-      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
-    } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
-    }
-  });
-
-  it("lets users retry the risk tensor main read when DV01 controls are missing from the first screen", async () => {
-    const user = userEvent.setup();
-    const base = createApiClient({ mode: "mock" });
-    const getRiskTensorDates = vi.fn(async () => ({
-      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_missing_retry_dates"),
-      result: { report_dates: ["2026-02-28"] },
-    }));
-    const getRiskTensor = vi
-      .fn()
-      .mockResolvedValueOnce({
-        result_meta: buildMeta("risk.tensor", "tr_tensor_dv01_missing_retry_initial"),
-        result: {
-          ...tensorResult("2026-02-28"),
-          dv01_controls: null,
-        },
-      })
-      .mockResolvedValueOnce({
-        result_meta: buildMeta("risk.tensor", "tr_tensor_dv01_missing_retry_success"),
-        result: {
-          ...tensorResult("2026-02-28"),
-          dv01_controls: dv01ControlsFixture(),
-        },
-      });
-
-    renderRiskTensorRoute("/risk-tensor", {
-      ...base,
-      getRiskTensorDates,
-      getRiskTensor,
-    });
-
-    const brief = await screen.findByTestId("risk-tensor-brief");
-    expect(brief).toHaveTextContent("控制未接入");
-    expect(getRiskTensor).toHaveBeenCalledTimes(1);
-
-    await user.click(within(brief).getByRole("button", { name: "重试主读面" }));
-
-    await waitFor(() => {
-      expect(getRiskTensor).toHaveBeenCalledTimes(2);
-    });
-    expect(await screen.findByTestId("risk-tensor-dv01-controls")).toHaveTextContent("Limit configuration is pending.");
-    expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent("tr_tensor_dv01_missing_retry_success");
-    expect(screen.getByTestId("risk-tensor-brief")).not.toHaveTextContent("控制未接入");
-  });
-
-  it("lets users locate metadata when DV01 controls are missing from the first screen", async () => {
-    const user = userEvent.setup();
-    const scrollTargets: HTMLElement[] = [];
-    const scrollOptions: unknown[] = [];
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
-      scrollTargets.push(this);
-      scrollOptions.push(options);
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_missing_meta_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_dv01_missing_meta_${reportDate}`),
-        result: {
-          ...tensorResult(reportDate),
-          dv01_controls: null,
-        },
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const brief = await screen.findByTestId("risk-tensor-brief");
-      const metaPanel = await screen.findByTestId("risk-tensor-result-meta-panel");
-      expect(brief).toHaveTextContent("控制未接入");
-
-      await user.click(within(brief).getByRole("button", { name: "定位元数据" }));
-
-      expect(scrollTargets).toContain(metaPanel);
-      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
-    } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
-    }
-  });
-
-  it("lets users jump from required information to missing DV01 control diagnostics", async () => {
-    const user = userEvent.setup();
-    const scrollTargets: HTMLElement[] = [];
-    const scrollOptions: unknown[] = [];
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
-      scrollTargets.push(this);
-      scrollOptions.push(options);
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_missing_required_jump_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_dv01_missing_required_jump_${reportDate}`),
-        result: {
-          ...tensorResult(reportDate),
-          warnings: [],
-          dv01_controls: null,
-        } as RiskTensorPayload,
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const brief = await screen.findByTestId("risk-tensor-brief");
-      const requiredAction = within(brief).getByTestId("risk-tensor-required-action");
-      const missingControls = within(brief).getByTestId("risk-tensor-dv01-missing-controls");
-
-      await user.click(requiredAction);
-
-      expect(scrollTargets).toContain(missingControls);
-      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
-    } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
-    }
-  });
-
-  it("copies DV01 control payload diagnostic context when controls are missing from the first screen", async () => {
-    const user = userEvent.setup();
-    const writeText = vi.fn(async () => undefined);
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_missing_copy_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_dv01_missing_copy_${reportDate}`),
-        result: {
-          ...tensorResult(reportDate),
-          dv01_controls: null,
-        },
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const brief = await screen.findByTestId("risk-tensor-brief");
-      await user.click(within(brief).getByRole("button", { name: "复制控制排查信息" }));
-
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("风险张量 DV01 控制载荷缺失排查信息"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("报告日 2026-02-28"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("trace_id tr_tensor_dv01_missing_copy_2026-02-28"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("监管口径 DV01"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("dv01_controls 未提供"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("不会在前端补算 DV01 控制载荷"));
-      expect(brief).toHaveTextContent("已复制控制排查信息");
-    } finally {
-      if (originalClipboard) {
-        Object.defineProperty(navigator, "clipboard", originalClipboard);
-      } else {
-        Reflect.deleteProperty(navigator, "clipboard");
-      }
-    }
-  });
-
-  it("shows manual DV01 control diagnostic text when missing-control copying fails", async () => {
-    const user = userEvent.setup();
-    const writeText = vi.fn(async () => {
-      throw new Error("clipboard unavailable");
-    });
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_missing_copy_failure_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_dv01_missing_copy_failure_${reportDate}`),
-        result: {
-          ...tensorResult(reportDate),
-          dv01_controls: null,
-        },
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const brief = await screen.findByTestId("risk-tensor-brief");
-      await user.click(within(brief).getByRole("button", { name: "复制控制排查信息" }));
-
-      await waitFor(() => {
-        expect(brief).toHaveTextContent("复制失败，请手动选择控制排查信息");
-      });
-      const manualCopy = within(brief).getByTestId("risk-tensor-dv01-missing-controls-manual-copy");
-      expect(manualCopy).toHaveTextContent("风险张量 DV01 控制载荷缺失排查信息");
-      expect(manualCopy).toHaveTextContent("trace_id tr_tensor_dv01_missing_copy_failure_2026-02-28");
-      expect(manualCopy).toHaveTextContent("dv01_controls 未提供");
-      expect(manualCopy).toHaveTextContent("不会在前端补算 DV01 控制载荷");
-    } finally {
-      if (originalClipboard) {
-        Object.defineProperty(navigator, "clipboard", originalClipboard);
-      } else {
-        Reflect.deleteProperty(navigator, "clipboard");
-      }
-    }
-  });
-
-  it("resets missing DV01 control copy feedback when regulatory DV01 changes", async () => {
-    const user = userEvent.setup();
-    const writeText = vi.fn(async () => undefined);
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_missing_feedback_reset_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi
-        .fn()
-        .mockResolvedValueOnce({
-          result_meta: buildMeta("risk.tensor", "tr_tensor_dv01_missing_feedback_reset"),
-          result: {
-            ...tensorResult("2026-02-28"),
-            regulatory_dv01: "120000",
-            dv01_controls: null,
-          } as RiskTensorPayload,
-        })
-        .mockResolvedValueOnce({
-          result_meta: buildMeta("risk.tensor", "tr_tensor_dv01_missing_feedback_reset"),
-          result: {
-            ...tensorResult("2026-02-28"),
-            regulatory_dv01: "240000",
-            dv01_controls: null,
-          } as RiskTensorPayload,
-        });
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const brief = await screen.findByTestId("risk-tensor-brief");
-      await user.click(within(brief).getByRole("button", { name: "复制控制排查信息" }));
-
-      await waitFor(() => {
-        expect(brief).toHaveTextContent("已复制控制排查信息");
-      });
-
-      await user.click(within(brief).getByRole("button", { name: "重试主读面" }));
-
-      await waitFor(() => {
-        expect(brief).toHaveTextContent("24.00 万元");
-      });
-      expect(brief).not.toHaveTextContent("已复制控制排查信息");
-    } finally {
-      if (originalClipboard) {
-        Object.defineProperty(navigator, "clipboard", originalClipboard);
-      } else {
-        Reflect.deleteProperty(navigator, "clipboard");
-      }
-    }
-  });
-
-  it("lets users jump from the first-screen required information tile to DV01 actions", async () => {
-    const user = userEvent.setup();
-    const scrollTargets: HTMLElement[] = [];
-    const scrollOptions: unknown[] = [];
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
-      scrollTargets.push(this);
-      scrollOptions.push(options);
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_required_action_jump_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_required_action_jump_${reportDate}`),
-        result: {
-          ...tensorResult(reportDate),
-          dv01_controls: dv01ControlsFixture({
-            control_actions: [
-              {
-                key: "approved_dv01_limit",
-                title: "Configure approved DV01 limit",
-                status: "required",
-                evidence: "Approved limit is missing.",
-                action: "Connect approved limit source.",
-              },
-            ],
-          }),
-        } as RiskTensorPayload,
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const brief = await screen.findByTestId("risk-tensor-brief");
-      const requiredAction = within(brief).getByTestId("risk-tensor-required-action");
-      const actions = await screen.findByTestId("risk-tensor-dv01-actions");
-      expect(requiredAction).toHaveTextContent("Configure approved DV01 limit");
-      expect(actions).toHaveTextContent("Configure approved DV01 limit");
-
-      await user.click(requiredAction);
-
-      expect(scrollTargets).toContain(actions);
-      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
-    } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
-    }
-  });
-
-  it("lets users jump from first-screen no-required-action status to DV01 controls", async () => {
-    const user = userEvent.setup();
-    const scrollTargets: HTMLElement[] = [];
-    const scrollOptions: unknown[] = [];
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
-      scrollTargets.push(this);
-      scrollOptions.push(options);
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_no_required_action_jump_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_no_required_action_jump_${reportDate}`),
-        result: {
-          ...tensorResult(reportDate),
-          warnings: [],
-          dv01_controls: dv01ControlsFixture({ control_actions: [] }),
-        } as RiskTensorPayload,
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const brief = await screen.findByTestId("risk-tensor-brief");
-      const requiredAction = within(brief).getByTestId("risk-tensor-required-action");
-      const controls = await screen.findByTestId("risk-tensor-dv01-controls");
-      expect(requiredAction).toHaveTextContent("暂无必做项");
-
-      await user.click(requiredAction);
-
-      expect(scrollTargets).toContain(controls);
-      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
-    } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
-    }
-  });
-
-  it("lets users jump from the first-screen required information tile to quality detail", async () => {
-    const user = userEvent.setup();
-    const scrollTargets: HTMLElement[] = [];
-    const scrollOptions: unknown[] = [];
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
-      scrollTargets.push(this);
-      scrollOptions.push(options);
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_required_info_quality_jump_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const qualityWarning = "Quality warning needs review.";
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_required_info_quality_jump_${reportDate}`),
-        result: {
-          ...tensorResult(reportDate),
-          warnings: [qualityWarning],
-          dv01_controls: dv01ControlsFixture(),
-        } as RiskTensorPayload,
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const brief = await screen.findByTestId("risk-tensor-brief");
-      const requiredAction = within(brief).getByTestId("risk-tensor-required-action");
-      const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
-      expect(requiredAction).toHaveTextContent(qualityWarning);
-
-      await user.click(requiredAction);
-
-      expect(scrollTargets).toContain(qualityDetail);
-      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
-    } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
-    }
-  });
-
   it("lets users jump from the first-screen liquidity tile to liquidity gap detail", async () => {
     const user = userEvent.setup();
     const scrollTargets: HTMLElement[] = [];
@@ -1262,9 +1254,12 @@ describe("RiskTensorPage", () => {
       const dataStatusAction = within(brief).getByTestId("risk-tensor-data-status-action");
       const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
       expect(within(brief).queryByTestId("risk-tensor-quality-review-action")).not.toBeInTheDocument();
+      expect(qualityDetail).not.toHaveAttribute("open");
 
       await user.click(dataStatusAction);
 
+      expect(qualityDetail).toHaveAttribute("open");
+      expect(within(qualityDetail).getByTestId("risk-tensor-quality-evidence")).toBeVisible();
       expect(scrollTargets).toContain(qualityDetail);
       expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
     } finally {
@@ -1330,15 +1325,15 @@ describe("RiskTensorPage", () => {
       expect(reviewAction).toHaveTextContent("1 个陈旧日期已拦截");
       expect(reviewAction).toHaveTextContent("估值曲线 vendor stale");
       expect(tracePriority).toHaveTextContent("证据优先级");
-      expect(tracePriority).toHaveTextContent("source/rule");
+      expect(tracePriority).toHaveTextContent("来源/规则");
       expect(tracePriority).toHaveTextContent("sv_tensor_test");
       expect(tracePriority).toHaveTextContent("rv_tensor_test");
-      expect(tracePriority).toHaveTextContent("fallback");
+      expect(tracePriority).toHaveTextContent("降级");
       expect(tracePriority).toHaveTextContent("latest snapshot fallback");
       expect(tracePriority).toHaveTextContent("fallback_date 2026-02-27");
       expect(tracePriority).toHaveTextContent("陈旧日期");
       expect(tracePriority).toHaveTextContent("risk tensor source lineage is stale");
-      expect(tracePriority).toHaveTextContent("warning");
+      expect(tracePriority).toHaveTextContent("预警");
       expect(tracePriority).toHaveTextContent("估值曲线 vendor stale");
 
       await user.click(reviewAction);
@@ -1399,8 +1394,8 @@ describe("RiskTensorPage", () => {
       const dataStatusAction = within(brief).getByTestId("risk-tensor-data-status-action");
       const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
 
-      expect(dataStatusAction).toHaveTextContent("latest snapshot fallback");
-      expect(dataStatusAction).toHaveTextContent("1 个陈旧日期已拦截");
+      expect(brief).toHaveTextContent("latest snapshot fallback");
+      expect(brief).toHaveTextContent("1 个陈旧日期已拦截");
       expect(qualityDetail).toHaveTextContent("latest snapshot fallback");
       expect(qualityDetail).toHaveTextContent("fallback_date 2026-02-27");
       expect(qualityDetail).toHaveTextContent("sv_tensor_fallback");
@@ -1556,7 +1551,8 @@ describe("RiskTensorPage", () => {
       expect(within(tracePriority).queryByRole("button", { name: "确认业务复核" })).not.toBeInTheDocument();
       expect(qualityDetail).toHaveTextContent("basis formal");
       expect(qualityDetail).toHaveTextContent("cache_version cv_tensor_test");
-      expect(qualityDetail).toHaveTextContent("generated_at 2026-04-12T08:00:00Z");
+      // 生成时间展示层归一为 YYYY-MM-DD HH:mm:ss（原始 ISO 收进 title），复制文本仍保留原值。
+      expect(qualityDetail).toHaveTextContent("generated_at 2026-04-12 08:00:00");
 
       await user.click(copyEvidence);
 
@@ -2157,9 +2153,11 @@ describe("RiskTensorPage", () => {
     expect(issuerDetail).toHaveTextContent("发行人集中度");
     expect(issuerDetail).toHaveTextContent("42.0%");
     expect(issuerDetail).toHaveTextContent("0.18");
-    expect(issuerDetail).toHaveTextContent("issuer_top5_weight");
-    expect(issuerDetail).toHaveTextContent("issuer_concentration_hhi");
-    expect(within(issuerHhi).getByText("0.18")).toHaveStyle({ color: displayTokens.kpi.valueDefault });
+    expect(issuerDetail).toHaveTextContent("前五大权重");
+    expect(issuerDetail).toHaveTextContent("发行人 HHI");
+    expect(issuerDetail).not.toHaveTextContent("issuer_top5_weight");
+    expect(issuerHhi).toHaveAttribute("data-tone", "default");
+    expect(within(issuerHhi).getByText("0.18")).toHaveClass("kpi-card__value");
   });
 
   it("lets users select a tenor from the KRD chart and lands on the tenor drilldown", async () => {
@@ -2290,89 +2288,6 @@ describe("RiskTensorPage", () => {
     }
   });
 
-  it("lets users jump from the radar duration dimension to the duration KPI card when scope disclosure is absent", async () => {
-    const user = userEvent.setup();
-    const scrollTargets: HTMLElement[] = [];
-    const scrollOptions: unknown[] = [];
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
-      scrollTargets.push(this);
-      scrollOptions.push(options);
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_radar_duration_kpi_jump_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_radar_duration_kpi_jump_${reportDate}`),
-        result: tensorResult(reportDate),
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const durationCard = await screen.findByTestId("risk-tensor-duration-kpi");
-      const radarAction = await screen.findByTestId("risk-tensor-radar-action-duration");
-
-      await user.click(radarAction);
-
-      expect(scrollTargets).toContain(durationCard);
-      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
-    } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
-    }
-  });
-
-  it("lets users jump from the radar DV01 dimension to missing control diagnostics", async () => {
-    const user = userEvent.setup();
-    const scrollTargets: HTMLElement[] = [];
-    const scrollOptions: unknown[] = [];
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
-      scrollTargets.push(this);
-      scrollOptions.push(options);
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_radar_dv01_missing_jump_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_radar_dv01_missing_jump_${reportDate}`),
-        result: {
-          ...tensorResult(reportDate),
-          warnings: [],
-          dv01_controls: null,
-        } as RiskTensorPayload,
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const brief = await screen.findByTestId("risk-tensor-brief");
-      const missingControls = within(brief).getByTestId("risk-tensor-dv01-missing-controls");
-      const radarAction = await screen.findByTestId("risk-tensor-radar-action-dv01");
-
-      await user.click(radarAction);
-
-      expect(scrollTargets).toContain(missingControls);
-      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
-    } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
-    }
-  });
-
   it("lets users jump from the first-screen issuer concentration tile to issuer detail", async () => {
     const user = userEvent.setup();
     const scrollTargets: HTMLElement[] = [];
@@ -2448,7 +2363,7 @@ describe("RiskTensorPage", () => {
     await waitFor(() => {
       expect(getRiskTensor).toHaveBeenCalledWith("2026-01-31");
     });
-    expect(reportDateSelect).toHaveValue("2026-01-31");
+    expect(screen.getByLabelText("风险报告日")).toHaveValue("2026-01-31");
     expect(await screen.findByTestId("risk-tensor-brief")).toHaveTextContent("报告日 2026-01-31");
     expect(screen.getByTestId("risk-tensor-brief")).toHaveTextContent("主风险桶 1Y");
   });
@@ -2501,1045 +2416,6 @@ describe("RiskTensorPage", () => {
     expect(await screen.findByTestId("risk-tensor-krd-quality-note")).toHaveTextContent("krd_1y");
   });
 
-  it("renders prior-period no-data state without comparison metric cards", async () => {
-    const base = createApiClient({ mode: "mock" });
-    const getRiskTensorDates = vi.fn(async () => ({
-      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_no_prior_dates"),
-      result: { report_dates: ["2026-02-28"] },
-    }));
-    const getRiskTensor = vi.fn(async (reportDate: string) => ({
-      result_meta: buildMeta("risk.tensor", `tr_tensor_no_prior_${reportDate}`),
-      result: {
-        ...tensorResult(reportDate),
-        prior_period_change: {
-          status: "no_prior",
-          comparison_report_date: null,
-          summary: "no prior comparable data",
-          dominant_krd_bucket: "5Y",
-          previous_dominant_krd_bucket: null,
-          dominant_krd_shifted: false,
-          metrics: [],
-        },
-      },
-    }));
-
-    renderRiskTensorRoute("/risk-tensor", {
-      ...base,
-      getRiskTensorDates,
-      getRiskTensor,
-    });
-
-    const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
-    expect(priorChange).toHaveTextContent("no prior comparable data");
-    expect(priorChange.querySelectorAll(".risk-tensor-prior-change__metric")).toHaveLength(0);
-  });
-
-  it("lets users jump from prior-period no-data state to result metadata", async () => {
-    const user = userEvent.setup();
-    const scrollTargets: HTMLElement[] = [];
-    const scrollOptions: unknown[] = [];
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
-      scrollTargets.push(this);
-      scrollOptions.push(options);
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_no_prior_meta_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_no_prior_meta_${reportDate}`),
-        result: {
-          ...tensorResult(reportDate),
-          prior_period_change: {
-            status: "no_prior",
-            comparison_report_date: null,
-            summary: "no prior comparable data",
-            dominant_krd_bucket: "5Y",
-            previous_dominant_krd_bucket: null,
-            dominant_krd_shifted: false,
-            metrics: [],
-          },
-        },
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
-      const metaPanel = await screen.findByTestId("risk-tensor-result-meta-panel");
-
-      await user.click(within(priorChange).getByRole("button", { name: "定位元数据" }));
-
-      expect(scrollTargets).toContain(metaPanel);
-      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
-    } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
-    }
-  });
-
-  it("copies prior-period diagnostic context when comparison data is unavailable", async () => {
-    const user = userEvent.setup();
-    const writeText = vi.fn(async () => undefined);
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_no_prior_copy_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_no_prior_copy_${reportDate}`),
-        result: {
-          ...tensorResult(reportDate),
-          prior_period_change: {
-            status: "no_prior",
-            comparison_report_date: null,
-            summary: "no prior comparable data",
-            dominant_krd_bucket: "5Y",
-            previous_dominant_krd_bucket: null,
-            dominant_krd_shifted: false,
-            metrics: [],
-          },
-        },
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
-      await user.click(within(priorChange).getByRole("button", { name: "复制上期排查信息" }));
-
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("风险张量较上期变化排查信息"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("报告日 2026-02-28"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("trace_id tr_tensor_no_prior_copy_2026-02-28"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("状态 no_prior"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("摘要 no prior comparable data"));
-      expect(priorChange).toHaveTextContent("已复制上期排查信息");
-    } finally {
-      if (originalClipboard) {
-        Object.defineProperty(navigator, "clipboard", originalClipboard);
-      } else {
-        Reflect.deleteProperty(navigator, "clipboard");
-      }
-    }
-  });
-
-  it("copies prior-period diagnostic context when comparison metrics are available", async () => {
-    const user = userEvent.setup();
-    const writeText = vi.fn(async () => undefined);
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_prior_available_copy_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_prior_available_copy_${reportDate}`),
-        result: tensorResult(reportDate),
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
-      expect(priorChange).toHaveTextContent("监管口径 DV01");
-
-      await user.click(within(priorChange).getByRole("button", { name: "复制上期排查信息" }));
-
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("风险张量较上期变化排查信息"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("trace_id tr_tensor_prior_available_copy_2026-02-28"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("状态 available"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("对比日期 2026-02-27"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("metrics_count 2"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("metric[1] 监管口径 DV01"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("current 12.34"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("previous 8.00"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("delta +4.34"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("interpretation 监管口径 DV01 扩大"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("metric[2] 30 日流动性缺口比例"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("current 5.0%"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("previous 3.0%"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("delta +2.0%"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("interpretation 30 日流动性缓冲改善"));
-      await waitFor(() => {
-        expect(priorChange).toHaveTextContent("已复制上期排查信息");
-      });
-    } finally {
-      if (originalClipboard) {
-        Object.defineProperty(navigator, "clipboard", originalClipboard);
-      } else {
-        Reflect.deleteProperty(navigator, "clipboard");
-      }
-    }
-  });
-
-  it("resets prior-period diagnostic copy feedback when quality flag changes", async () => {
-    const user = userEvent.setup();
-    const writeText = vi.fn(async () => undefined);
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_prior_feedback_reset_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi
-        .fn()
-        .mockResolvedValueOnce({
-          result_meta: buildMeta("risk.tensor", "tr_tensor_prior_feedback_reset"),
-          result: {
-            ...tensorResult("2026-02-28"),
-            quality_flag: "warning",
-          } as RiskTensorPayload,
-        })
-        .mockResolvedValueOnce({
-          result_meta: buildMeta("risk.tensor", "tr_tensor_prior_feedback_reset"),
-          result: {
-            ...tensorResult("2026-02-28"),
-            quality_flag: "stale",
-          } as RiskTensorPayload,
-        });
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
-      await user.click(within(priorChange).getByRole("button", { name: "复制上期排查信息" }));
-
-      await waitFor(() => {
-        expect(priorChange).toHaveTextContent("已复制上期排查信息");
-      });
-
-      await user.click(within(priorChange).getByRole("button", { name: "重试主读面" }));
-
-      await waitFor(() => {
-        expect(screen.getByTestId("risk-tensor-data-status-action")).toHaveTextContent("陈旧");
-      });
-      expect(screen.getByTestId("risk-tensor-prior-period-change")).not.toHaveTextContent("已复制上期排查信息");
-    } finally {
-      if (originalClipboard) {
-        Object.defineProperty(navigator, "clipboard", originalClipboard);
-      } else {
-        Reflect.deleteProperty(navigator, "clipboard");
-      }
-    }
-  });
-
-  it("resets prior-period diagnostic copy feedback when metric evidence changes", async () => {
-    const user = userEvent.setup();
-    const writeText = vi.fn(async () => undefined);
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_prior_metric_feedback_reset_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const changedPriorPeriod = {
-        ...tensorResult("2026-02-28").prior_period_change!,
-        metrics: tensorResult("2026-02-28").prior_period_change!.metrics.map((metric) =>
-          metric.key === "regulatory_dv01"
-            ? {
-                ...metric,
-                delta_display: "+9.99",
-                interpretation: "监管口径 DV01 显著扩大",
-              }
-            : metric,
-        ),
-      };
-      const getRiskTensor = vi
-        .fn()
-        .mockResolvedValueOnce({
-          result_meta: buildMeta("risk.tensor", "tr_tensor_prior_metric_feedback_reset"),
-          result: tensorResult("2026-02-28"),
-        })
-        .mockResolvedValueOnce({
-          result_meta: buildMeta("risk.tensor", "tr_tensor_prior_metric_feedback_reset"),
-          result: {
-            ...tensorResult("2026-02-28"),
-            prior_period_change: changedPriorPeriod,
-          } as RiskTensorPayload,
-        });
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
-      await user.click(within(priorChange).getByRole("button", { name: "复制上期排查信息" }));
-
-      await waitFor(() => {
-        expect(priorChange).toHaveTextContent("已复制上期排查信息");
-      });
-
-      await user.click(within(priorChange).getByRole("button", { name: "重试主读面" }));
-
-      await waitFor(() => {
-        expect(screen.getByTestId("risk-tensor-prior-period-change")).toHaveTextContent("监管口径 DV01 显著扩大");
-      });
-      expect(screen.getByTestId("risk-tensor-prior-period-change")).not.toHaveTextContent("已复制上期排查信息");
-    } finally {
-      if (originalClipboard) {
-        Object.defineProperty(navigator, "clipboard", originalClipboard);
-      } else {
-        Reflect.deleteProperty(navigator, "clipboard");
-      }
-    }
-  });
-
-  it("ignores stale prior-period copy failures after metric evidence changes", async () => {
-    const user = userEvent.setup();
-    let rejectCopy: ((error: Error) => void) | undefined;
-    const writeText = vi.fn(
-      () =>
-        new Promise<void>((_resolve, reject) => {
-          rejectCopy = reject;
-        }),
-    );
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_prior_metric_stale_failure_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const changedPriorPeriod = {
-        ...tensorResult("2026-02-28").prior_period_change!,
-        metrics: tensorResult("2026-02-28").prior_period_change!.metrics.map((metric) =>
-          metric.key === "regulatory_dv01"
-            ? {
-                ...metric,
-                delta_display: "+9.99",
-                interpretation: "监管口径 DV01 显著扩大",
-              }
-            : metric,
-        ),
-      };
-      const getRiskTensor = vi
-        .fn()
-        .mockResolvedValueOnce({
-          result_meta: buildMeta("risk.tensor", "tr_tensor_prior_metric_stale_failure"),
-          result: tensorResult("2026-02-28"),
-        })
-        .mockResolvedValueOnce({
-          result_meta: buildMeta("risk.tensor", "tr_tensor_prior_metric_stale_failure"),
-          result: {
-            ...tensorResult("2026-02-28"),
-            prior_period_change: changedPriorPeriod,
-          } as RiskTensorPayload,
-        });
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
-      await user.click(within(priorChange).getByRole("button", { name: "复制上期排查信息" }));
-      await user.click(within(priorChange).getByRole("button", { name: "重试主读面" }));
-
-      await waitFor(() => {
-        expect(screen.getByTestId("risk-tensor-prior-period-change")).toHaveTextContent("监管口径 DV01 显著扩大");
-      });
-
-      await act(async () => {
-        rejectCopy?.(new Error("clipboard unavailable"));
-      });
-
-      expect(screen.getByTestId("risk-tensor-prior-period-change")).not.toHaveTextContent(
-        "复制失败，请手动选择上期排查信息",
-      );
-      expect(screen.queryByTestId("risk-tensor-prior-period-manual-copy")).not.toBeInTheDocument();
-    } finally {
-      if (originalClipboard) {
-        Object.defineProperty(navigator, "clipboard", originalClipboard);
-      } else {
-        Reflect.deleteProperty(navigator, "clipboard");
-      }
-    }
-  });
-
-  it("shows manual prior-period diagnostic text when clipboard copy fails", async () => {
-    const user = userEvent.setup();
-    const writeText = vi.fn(async () => {
-      throw new Error("clipboard unavailable");
-    });
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_prior_missing_copy_failure_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_prior_missing_copy_failure_${reportDate}`),
-        result: {
-          ...tensorResult(reportDate),
-          prior_period_change: null,
-        },
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
-      await user.click(within(priorChange).getByRole("button", { name: "复制上期排查信息" }));
-
-      await waitFor(() => {
-        expect(priorChange).toHaveTextContent("复制失败，请手动选择上期排查信息");
-      });
-      const manualCopy = within(priorChange).getByTestId("risk-tensor-prior-period-manual-copy");
-      expect(manualCopy).toHaveTextContent("风险张量较上期变化排查信息");
-      expect(manualCopy).toHaveTextContent("trace_id tr_tensor_prior_missing_copy_failure_2026-02-28");
-      expect(manualCopy).toHaveTextContent("状态 missing");
-      expect(manualCopy).toHaveTextContent("后端未返回上期变化载荷");
-    } finally {
-      if (originalClipboard) {
-        Object.defineProperty(navigator, "clipboard", originalClipboard);
-      } else {
-        Reflect.deleteProperty(navigator, "clipboard");
-      }
-    }
-  });
-
-  it("lets users retry the risk tensor main read from the prior-period no-data state", async () => {
-    const user = userEvent.setup();
-    const base = createApiClient({ mode: "mock" });
-    const getRiskTensorDates = vi.fn(async () => ({
-      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_no_prior_retry_dates"),
-      result: { report_dates: ["2026-02-28"] },
-    }));
-    const getRiskTensor = vi
-      .fn()
-      .mockResolvedValueOnce({
-        result_meta: buildMeta("risk.tensor", "tr_tensor_no_prior_retry_initial"),
-        result: {
-          ...tensorResult("2026-02-28"),
-          prior_period_change: {
-            status: "no_prior",
-            comparison_report_date: null,
-            summary: "no prior comparable data",
-            dominant_krd_bucket: "5Y",
-            previous_dominant_krd_bucket: null,
-            dominant_krd_shifted: false,
-            metrics: [],
-          },
-        },
-      })
-      .mockResolvedValueOnce({
-        result_meta: buildMeta("risk.tensor", "tr_tensor_no_prior_retry_success"),
-        result: tensorResult("2026-02-28"),
-      });
-
-    renderRiskTensorRoute("/risk-tensor", {
-      ...base,
-      getRiskTensorDates,
-      getRiskTensor,
-    });
-
-    const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
-    expect(priorChange).toHaveTextContent("no prior comparable data");
-    expect(priorChange.querySelectorAll(".risk-tensor-prior-change__metric")).toHaveLength(0);
-
-    await user.click(within(priorChange).getByRole("button", { name: "重试主读面" }));
-
-    await waitFor(() => {
-      expect(getRiskTensor).toHaveBeenCalledTimes(2);
-    });
-    expect(await screen.findByTestId("risk-tensor-prior-period-change")).toHaveTextContent("监管口径 DV01");
-    expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent("tr_tensor_no_prior_retry_success");
-  });
-
-  it("surfaces a traceable prior-period payload missing state", async () => {
-    const user = userEvent.setup();
-    const scrollTargets: HTMLElement[] = [];
-    const scrollOptions: unknown[] = [];
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
-      scrollTargets.push(this);
-      scrollOptions.push(options);
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_prior_missing_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_prior_missing_${reportDate}`),
-        result: {
-          ...tensorResult(reportDate),
-          prior_period_change: null,
-        },
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
-      const metaPanel = await screen.findByTestId("risk-tensor-result-meta-panel");
-      expect(priorChange).toHaveTextContent("后端未返回上期变化载荷");
-      expect(priorChange).toHaveTextContent("trace_id tr_tensor_prior_missing_2026-02-28");
-      expect(priorChange.querySelectorAll(".risk-tensor-prior-change__metric")).toHaveLength(0);
-
-      await user.click(within(priorChange).getByRole("button", { name: "定位元数据" }));
-
-      expect(scrollTargets).toContain(metaPanel);
-      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
-    } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
-    }
-  });
-
-  it("lets users retry the risk tensor main read when prior-period payload is missing", async () => {
-    const user = userEvent.setup();
-    const base = createApiClient({ mode: "mock" });
-    const getRiskTensorDates = vi.fn(async () => ({
-      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_prior_missing_retry_dates"),
-      result: { report_dates: ["2026-02-28"] },
-    }));
-    const getRiskTensor = vi
-      .fn()
-      .mockResolvedValueOnce({
-        result_meta: buildMeta("risk.tensor", "tr_tensor_prior_missing_retry_initial"),
-        result: {
-          ...tensorResult("2026-02-28"),
-          prior_period_change: null,
-        },
-      })
-      .mockResolvedValueOnce({
-        result_meta: buildMeta("risk.tensor", "tr_tensor_prior_missing_retry_success"),
-        result: tensorResult("2026-02-28"),
-      });
-
-    renderRiskTensorRoute("/risk-tensor", {
-      ...base,
-      getRiskTensorDates,
-      getRiskTensor,
-    });
-
-    const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
-    expect(priorChange).toHaveTextContent("后端未返回上期变化载荷");
-
-    await user.click(within(priorChange).getByRole("button", { name: "重试主读面" }));
-
-    await waitFor(() => {
-      expect(getRiskTensor).toHaveBeenCalledTimes(2);
-    });
-    expect(await screen.findByTestId("risk-tensor-prior-period-change")).toHaveTextContent("监管口径 DV01");
-    expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent(
-      "tr_tensor_prior_missing_retry_success",
-    );
-  });
-
-  it("lets users jump from prior-period liquidity change to liquidity gap detail", async () => {
-    const user = userEvent.setup();
-    const scrollTargets: HTMLElement[] = [];
-    const scrollOptions: unknown[] = [];
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
-      scrollTargets.push(this);
-      scrollOptions.push(options);
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_prior_liquidity_jump_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_prior_liquidity_jump_${reportDate}`),
-        result: tensorResult(reportDate),
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
-      const liquidityAction = within(priorChange).getByTestId(
-        "risk-tensor-prior-change-action-liquidity_gap_30d_ratio",
-      );
-      const liquidityGapDetail = await screen.findByTestId("risk-tensor-liquidity-gap-detail");
-
-      await user.click(liquidityAction);
-
-      expect(scrollTargets).toContain(liquidityGapDetail);
-      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
-    } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
-    }
-  });
-
-  it("selects the current KRD bucket when users open the prior-period bucket change", async () => {
-    const user = userEvent.setup();
-    const scrollTargets: HTMLElement[] = [];
-    const scrollOptions: unknown[] = [];
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
-      scrollTargets.push(this);
-      scrollOptions.push(options);
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_prior_krd_select_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_prior_krd_select_${reportDate}`),
-        result: {
-          ...tensorResult(reportDate),
-          prior_period_change: {
-            ...tensorResult(reportDate).prior_period_change,
-            status: tensorResult(reportDate).prior_period_change?.status ?? "available",
-            comparison_report_date: tensorResult(reportDate).prior_period_change?.comparison_report_date ?? "2026-02-27",
-            summary: tensorResult(reportDate).prior_period_change?.summary ?? "主风险桶切换",
-            dominant_krd_bucket: tensorResult(reportDate).prior_period_change?.dominant_krd_bucket ?? "5Y",
-            previous_dominant_krd_bucket:
-              tensorResult(reportDate).prior_period_change?.previous_dominant_krd_bucket ?? "3Y",
-            dominant_krd_shifted: tensorResult(reportDate).prior_period_change?.dominant_krd_shifted ?? true,
-            metrics: [
-              ...(tensorResult(reportDate).prior_period_change?.metrics ?? []),
-              {
-                key: "dominant_krd_bucket",
-                label: "主风险桶",
-                current: {
-                  raw: null,
-                  unit: "count" as const,
-                  display: "5Y",
-                  precision: 0,
-                  sign_aware: false,
-                },
-                previous: {
-                  raw: null,
-                  unit: "count" as const,
-                  display: "3Y",
-                  precision: 0,
-                  sign_aware: false,
-                },
-                delta: {
-                  raw: null,
-                  unit: "count" as const,
-                  display: "5Y - 3Y",
-                  precision: 0,
-                  sign_aware: false,
-                },
-                current_display: "5Y",
-                previous_display: "3Y",
-                delta_display: "5Y - 3Y",
-                direction: "changed",
-                tone: "warning",
-                interpretation: "主风险桶切换",
-              },
-            ],
-          },
-        } as RiskTensorPayload,
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const tenorDrill = await screen.findByTestId("risk-tensor-tenor-drill");
-      await user.click(within(tenorDrill).getByRole("button", { name: "1Y" }));
-      await waitFor(() => {
-        expect(within(tenorDrill).getByText("1Y", { selector: "strong" })).toBeInTheDocument();
-      });
-
-      const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
-      const krdAction = within(priorChange).getByTestId("risk-tensor-prior-change-action-dominant_krd_bucket");
-      await user.click(krdAction);
-
-      expect(scrollTargets).toContain(tenorDrill);
-      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
-      await waitFor(() => {
-        expect(within(tenorDrill).getByText("5Y", { selector: "strong" })).toBeInTheDocument();
-        expect(within(tenorDrill).getByRole("button", { name: "5Y" })).toHaveAttribute("aria-pressed", "true");
-      });
-    } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
-    }
-  });
-
-  it("opens KRD field review when the prior-period current bucket is not in the tenor rows", async () => {
-    const user = userEvent.setup();
-    const scrollTargets: HTMLElement[] = [];
-    const scrollOptions: unknown[] = [];
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
-      scrollTargets.push(this);
-      scrollOptions.push(options);
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_prior_krd_unmapped_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_prior_krd_unmapped_${reportDate}`),
-        result: {
-          ...tensorResult(reportDate),
-          krd_7y: "bad",
-          prior_period_change: {
-            ...tensorResult(reportDate).prior_period_change,
-            status: tensorResult(reportDate).prior_period_change?.status ?? "available",
-            comparison_report_date: tensorResult(reportDate).prior_period_change?.comparison_report_date ?? "2026-02-27",
-            summary: tensorResult(reportDate).prior_period_change?.summary ?? "主风险桶待复核",
-            dominant_krd_bucket: "9Y",
-            previous_dominant_krd_bucket:
-              tensorResult(reportDate).prior_period_change?.previous_dominant_krd_bucket ?? "3Y",
-            dominant_krd_shifted: true,
-            metrics: [
-              ...(tensorResult(reportDate).prior_period_change?.metrics ?? []),
-              {
-                key: "dominant_krd_bucket",
-                label: "主风险桶",
-                current: {
-                  raw: null,
-                  unit: "count" as const,
-                  display: "9Y",
-                  precision: 0,
-                  sign_aware: false,
-                },
-                previous: {
-                  raw: null,
-                  unit: "count" as const,
-                  display: "3Y",
-                  precision: 0,
-                  sign_aware: false,
-                },
-                delta: {
-                  raw: null,
-                  unit: "count" as const,
-                  display: "9Y - 3Y",
-                  precision: 0,
-                  sign_aware: false,
-                },
-                current_display: "9Y",
-                previous_display: "3Y",
-                delta_display: "9Y - 3Y",
-                direction: "changed",
-                tone: "warning",
-                interpretation: "主风险桶待复核",
-              },
-            ],
-          },
-        } as RiskTensorPayload,
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
-      const krdAction = within(priorChange).getByTestId("risk-tensor-prior-change-action-dominant_krd_bucket");
-      const qualityNote = await screen.findByTestId("risk-tensor-krd-quality-note");
-
-      await user.click(krdAction);
-
-      expect(scrollTargets).toContain(qualityNote);
-      expect(scrollTargets.at(-1)).toBe(qualityNote);
-      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
-    } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
-    }
-  });
-
-  it("falls back from prior-period KRD bucket change to KRD quality review when every bucket is unparseable", async () => {
-    const user = userEvent.setup();
-    const scrollTargets: HTMLElement[] = [];
-    const scrollOptions: unknown[] = [];
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
-      scrollTargets.push(this);
-      scrollOptions.push(options);
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_prior_krd_quality_fallback_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_prior_krd_quality_fallback_${reportDate}`),
-        result: {
-          ...tensorResult(reportDate),
-          krd_1y: "bad",
-          krd_3y: "",
-          krd_5y: "undefined",
-          krd_7y: "bad",
-          krd_10y: "NaN",
-          krd_30y: "missing",
-          prior_period_change: {
-            ...tensorResult(reportDate).prior_period_change,
-            status: tensorResult(reportDate).prior_period_change?.status ?? "available",
-            comparison_report_date: tensorResult(reportDate).prior_period_change?.comparison_report_date ?? "2026-02-27",
-            summary: tensorResult(reportDate).prior_period_change?.summary ?? "主风险桶切换",
-            dominant_krd_bucket: tensorResult(reportDate).prior_period_change?.dominant_krd_bucket ?? "5Y",
-            previous_dominant_krd_bucket:
-              tensorResult(reportDate).prior_period_change?.previous_dominant_krd_bucket ?? "3Y",
-            dominant_krd_shifted: tensorResult(reportDate).prior_period_change?.dominant_krd_shifted ?? true,
-            metrics: [
-              ...(tensorResult(reportDate).prior_period_change?.metrics ?? []),
-              {
-                key: "dominant_krd_bucket",
-                label: "主风险桶",
-                current: {
-                  raw: null,
-                  unit: "count" as const,
-                  display: "5Y",
-                  precision: 0,
-                  sign_aware: false,
-                },
-                previous: {
-                  raw: null,
-                  unit: "count" as const,
-                  display: "3Y",
-                  precision: 0,
-                  sign_aware: false,
-                },
-                delta: {
-                  raw: null,
-                  unit: "count" as const,
-                  display: "5Y - 3Y",
-                  precision: 0,
-                  sign_aware: false,
-                },
-                current_display: "5Y",
-                previous_display: "3Y",
-                delta_display: "5Y - 3Y",
-                direction: "changed",
-                tone: "warning",
-                interpretation: "主风险桶切换",
-              },
-            ],
-          },
-        },
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
-      const krdAction = within(priorChange).getByTestId("risk-tensor-prior-change-action-dominant_krd_bucket");
-      const qualityNote = await screen.findByTestId("risk-tensor-krd-quality-note");
-      expect(screen.queryByTestId("risk-tensor-tenor-drill")).not.toBeInTheDocument();
-
-      await user.click(krdAction);
-
-      expect(scrollTargets).toContain(qualityNote);
-      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
-    } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
-    }
-  });
-
-  it("falls back from prior-period regulatory DV01 change to the regulatory DV01 KPI card when controls are absent", async () => {
-    const user = userEvent.setup();
-    const scrollTargets: HTMLElement[] = [];
-    const scrollOptions: unknown[] = [];
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
-      scrollTargets.push(this);
-      scrollOptions.push(options);
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_prior_dv01_fallback_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_prior_dv01_fallback_${reportDate}`),
-        result: tensorResult(reportDate),
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
-      const regulatoryDv01Action = within(priorChange).getByTestId(
-        "risk-tensor-prior-change-action-regulatory_dv01",
-      );
-      const regulatoryDv01Card = await screen.findByTestId("risk-tensor-regulatory-dv01-kpi");
-
-      expect(screen.queryByTestId("risk-tensor-dv01-controls")).not.toBeInTheDocument();
-      expect(regulatoryDv01Action.querySelector("p, small")).toBeNull();
-
-      await user.click(regulatoryDv01Action);
-
-      expect(scrollTargets).toContain(regulatoryDv01Card);
-      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
-    } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
-    }
-  });
-
-  it("falls back from prior-period portfolio DV01 change to the portfolio DV01 KPI card when controls are absent", async () => {
-    const user = userEvent.setup();
-    const scrollTargets: HTMLElement[] = [];
-    const scrollOptions: unknown[] = [];
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
-      scrollTargets.push(this);
-      scrollOptions.push(options);
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_prior_portfolio_dv01_fallback_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_prior_portfolio_dv01_fallback_${reportDate}`),
-        result: {
-          ...tensorResult(reportDate),
-          prior_period_change: {
-            ...tensorResult(reportDate).prior_period_change,
-            status: tensorResult(reportDate).prior_period_change?.status ?? "available",
-            comparison_report_date: tensorResult(reportDate).prior_period_change?.comparison_report_date ?? "2026-02-27",
-            summary: tensorResult(reportDate).prior_period_change?.summary ?? "估值 DV01 变动",
-            dominant_krd_bucket: tensorResult(reportDate).prior_period_change?.dominant_krd_bucket ?? "5Y",
-            previous_dominant_krd_bucket:
-              tensorResult(reportDate).prior_period_change?.previous_dominant_krd_bucket ?? "3Y",
-            dominant_krd_shifted: tensorResult(reportDate).prior_period_change?.dominant_krd_shifted ?? true,
-            metrics: [
-              ...(tensorResult(reportDate).prior_period_change?.metrics ?? []),
-              {
-                key: "portfolio_dv01",
-                label: "估值口径 DV01",
-                current: {
-                  raw: 12.34,
-                  unit: "dv01" as const,
-                  display: "12.34",
-                  precision: 2,
-                  sign_aware: false,
-                },
-                previous: {
-                  raw: 8,
-                  unit: "dv01" as const,
-                  display: "8.00",
-                  precision: 2,
-                  sign_aware: false,
-                },
-                delta: {
-                  raw: 4.34,
-                  unit: "dv01" as const,
-                  display: "+4.34",
-                  precision: 2,
-                  sign_aware: true,
-                },
-                current_display: "12.34",
-                previous_display: "8.00",
-                delta_display: "+4.34",
-                direction: "up",
-                tone: "warning",
-                interpretation: "估值口径 DV01 扩大",
-              },
-            ],
-          },
-        },
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
-      const portfolioDv01Action = within(priorChange).getByTestId("risk-tensor-prior-change-action-portfolio_dv01");
-      const portfolioDv01Card = await screen.findByTestId("risk-tensor-portfolio-dv01-kpi");
-
-      expect(screen.queryByTestId("risk-tensor-dv01-controls")).not.toBeInTheDocument();
-      expect(portfolioDv01Action.querySelector("p, small")).toBeNull();
-
-      await user.click(portfolioDv01Action);
-
-      expect(scrollTargets).toContain(portfolioDv01Card);
-      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
-    } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
-    }
-  });
-
   it("renders governed Numeric tensor values using backend display and raw ratio", async () => {
     const base = createApiClient({ mode: "mock" });
     const getRiskTensorDates = vi.fn(async () => ({
@@ -3588,6 +2464,45 @@ describe("RiskTensorPage", () => {
     );
   });
 
+  it.each([
+    { raw: 1.5, expected: "150.0%", tone: "positive" },
+    { raw: -1.2, expected: "-120.0%", tone: "negative" },
+    { raw: 1.01, expected: "101.0%", tone: "positive" },
+  ])(
+    "formats governed ratio raw=$raw as a deterministic percentage",
+    async ({ raw, expected, tone }) => {
+      const base = createApiClient({ mode: "mock" });
+      const getRiskTensorDates = vi.fn(async () => ({
+        result_meta: buildMeta("risk.tensor.dates", `tr_tensor_ratio_${raw}_dates`),
+        result: { report_dates: ["2026-02-28"] },
+      }));
+      const getRiskTensor = vi.fn(async (reportDate: string) => ({
+        result_meta: buildMeta("risk.tensor", `tr_tensor_ratio_${raw}_${reportDate}`),
+        result: {
+          ...tensorResult(reportDate),
+          liquidity_gap_30d_ratio: {
+            raw,
+            unit: "ratio" as const,
+            display: raw.toFixed(2),
+            precision: 2,
+            sign_aware: true,
+          },
+        },
+      }));
+
+      renderRiskTensorRoute("/risk-tensor", {
+        ...base,
+        getRiskTensorDates,
+        getRiskTensor,
+      });
+
+      const ratioCard = await screen.findByTestId("risk-tensor-liquidity-gap-ratio");
+      expect(ratioCard).toHaveTextContent(expected);
+      expect(ratioCard).toHaveAttribute("data-tone", tone);
+      expect(screen.getByTestId("risk-tensor-liquidity-action")).toHaveTextContent(expected);
+    },
+  );
+
   it("flags missing or unparseable main payload fields without frontend recalculation", async () => {
     const base = createApiClient({ mode: "mock" });
     const getRiskTensorDates = vi.fn(async () => ({
@@ -3625,7 +2540,7 @@ describe("RiskTensorPage", () => {
     expect(warning).toHaveTextContent("不会在前端补算正式指标");
 
     const kpi = await screen.findByTestId("risk-tensor-kpi-grid");
-    expect(kpi).toHaveTextContent("估值口径 DV01");
+    expect(kpi).toHaveTextContent("面值口径 DV01");
     expect(kpi).toHaveTextContent("—");
     expect(screen.getByTestId("risk-tensor-liquidity-action")).toHaveTextContent("not-a-number");
   });
@@ -4626,7 +3541,8 @@ describe("RiskTensorPage", () => {
         expect(metaPanel).toHaveTextContent("cv_tensor_reissued");
       });
       expect(metaPanel).toHaveTextContent("2026-04-12T09:30:00Z");
-      expect(screen.getByTestId("risk-tensor-brief")).toHaveTextContent("regulatory_dv01 口径");
+      expect(screen.getByTestId("risk-tensor-brief")).toHaveTextContent("数据口径需复核");
+      expect(metaPanel).toHaveTextContent("regulatory_dv01");
       expect(tracePriority).toHaveTextContent("复核状态：待复核");
       expect(tracePriority).not.toHaveTextContent("业务已确认");
       expect(within(tracePriority).queryByRole("button", { name: "复制确认记录" })).not.toBeInTheDocument();
@@ -4996,44 +3912,6 @@ describe("RiskTensorPage", () => {
     }
   });
 
-  it("keeps unparseable KRD buckets out of frontend chart magnitudes and dominant bucket fallback", async () => {
-    const base = createApiClient({ mode: "mock" });
-    const getRiskTensorDates = vi.fn(async () => ({
-      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_krd_payload_quality_dates"),
-      result: { report_dates: ["2026-02-28"] },
-    }));
-    const getRiskTensor = vi.fn(async (reportDate: string) => ({
-      result_meta: buildMeta("risk.tensor", `tr_tensor_krd_payload_quality_${reportDate}`),
-      result: {
-        ...tensorResult(reportDate),
-        krd_1y: "10000",
-        krd_3y: "90000",
-        krd_5y: "not-a-number",
-        krd_7y: "25000",
-        krd_10y: "15000",
-        krd_30y: "5000",
-        dv01_controls: null,
-      },
-    }));
-
-    renderRiskTensorRoute("/risk-tensor", {
-      ...base,
-      getRiskTensorDates,
-      getRiskTensor,
-    });
-
-    const brief = await screen.findByTestId("risk-tensor-brief");
-    expect(brief).toHaveTextContent("主风险桶 3Y");
-
-    const krdChart = screen.getAllByTestId("risk-tensor-echarts-stub")[1]!;
-    expect(JSON.parse(krdChart.getAttribute("data-series") ?? "[]")).toEqual([1, 9, null, 2.5, 1.5, 0.5]);
-
-    const drill = await screen.findByTestId("risk-tensor-tenor-drill");
-    expect(drill).toHaveTextContent("当前桶：3Y");
-    expect(drill).toHaveTextContent("krd_5y 不可解析");
-    expect(drill).toHaveTextContent("未参与前端主风险桶排序和图表数值");
-  });
-
   it("lets users review and retry unparseable KRD bucket fields from the drilldown note", async () => {
     const user = userEvent.setup();
     const scrollTargets: HTMLElement[] = [];
@@ -5230,7 +4108,7 @@ describe("RiskTensorPage", () => {
         getRiskTensor,
       });
 
-      expect(await screen.findByTestId("risk-tensor-brief")).toHaveTextContent("主风险桶 --");
+      expect(await screen.findByTestId("risk-tensor-brief")).toHaveTextContent("主风险桶 —");
       expect(screen.queryByTestId("risk-tensor-tenor-drill")).not.toBeInTheDocument();
 
       const qualityNote = await screen.findByTestId("risk-tensor-krd-quality-note");
@@ -5835,1129 +4713,6 @@ describe("RiskTensorPage", () => {
     expect(kpi).not.toHaveTextContent("待接入");
   });
 
-  it("surfaces a DV01 stress scenario no-data state when backend scenarios are empty", async () => {
-    const base = createApiClient({ mode: "mock" });
-    const getRiskTensorDates = vi.fn(async () => ({
-      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_stress_empty_dates"),
-      result: { report_dates: ["2026-02-28"] },
-    }));
-    const getRiskTensor = vi.fn(async (reportDate: string) => ({
-      result_meta: buildMeta("risk.tensor", `tr_tensor_dv01_stress_empty_${reportDate}`),
-      result: {
-        ...tensorResult(reportDate),
-        dv01_controls: dv01ControlsFixture({ stress_scenarios: [] }),
-      },
-    }));
-
-    renderRiskTensorRoute("/risk-tensor", {
-      ...base,
-      getRiskTensorDates,
-      getRiskTensor,
-    });
-
-    const stressScenarios = await screen.findByTestId("risk-tensor-dv01-stress-scenarios");
-    expect(stressScenarios).toHaveTextContent("暂无压力情景");
-    expect(stressScenarios).toHaveTextContent("stress_scenarios");
-  });
-
-  it("lets users locate quality evidence from the DV01 stress scenario empty state", async () => {
-    const user = userEvent.setup();
-    const scrollTargets: HTMLElement[] = [];
-    const scrollOptions: unknown[] = [];
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
-      scrollTargets.push(this);
-      scrollOptions.push(options);
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_stress_quality_jump_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_dv01_stress_quality_jump_${reportDate}`),
-        result: {
-          ...tensorResult(reportDate),
-          dv01_controls: dv01ControlsFixture({ stress_scenarios: [] }),
-        },
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const stressScenarios = await screen.findByTestId("risk-tensor-dv01-stress-scenarios");
-      const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
-
-      await user.click(within(stressScenarios).getByRole("button", { name: "定位质量证据" }));
-
-      expect(scrollTargets).toContain(qualityDetail);
-      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
-    } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
-    }
-  });
-
-  it("lets users retry the risk tensor main read from the DV01 stress scenario empty state", async () => {
-    const user = userEvent.setup();
-    const base = createApiClient({ mode: "mock" });
-    const getRiskTensorDates = vi.fn(async () => ({
-      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_stress_retry_dates"),
-      result: { report_dates: ["2026-02-28"] },
-    }));
-    const getRiskTensor = vi
-      .fn()
-      .mockResolvedValueOnce({
-        result_meta: buildMeta("risk.tensor", "tr_tensor_dv01_stress_retry_initial"),
-        result: {
-          ...tensorResult("2026-02-28"),
-          dv01_controls: dv01ControlsFixture({ stress_scenarios: [] }),
-        },
-      })
-      .mockResolvedValueOnce({
-        result_meta: buildMeta("risk.tensor", "tr_tensor_dv01_stress_retry_success"),
-        result: {
-          ...tensorResult("2026-02-28"),
-          dv01_controls: dv01ControlsFixture({
-            stress_scenarios: [
-              {
-                scenario_key: "parallel_up_10bp",
-                label: "+10bp",
-                shock_bp: {
-                  raw: 10,
-                  unit: "bp" as const,
-                  display: "+10 bp",
-                  precision: 0,
-                  sign_aware: true,
-                },
-                estimated_pnl_impact: {
-                  raw: -1200,
-                  unit: "yuan" as const,
-                  display: "-1,200.00",
-                  precision: 2,
-                  sign_aware: true,
-                },
-              },
-            ],
-          }),
-        },
-      });
-
-    renderRiskTensorRoute("/risk-tensor", {
-      ...base,
-      getRiskTensorDates,
-      getRiskTensor,
-    });
-
-    const stressScenarios = await screen.findByTestId("risk-tensor-dv01-stress-scenarios");
-    expect(stressScenarios).toHaveTextContent("暂无压力情景");
-
-    await user.click(within(stressScenarios).getByRole("button", { name: "重试主读面" }));
-
-    await waitFor(() => {
-      expect(getRiskTensor).toHaveBeenCalledTimes(2);
-    });
-    expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent("tr_tensor_dv01_stress_retry_success");
-    expect(screen.queryByTestId("risk-tensor-dv01-stress-empty")).not.toBeInTheDocument();
-    expect(await screen.findByTestId("risk-tensor-dv01-stress-scenarios")).toHaveTextContent("+10bp");
-  });
-
-  it("copies DV01 stress scenario diagnostics when backend scenarios are empty", async () => {
-    const user = userEvent.setup();
-    const writeText = vi.fn(async () => undefined);
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_stress_copy_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_dv01_stress_copy_${reportDate}`),
-        result: {
-          ...tensorResult(reportDate),
-          dv01_controls: dv01ControlsFixture({
-            limit_status: "ok",
-            approved_limit_dv01: {
-              raw: 100,
-              unit: "dv01" as const,
-              display: "100.00",
-              precision: 2,
-              sign_aware: false,
-            },
-            limit_usage_ratio: {
-              raw: 0.45,
-              unit: "ratio" as const,
-              display: "45.0%",
-              precision: 1,
-              sign_aware: false,
-            },
-            volatility_status: "ok",
-            daily_rate_volatility_bp: {
-              raw: 5,
-              unit: "bp" as const,
-              display: "5.00",
-              precision: 2,
-              sign_aware: false,
-            },
-            stress_scenarios: [],
-          }),
-        },
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const stressEmpty = await screen.findByTestId("risk-tensor-dv01-stress-empty");
-      await user.click(within(stressEmpty).getByRole("button", { name: "复制压力情景排查信息" }));
-
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("风险张量 DV01 压力情景排查信息"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("trace_id tr_tensor_dv01_stress_copy_2026-02-28"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("报告日 2026-02-28"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("limit_status 限额内"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("volatility_status ok"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("stress_scenarios_count 0"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("页面不会在前端补算 DV01 压力情景"));
-      expect(stressEmpty).toHaveTextContent("已复制压力情景排查信息");
-    } finally {
-      if (originalClipboard) {
-        Object.defineProperty(navigator, "clipboard", originalClipboard);
-      } else {
-        Reflect.deleteProperty(navigator, "clipboard");
-      }
-    }
-  });
-
-  it("shows manual DV01 stress scenario diagnostics when copying fails", async () => {
-    const user = userEvent.setup();
-    const writeText = vi.fn(async () => {
-      throw new Error("clipboard unavailable");
-    });
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_stress_copy_failure_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_dv01_stress_copy_failure_${reportDate}`),
-        result: {
-          ...tensorResult(reportDate),
-          dv01_controls: dv01ControlsFixture({
-            limit_status: "ok",
-            approved_limit_dv01: {
-              raw: 100,
-              unit: "dv01" as const,
-              display: "100.00",
-              precision: 2,
-              sign_aware: false,
-            },
-            limit_usage_ratio: {
-              raw: 0.45,
-              unit: "ratio" as const,
-              display: "45.0%",
-              precision: 1,
-              sign_aware: false,
-            },
-            volatility_status: "ok",
-            daily_rate_volatility_bp: {
-              raw: 5,
-              unit: "bp" as const,
-              display: "5.00",
-              precision: 2,
-              sign_aware: false,
-            },
-            stress_scenarios: [],
-          }),
-        },
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const stressEmpty = await screen.findByTestId("risk-tensor-dv01-stress-empty");
-      await user.click(within(stressEmpty).getByRole("button", { name: "复制压力情景排查信息" }));
-
-      await waitFor(() => {
-        expect(stressEmpty).toHaveTextContent("复制失败，请手动选择压力情景排查信息");
-      });
-      const manualCopy = within(stressEmpty).getByTestId("risk-tensor-dv01-stress-manual-copy");
-      expect(manualCopy).toHaveTextContent("风险张量 DV01 压力情景排查信息");
-      expect(manualCopy).toHaveTextContent("trace_id tr_tensor_dv01_stress_copy_failure_2026-02-28");
-      expect(manualCopy).toHaveTextContent("stress_scenarios_count 0");
-      expect(manualCopy).toHaveTextContent("页面不会在前端补算 DV01 压力情景");
-    } finally {
-      if (originalClipboard) {
-        Object.defineProperty(navigator, "clipboard", originalClipboard);
-      } else {
-        Reflect.deleteProperty(navigator, "clipboard");
-      }
-    }
-  });
-
-  it("ignores stale DV01 stress scenario copy results after control evidence changes", async () => {
-    const user = userEvent.setup();
-    let resolveCopy: (() => void) | undefined;
-    const writeText = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          resolveCopy = resolve;
-        }),
-    );
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_stress_stale_copy_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi
-        .fn()
-        .mockResolvedValueOnce({
-          result_meta: buildMeta("risk.tensor", "tr_tensor_dv01_stress_stale_copy_initial"),
-          result: {
-            ...tensorResult("2026-02-28"),
-            dv01_controls: dv01ControlsFixture({ stress_scenarios: [] }),
-          } as RiskTensorPayload,
-        })
-        .mockResolvedValueOnce({
-          result_meta: buildMeta("risk.tensor", "tr_tensor_dv01_stress_stale_copy_refreshed"),
-          result: {
-            ...tensorResult("2026-02-28"),
-            dv01_controls: dv01ControlsFixture({
-              limit_status: "ok",
-              approved_limit_dv01: {
-                raw: 100,
-                unit: "dv01" as const,
-                display: "100.00",
-                precision: 2,
-                sign_aware: false,
-              },
-              limit_usage_ratio: {
-                raw: 0.45,
-                unit: "ratio" as const,
-                display: "45.0%",
-                precision: 1,
-                sign_aware: false,
-              },
-              volatility_status: "ok",
-              daily_rate_volatility_bp: {
-                raw: 5,
-                unit: "bp" as const,
-                display: "5.00",
-                precision: 2,
-                sign_aware: false,
-              },
-              stress_scenarios: [],
-            }),
-          } as RiskTensorPayload,
-        });
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const stressEmpty = await screen.findByTestId("risk-tensor-dv01-stress-empty");
-      await user.click(within(stressEmpty).getByRole("button", { name: "复制压力情景排查信息" }));
-      await user.click(within(stressEmpty).getByRole("button", { name: "重试主读面" }));
-
-      await waitFor(() => {
-        expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent(
-          "tr_tensor_dv01_stress_stale_copy_refreshed",
-        );
-      });
-
-      await act(async () => {
-        resolveCopy?.();
-      });
-
-      const stressScenarios = await screen.findByTestId("risk-tensor-dv01-stress-scenarios");
-      expect(stressScenarios).toHaveTextContent("暂无压力情景");
-      expect(stressScenarios).not.toHaveTextContent("已复制压力情景排查信息");
-      expect(screen.queryByTestId("risk-tensor-dv01-stress-manual-copy")).not.toBeInTheDocument();
-    } finally {
-      if (originalClipboard) {
-        Object.defineProperty(navigator, "clipboard", originalClipboard);
-      } else {
-        Reflect.deleteProperty(navigator, "clipboard");
-      }
-    }
-  });
-
-  it("shows the backend DV01 limit and volatility control deck", async () => {
-    const base = createApiClient({ mode: "mock" });
-    const getRiskTensorDates = vi.fn(async () => ({
-      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_controls_dates"),
-      result: { report_dates: ["2026-02-28"] },
-    }));
-    const getRiskTensor = vi.fn(async (reportDate: string) => ({
-      result_meta: buildMeta("risk.tensor", `tr_tensor_dv01_controls_${reportDate}`),
-      result: {
-        ...tensorResult(reportDate),
-        regulatory_dv01: {
-          raw: 120.5,
-          unit: "dv01" as const,
-          display: "120.50",
-          precision: 2,
-          sign_aware: false,
-        },
-        dv01_controls: {
-          basis: "regulatory_dv01",
-          limit_status: "pending_configuration",
-          approved_limit_dv01: null,
-          limit_usage_ratio: null,
-          volatility_status: "pending_market_volatility",
-          daily_rate_volatility_bp: null,
-          dominant_krd_bucket: "5Y",
-          dominant_krd: {
-            raw: 3,
-            unit: "ratio" as const,
-            display: "+3.00",
-            precision: 2,
-            sign_aware: true,
-          },
-          stress_scenarios: [
-            {
-              scenario_key: "parallel_up_10bp",
-              label: "+10bp",
-              shock_bp: {
-                raw: 10,
-                unit: "bp" as const,
-                display: "+10 bp",
-                precision: 0,
-                sign_aware: true,
-              },
-              estimated_pnl_impact: {
-                raw: -1205,
-                unit: "yuan" as const,
-                display: "-1,205.00",
-                precision: 2,
-                sign_aware: true,
-              },
-            },
-            {
-              scenario_key: "parallel_up_25bp",
-              label: "+25bp",
-              shock_bp: {
-                raw: 25,
-                unit: "bp" as const,
-                display: "+25 bp",
-                precision: 0,
-                sign_aware: true,
-              },
-              estimated_pnl_impact: {
-                raw: -3012.5,
-                unit: "yuan" as const,
-                display: "-3,012.50",
-                precision: 2,
-                sign_aware: true,
-              },
-            },
-          ],
-          operating_judgement:
-            "当前监管口径 DV01 120.50；+10bp 平行上行估算影响 -1,205.00；主风险桶 5Y。审批限额与利率波动源未接入前，暂不判定超限。",
-          control_actions: [
-            {
-              key: "approved_dv01_limit",
-              title: "配置审批限额",
-              status: "required",
-              evidence: "审批 DV01 限额未接入。",
-              action: "接入投委会或风控审批后的总 DV01 限额。",
-            },
-            {
-              key: "rate_volatility_input",
-              title: "接入利率波动",
-              status: "required",
-              evidence: "日度利率波动率未接入。",
-              action: "接入曲线波动率后生成波动预警。",
-            },
-          ],
-          control_message: "未接入正式限额源前，只展示当前监管口径敞口和标准平行冲击，不判定是否超限。",
-          action_hint: "经营落地需要先配置审批 DV01 限额、利率波动率输入与预警阈值，再计算使用率和波动预警。",
-        },
-      } as RiskTensorPayload,
-    }));
-
-    renderRiskTensorRoute("/risk-tensor", {
-      ...base,
-      getRiskTensorDates,
-      getRiskTensor,
-    });
-
-    const controls = await screen.findByTestId("risk-tensor-dv01-controls");
-    expect(controls).toHaveTextContent("DV01");
-    expect(controls).toHaveTextContent(new RegExp(`0\\.01\\s*${WAN_YUAN_UNIT}`));
-    expect(controls).toHaveTextContent("5Y");
-    expect(controls).toHaveTextContent("+10bp");
-    expect(controls).toHaveTextContent(new RegExp(`-0\\.12\\s*${WAN_YUAN_UNIT}`));
-    expect(controls).toHaveTextContent("未接入正式限额源");
-    expect(controls).toHaveTextContent("当前监管口径 DV01 120.50");
-    expect(controls).toHaveTextContent("配置审批限额");
-    expect(controls).toHaveTextContent("接入利率波动");
-    expect(controls).toHaveTextContent("必做项");
-    expect(controls).not.toHaveTextContent("required");
-    expect(controls).toHaveTextContent("波动源待接入");
-    expect(controls).not.toHaveTextContent("pending_configuration");
-    expect(controls).not.toHaveTextContent("pending_market_volatility");
-  });
-
-  it("copies the DV01 control action checklist for handoff", async () => {
-    const user = userEvent.setup();
-    const writeText = vi.fn(async () => undefined);
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_actions_copy_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_dv01_actions_copy_${reportDate}`),
-        result: {
-          ...tensorResult(reportDate),
-          dv01_controls: dv01ControlsFixture({
-            control_actions: [
-              {
-                key: "approved_dv01_limit",
-                title: "配置审批限额",
-                status: "required",
-                evidence: "审批 DV01 限额未接入。",
-                action: "接入投委会或风控审批后的总 DV01 限额。",
-              },
-              {
-                key: "rate_volatility_input",
-                title: "接入利率波动",
-                status: "required",
-                evidence: "日度利率波动率未接入。",
-                action: "接入曲线波动率后生成波动预警。",
-              },
-            ],
-          }),
-        } as RiskTensorPayload,
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const actions = await screen.findByTestId("risk-tensor-dv01-actions");
-
-      await user.click(within(actions).getByRole("button", { name: "复制处置清单" }));
-
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("风险张量 DV01 控制处置清单"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("trace_id tr_tensor_dv01_actions_copy_2026-02-28"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("报告日 2026-02-28"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("basis formal"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("approved_dv01_limit required 配置审批限额"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("证据 审批 DV01 限额未接入。"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("处置 接入曲线波动率后生成波动预警。"));
-      await waitFor(() => {
-        expect(actions).toHaveTextContent("已复制处置清单");
-      });
-    } finally {
-      if (originalClipboard) {
-        Object.defineProperty(navigator, "clipboard", originalClipboard);
-      }
-    }
-  });
-
-  it("shows manual copy text when DV01 action checklist copying fails", async () => {
-    const user = userEvent.setup();
-    const writeText = vi.fn(async () => {
-      throw new Error("clipboard unavailable");
-    });
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_actions_copy_failure_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_dv01_actions_copy_failure_${reportDate}`),
-        result: {
-          ...tensorResult(reportDate),
-          dv01_controls: dv01ControlsFixture({
-            control_actions: [
-              {
-                key: "approved_dv01_limit",
-                title: "配置审批限额",
-                status: "required",
-                evidence: "审批 DV01 限额未接入。",
-                action: "接入投委会或风控审批后的总 DV01 限额。",
-              },
-            ],
-          }),
-        } as RiskTensorPayload,
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const actions = await screen.findByTestId("risk-tensor-dv01-actions");
-
-      await user.click(within(actions).getByRole("button", { name: "复制处置清单" }));
-
-      await waitFor(() => {
-        expect(actions).toHaveTextContent("复制失败，请手动选择处置清单");
-      });
-      const manualCopy = within(actions).getByTestId("risk-tensor-dv01-actions-manual-copy");
-      expect(manualCopy).toHaveTextContent("风险张量 DV01 控制处置清单");
-      expect(manualCopy).toHaveTextContent("approved_dv01_limit required 配置审批限额");
-      expect(manualCopy).toHaveTextContent("处置 接入投委会或风控审批后的总 DV01 限额。");
-    } finally {
-      if (originalClipboard) {
-        Object.defineProperty(navigator, "clipboard", originalClipboard);
-      }
-    }
-  });
-
-  it("resets DV01 action checklist copy feedback when refreshed control actions change", async () => {
-    const user = userEvent.setup();
-    const writeText = vi.fn(async () => undefined);
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_actions_feedback_reset_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi
-        .fn()
-        .mockResolvedValueOnce({
-          result_meta: buildMeta("risk.tensor", "tr_tensor_dv01_actions_feedback_reset"),
-          result: {
-            ...tensorResult("2026-02-28"),
-            dv01_controls: dv01ControlsFixture({
-              control_actions: [
-                {
-                  key: "approved_dv01_limit",
-                  title: "配置审批限额",
-                  status: "required",
-                  evidence: "审批 DV01 限额未接入。",
-                  action: "接入总 DV01 限额。",
-                },
-              ],
-            }),
-          } as RiskTensorPayload,
-        })
-        .mockResolvedValueOnce({
-          result_meta: buildMeta("risk.tensor", "tr_tensor_dv01_actions_feedback_reset"),
-          result: {
-            ...tensorResult("2026-02-28"),
-            dv01_controls: dv01ControlsFixture({
-              control_actions: [
-                {
-                  key: "rate_volatility_input",
-                  title: "复核利率波动预警",
-                  status: "watch",
-                  evidence: "波动率源已接入。",
-                  action: "每日复核利率波动预警。",
-                },
-              ],
-            }),
-          } as RiskTensorPayload,
-        });
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const actions = await screen.findByTestId("risk-tensor-dv01-actions");
-
-      await user.click(within(actions).getByRole("button", { name: "复制处置清单" }));
-
-      await waitFor(() => {
-        expect(actions).toHaveTextContent("已复制处置清单");
-      });
-
-      const retryActions = within(screen.getByTestId("risk-tensor-dv01-controls")).getAllByRole("button", {
-        name: "重试主读面",
-      });
-      await user.click(retryActions[0]!);
-
-      await waitFor(() => {
-        expect(screen.getByTestId("risk-tensor-dv01-actions")).toHaveTextContent("复核利率波动预警");
-      });
-      expect(screen.getByTestId("risk-tensor-dv01-actions")).not.toHaveTextContent("已复制处置清单");
-    } finally {
-      if (originalClipboard) {
-        Object.defineProperty(navigator, "clipboard", originalClipboard);
-      } else {
-        Reflect.deleteProperty(navigator, "clipboard");
-      }
-    }
-  });
-
-  it("lets users hand off diagnostics when DV01 control actions are empty", async () => {
-    const user = userEvent.setup();
-    const writeText = vi.fn(async () => undefined);
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_empty_actions_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi
-        .fn()
-        .mockResolvedValueOnce({
-          result_meta: buildMeta("risk.tensor", "tr_tensor_dv01_empty_actions_initial"),
-          result: {
-            ...tensorResult("2026-02-28"),
-            dv01_controls: dv01ControlsFixture({
-              limit_status: "ok",
-              approved_limit_dv01: {
-                raw: 100,
-                unit: "dv01" as const,
-                display: "100.00",
-                precision: 2,
-                sign_aware: false,
-              },
-              limit_usage_ratio: {
-                raw: 0.45,
-                unit: "ratio" as const,
-                display: "45.0%",
-                precision: 1,
-                sign_aware: false,
-              },
-              volatility_status: "ok",
-              daily_rate_volatility_bp: {
-                raw: 5,
-                unit: "bp" as const,
-                display: "5.00",
-                precision: 2,
-                sign_aware: false,
-              },
-              control_actions: [],
-              control_message: "DV01 controls are configured, but action detail is empty.",
-              action_hint: "后端未返回控制动作明细，请核对控制动作生成链路。",
-            }),
-          },
-        })
-        .mockResolvedValueOnce({
-          result_meta: buildMeta("risk.tensor", "tr_tensor_dv01_empty_actions_retry"),
-          result: {
-            ...tensorResult("2026-02-28"),
-            dv01_controls: dv01ControlsFixture({
-              limit_status: "ok",
-              approved_limit_dv01: {
-                raw: 100,
-                unit: "dv01" as const,
-                display: "100.00",
-                precision: 2,
-                sign_aware: false,
-              },
-              limit_usage_ratio: {
-                raw: 0.45,
-                unit: "ratio" as const,
-                display: "45.0%",
-                precision: 1,
-                sign_aware: false,
-              },
-              volatility_status: "ok",
-              daily_rate_volatility_bp: {
-                raw: 5,
-                unit: "bp" as const,
-                display: "5.00",
-                precision: 2,
-                sign_aware: false,
-              },
-              control_actions: [
-                {
-                  key: "volatility_watch",
-                  title: "复核利率波动预警",
-                  status: "watch",
-                  evidence: "波动率源已接入。",
-                  action: "每日复核利率波动预警。",
-                },
-              ],
-              control_message: "DV01 controls are configured.",
-              action_hint: "继续按处置清单复核。",
-            }),
-          },
-        });
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const controls = await screen.findByTestId("risk-tensor-dv01-controls");
-      const emptyActions = within(controls).getByTestId("risk-tensor-dv01-actions-empty");
-
-      expect(emptyActions).toHaveTextContent("后端未返回 DV01 控制动作明细");
-      expect(screen.queryByTestId("risk-tensor-dv01-actions")).not.toBeInTheDocument();
-
-      await user.click(within(emptyActions).getByRole("button", { name: "复制处置排查信息" }));
-
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("风险张量 DV01 控制处置清单"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("trace_id tr_tensor_dv01_empty_actions_initial"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("control_actions_count 0"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("control_actions 后端未返回处置动作"));
-      expect(emptyActions).toHaveTextContent("已复制处置清单");
-
-      await user.click(within(emptyActions).getByRole("button", { name: "重试主读面" }));
-
-      await waitFor(() => {
-        expect(getRiskTensor).toHaveBeenCalledTimes(2);
-      });
-      expect(await screen.findByTestId("risk-tensor-dv01-actions")).toHaveTextContent("复核利率波动预警");
-      expect(screen.queryByTestId("risk-tensor-dv01-actions-empty")).not.toBeInTheDocument();
-    } finally {
-      if (originalClipboard) {
-        Object.defineProperty(navigator, "clipboard", originalClipboard);
-      } else {
-        Reflect.deleteProperty(navigator, "clipboard");
-      }
-    }
-  });
-
-  it("shows manual diagnostics when empty DV01 control action copying fails", async () => {
-    const user = userEvent.setup();
-    const writeText = vi.fn(async () => {
-      throw new Error("clipboard unavailable");
-    });
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_empty_actions_copy_failure_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_dv01_empty_actions_copy_failure_${reportDate}`),
-        result: {
-          ...tensorResult(reportDate),
-          dv01_controls: dv01ControlsFixture({
-            limit_status: "ok",
-            approved_limit_dv01: {
-              raw: 100,
-              unit: "dv01" as const,
-              display: "100.00",
-              precision: 2,
-              sign_aware: false,
-            },
-            limit_usage_ratio: {
-              raw: 0.45,
-              unit: "ratio" as const,
-              display: "45.0%",
-              precision: 1,
-              sign_aware: false,
-            },
-            volatility_status: "ok",
-            daily_rate_volatility_bp: {
-              raw: 5,
-              unit: "bp" as const,
-              display: "5.00",
-              precision: 2,
-              sign_aware: false,
-            },
-            control_actions: [],
-            control_message: "DV01 controls are configured, but action detail is empty.",
-            action_hint: "后端未返回控制动作明细，请核对控制动作生成链路。",
-          }),
-        },
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const emptyActions = await screen.findByTestId("risk-tensor-dv01-actions-empty");
-      await user.click(within(emptyActions).getByRole("button", { name: "复制处置排查信息" }));
-
-      await waitFor(() => {
-        expect(emptyActions).toHaveTextContent("复制失败，请手动选择处置清单");
-      });
-      const manualCopy = within(emptyActions).getByTestId("risk-tensor-dv01-actions-empty-manual-copy");
-      expect(manualCopy).toHaveTextContent("风险张量 DV01 控制处置清单");
-      expect(manualCopy).toHaveTextContent("trace_id tr_tensor_dv01_empty_actions_copy_failure_2026-02-28");
-      expect(manualCopy).toHaveTextContent("control_actions_count 0");
-      expect(manualCopy).toHaveTextContent("control_actions 后端未返回处置动作");
-    } finally {
-      if (originalClipboard) {
-        Object.defineProperty(navigator, "clipboard", originalClipboard);
-      } else {
-        Reflect.deleteProperty(navigator, "clipboard");
-      }
-    }
-  });
-
-  it("lets users locate quality evidence and retry when DV01 control inputs are pending", async () => {
-    const user = userEvent.setup();
-    const scrollTargets: HTMLElement[] = [];
-    const scrollOptions: unknown[] = [];
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    HTMLElement.prototype.scrollIntoView = vi.fn(function (this: HTMLElement, options?: ScrollIntoViewOptions) {
-      scrollTargets.push(this);
-      scrollOptions.push(options);
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_pending_actions_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const stressScenarios: NonNullable<RiskTensorPayload["dv01_controls"]>["stress_scenarios"] = [
-        {
-          scenario_key: "parallel_up_10bp",
-          label: "+10bp",
-          shock_bp: {
-            raw: 10,
-            unit: "bp" as const,
-            display: "+10 bp",
-            precision: 0,
-            sign_aware: true,
-          },
-          estimated_pnl_impact: {
-            raw: -1200,
-            unit: "yuan" as const,
-            display: "-1,200.00",
-            precision: 2,
-            sign_aware: true,
-          },
-        },
-      ];
-      const getRiskTensor = vi
-        .fn()
-        .mockResolvedValueOnce({
-          result_meta: buildMeta("risk.tensor", "tr_tensor_dv01_pending_actions_initial"),
-          result: {
-            ...tensorResult("2026-02-28"),
-            dv01_controls: dv01ControlsFixture({ stress_scenarios: stressScenarios }),
-          } as RiskTensorPayload,
-        })
-        .mockResolvedValueOnce({
-          result_meta: buildMeta("risk.tensor", "tr_tensor_dv01_pending_actions_retry"),
-          result: {
-            ...tensorResult("2026-02-28"),
-            dv01_controls: dv01ControlsFixture({
-              limit_status: "ok",
-              approved_limit_dv01: {
-                raw: 2000000,
-                unit: "dv01" as const,
-                display: "2,000,000.00",
-                precision: 2,
-                sign_aware: false,
-              },
-              limit_usage_ratio: {
-                raw: 0.24,
-                unit: "ratio" as const,
-                display: "24.0%",
-                precision: 1,
-                sign_aware: false,
-              },
-              volatility_status: "ok",
-              daily_rate_volatility_bp: {
-                raw: 8,
-                unit: "bp" as const,
-                display: "8.00",
-                precision: 2,
-                sign_aware: false,
-              },
-              stress_scenarios: stressScenarios,
-              control_message: "DV01 controls are configured.",
-              action_hint: "Continue daily monitoring.",
-            }),
-          } as RiskTensorPayload,
-        });
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const controls = await screen.findByTestId("risk-tensor-dv01-controls");
-      const qualityDetail = await screen.findByTestId("risk-tensor-quality-detail");
-      expect(controls).toHaveTextContent("限额待配置");
-      expect(controls).toHaveTextContent("波动源待接入");
-
-      await user.click(within(controls).getByRole("button", { name: "定位质量证据" }));
-
-      expect(scrollTargets).toContain(qualityDetail);
-      expect(scrollOptions.at(-1)).toMatchObject({ behavior: "smooth", block: "center" });
-
-      await user.click(within(controls).getByRole("button", { name: "重试主读面" }));
-
-      await waitFor(() => {
-        expect(getRiskTensor).toHaveBeenCalledTimes(2);
-      });
-      expect(await screen.findByTestId("risk-tensor-dv01-controls")).toHaveTextContent("DV01 controls are configured.");
-      expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent(
-        "tr_tensor_dv01_pending_actions_retry",
-      );
-    } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
-    }
-  });
-
-  it("copies DV01 pending input diagnostics from the control detail", async () => {
-    const user = userEvent.setup();
-    const writeText = vi.fn(async () => undefined);
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_pending_copy_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_dv01_pending_copy_${reportDate}`),
-        result: {
-          ...tensorResult(reportDate),
-          dv01_controls: dv01ControlsFixture({ control_actions: [] }),
-        },
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const controls = await screen.findByTestId("risk-tensor-dv01-controls");
-      await user.click(within(controls).getByRole("button", { name: "复制输入排查信息" }));
-
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("风险张量 DV01 控制输入排查信息"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("trace_id tr_tensor_dv01_pending_copy_2026-02-28"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("报告日 2026-02-28"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("limit_status 限额待配置"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("volatility_status 波动源待接入"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("control_actions_count 0"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("请补充正式限额源、利率波动输入或控制动作明细"));
-      expect(controls).toHaveTextContent("已复制输入排查信息");
-    } finally {
-      if (originalClipboard) {
-        Object.defineProperty(navigator, "clipboard", originalClipboard);
-      } else {
-        Reflect.deleteProperty(navigator, "clipboard");
-      }
-    }
-  });
-
-  it("shows manual DV01 pending input diagnostics when copying fails", async () => {
-    const user = userEvent.setup();
-    const writeText = vi.fn(async () => {
-      throw new Error("clipboard unavailable");
-    });
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-
-    try {
-      const base = createApiClient({ mode: "mock" });
-      const getRiskTensorDates = vi.fn(async () => ({
-        result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dv01_pending_copy_failure_dates"),
-        result: { report_dates: ["2026-02-28"] },
-      }));
-      const getRiskTensor = vi.fn(async (reportDate: string) => ({
-        result_meta: buildMeta("risk.tensor", `tr_tensor_dv01_pending_copy_failure_${reportDate}`),
-        result: {
-          ...tensorResult(reportDate),
-          dv01_controls: dv01ControlsFixture({ control_actions: [] }),
-        },
-      }));
-
-      renderRiskTensorRoute("/risk-tensor", {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const controls = await screen.findByTestId("risk-tensor-dv01-controls");
-      await user.click(within(controls).getByRole("button", { name: "复制输入排查信息" }));
-
-      await waitFor(() => {
-        expect(controls).toHaveTextContent("复制失败，请手动选择输入排查信息");
-      });
-      const manualCopy = within(controls).getByTestId("risk-tensor-dv01-pending-inputs-manual-copy");
-      expect(manualCopy).toHaveTextContent("风险张量 DV01 控制输入排查信息");
-      expect(manualCopy).toHaveTextContent("trace_id tr_tensor_dv01_pending_copy_failure_2026-02-28");
-      expect(manualCopy).toHaveTextContent("limit_status 限额待配置");
-      expect(manualCopy).toHaveTextContent("volatility_status 波动源待接入");
-      expect(manualCopy).toHaveTextContent("control_actions_count 0");
-    } finally {
-      if (originalClipboard) {
-        Object.defineProperty(navigator, "clipboard", originalClipboard);
-      } else {
-        Reflect.deleteProperty(navigator, "clipboard");
-      }
-    }
-  });
-
   it("surfaces backend-blocked stale dates without using them as the default", async () => {
     const base = createApiClient({ mode: "mock" });
     const getRiskTensorDates = vi.fn(async () => ({
@@ -7316,7 +5071,7 @@ describe("RiskTensorPage", () => {
           ],
         },
       })
-      .mockResolvedValueOnce({
+      .mockResolvedValue({
         result_meta: buildMeta("risk.tensor.dates", "tr_tensor_blocked_no_replacement_recovered"),
         result: {
           report_dates: ["2026-02-28"],
@@ -8409,86 +6164,6 @@ describe("RiskTensorPage", () => {
     expect(errorContext).toHaveTextContent("503");
     expect(errorContext).toHaveTextContent("不会回退到硬编码报告日");
     expect(getRiskTensor).not.toHaveBeenCalled();
-  });
-
-  it("renders default mock risk tensor controls and prior-period context", async () => {
-    const client = createApiClient({ mode: "mock" });
-
-    renderRiskTensorRoute("/risk-tensor", client);
-
-    const priorChange = await screen.findByTestId("risk-tensor-prior-period-change");
-    expect(priorChange).toHaveTextContent("暂无可比较的上一报告日");
-
-    const controls = await screen.findByTestId("risk-tensor-dv01-controls");
-    expect(controls).toHaveTextContent("DV01");
-    expect(controls).toHaveTextContent("配置审批限额");
-    expect(controls).toHaveTextContent("接入利率波动");
-    expect(controls).toHaveTextContent("+10bp");
-    expect(controls).toHaveTextContent("未接入正式限额源");
-    expect(controls).not.toHaveTextContent("pending_configuration");
-  });
-
-  it.each([
-    [404, "当前报告日无风险张量数据", "2026-03-15"],
-    [503, "风险张量治理前置缺失", "2026-03-16"],
-  ])("surfaces risk tensor %s API failures with business context", async (statusCode, message, reportDate) => {
-    const user = userEvent.setup();
-    const writeText = vi.fn(async (_text: string) => undefined);
-    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText },
-    });
-    const base = createApiClient({ mode: "mock" });
-    const getRiskTensorDates = vi.fn(async () => ({
-      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_error_dates"),
-      result: { report_dates: ["2026-02-28"] },
-    }));
-    const getRiskTensor = vi.fn(async () => {
-      throw new Error(`Request failed: /api/risk/tensor?report_date=${reportDate} (${statusCode})`);
-    });
-
-    try {
-      renderRiskTensorRoute(`/risk-tensor?report_date=${reportDate}`, {
-        ...base,
-        getRiskTensorDates,
-        getRiskTensor,
-      });
-
-      const errorContext = await screen.findByTestId("risk-tensor-error-context");
-      expect(errorContext).toHaveTextContent(message);
-      expect(errorContext).toHaveTextContent(reportDate);
-      expect(errorContext).toHaveTextContent(String(statusCode));
-      expect(errorContext).toHaveTextContent("日期治理 trace_id tr_tensor_error_dates");
-      expect(errorContext).toHaveTextContent("basis formal");
-      expect(errorContext).toHaveTextContent("cache_version cv_tensor_test");
-      expect(errorContext).toHaveTextContent("generated_at 2026-04-12T08:00:00Z");
-      expect(errorContext).toHaveTextContent("source_version sv_tensor_test");
-      expect(errorContext).toHaveTextContent("rule_version rv_tensor_test");
-      expect(errorContext).toHaveTextContent("主读面 trace_id 未提供");
-      expect(errorContext).toHaveTextContent("不会使用缓存或前端补算替代正式主读结果");
-
-      await user.click(within(errorContext).getByRole("button", { name: "复制排查信息" }));
-
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("风险张量主读面加载失败排查信息"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining(`报告日 ${reportDate}`));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining(`HTTP 状态 ${statusCode}`));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("日期治理 trace_id tr_tensor_error_dates"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("basis formal"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("cache_version cv_tensor_test"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("generated_at 2026-04-12T08:00:00Z"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("source_version sv_tensor_test"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("rule_version rv_tensor_test"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("主读面 trace_id 未提供"));
-      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("不会使用缓存或前端补算替代正式主读结果"));
-      expect(errorContext).toHaveTextContent("已复制排查信息");
-    } finally {
-      if (originalClipboard) {
-        Object.defineProperty(navigator, "clipboard", originalClipboard);
-      } else {
-        Reflect.deleteProperty(navigator, "clipboard");
-      }
-    }
   });
 
   it("lets users jump from risk tensor API failure context to result metadata", async () => {

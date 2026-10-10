@@ -1,4 +1,5 @@
 import dhStyles from "../dashboard-home/dashboardHome.module.css";
+import { EM_DASH } from "../../../utils/format";
 import type { ModuleHomeDetailPanel } from "./moduleHomeModel";
 import marketStyles from "./marketHome.module.css";
 
@@ -15,7 +16,7 @@ function latestTradeDate(panel: ModuleHomeDetailPanel) {
 }
 
 function sourceCount(panel: ModuleHomeDetailPanel) {
-  return new Set(panel.rows.map((row) => row.source).filter((source) => source && source !== "-")).size;
+  return new Set(panel.rows.map((row) => row.source).filter((source) => source && source !== EM_DASH)).size;
 }
 
 export function MarketPanelSummary({ panel }: MarketPanelSummaryProps) {
@@ -27,7 +28,7 @@ export function MarketPanelSummary({ panel }: MarketPanelSummaryProps) {
 
   const items = [
     { label: "样本", value: `${panel.rows.length} 条` },
-    { label: "最新", value: latestTradeDate(panel) ?? "-" },
+    { label: "最新", value: latestTradeDate(panel) ?? EM_DASH },
     { label: "来源", value: `${sourceCount(panel)} 源` },
     ...(chartCount > 0 ? [{ label: "图表", value: `${chartCount} 项` }] : []),
   ];

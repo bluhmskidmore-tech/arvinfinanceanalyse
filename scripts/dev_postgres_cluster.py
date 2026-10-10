@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 import argparse
-import duckdb
 import json
 import os
 import shutil
 import socket
+import stat
 import subprocess
 import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
+import duckdb
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 55432
@@ -40,18 +41,25 @@ RUNTIME_GOVERNANCE_SEED_FILES = (
 DEV_USER_SCOPE_GRANTS = (
     {"user_id": "*", "role": None, "resource": "choice_news.data", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "accounting_asset_movement", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "adb_analysis", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "balance_analysis", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "bond_analytics", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "bond_dashboard", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "cashflow_projection", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "dashboard", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "executive", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "agent", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "kpi", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "ledger_pnl", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "macro_bond_linkage", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "macro_toolkit", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "macro_vendor", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "market_data_ncd_proxy", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "pnl_attribution", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "product_category_pnl", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "qdb_gl_monthly_analysis", "action": "read"},
     {"user_id": "anonymous", "role": "viewer", "resource": "research_calendar", "action": "read"},
+    {"user_id": "anonymous", "role": "viewer", "resource": "risk_tensor", "action": "read"},
 )
 
 
@@ -100,16 +108,42 @@ def build_cluster_config(repo_root: Path, pg_bin_dir: Path | None = None) -> Dev
 
 
 def build_env_mapping(config: DevPostgresClusterConfig) -> dict[str, str]:
-    storage_root = _resolve_storage_root_for_env(config)
-    return {
+    path_keys = (
+        "MOSS_DUCKDB_PATH",
+        "MOSS_GOVERNANCE_PATH",
+        "MOSS_DATA_INPUT_ROOT",
+        "MOSS_LOCAL_ARCHIVE_PATH",
+        "MOSS_FINANCIAL_PUBLICATION_ROOT",
+        "MOSS_BALANCE_ANALYSIS_PUBLICATION_ROOT",
+    )
+    configured_paths: dict[str, str] = {}
+    # Match Settings' file order and process-env precedence without opening any
+    # database or importing application startup into this metadata-only command.
+    for env_file in (config.repo_root / "config" / ".env", config.repo_root / ".env"):
+        if env_file.is_file():
+            from dotenv import dotenv_values
+
+            configured_paths.update(
+                {
+                    key.upper(): str(value)
+                    for key, value in dotenv_values(env_file, encoding="utf-8").items()
+                    if key.upper() in path_keys and value is not None
+                }
+            )
+    for key in path_keys:
+        if key in os.environ:
+            configured_paths[key] = os.environ[key]
+    configured_paths = {
+        key: str((config.repo_root / Path(value.strip()).expanduser()).resolve())
+        for key, value in configured_paths.items()
+        if value.strip()
+    }
+    mapping = {
         "MOSS_ENVIRONMENT": "development",
+        "MOSS_AGENT_DEV_SCOPE_BYPASS": "true",
         "MOSS_POSTGRES_DSN": config.postgres_dsn,
         "MOSS_GOVERNANCE_SQL_DSN": config.postgres_dsn,
         "MOSS_REDIS_DSN": DEFAULT_REDIS_DSN,
-        "MOSS_DUCKDB_PATH": str(storage_root / "moss.duckdb"),
-        "MOSS_GOVERNANCE_PATH": str(storage_root / "governance"),
-        "MOSS_LOCAL_ARCHIVE_PATH": str(storage_root / "archive"),
-        "MOSS_DATA_INPUT_ROOT": str(config.repo_root / "data_input" if storage_root == config.repo_root / "data" else config.runtime_data_input_path),
         "MOSS_SOURCE_PREVIEW_GOVERNANCE_BACKEND": "jsonl",
         "MOSS_OBJECT_STORE_MODE": "local",
         "MOSS_MINIO_ENDPOINT": "localhost:9000",
@@ -117,6 +151,22 @@ def build_env_mapping(config: DevPostgresClusterConfig) -> dict[str, str]:
         "MOSS_MINIO_SECRET_KEY": "minioadmin",
         "MOSS_MINIO_BUCKET": "moss-artifacts",
     }
+    if any(key not in configured_paths for key in path_keys[:4]):
+        storage_root = _resolve_storage_root_for_env(config)
+        mapping.update(
+            {
+                "MOSS_DUCKDB_PATH": str(storage_root / "moss.duckdb"),
+                "MOSS_GOVERNANCE_PATH": str(storage_root / "governance"),
+                "MOSS_LOCAL_ARCHIVE_PATH": str(storage_root / "archive"),
+                "MOSS_DATA_INPUT_ROOT": str(
+                    config.repo_root / "data_input"
+                    if storage_root == config.repo_root / "data"
+                    else config.runtime_data_input_path
+                ),
+            }
+        )
+    mapping.update(configured_paths)
+    return mapping
 
 
 def resolve_pg_bin_dir() -> Path:
@@ -136,7 +186,7 @@ def resolve_pg_bin_dir() -> Path:
 
 
 def _resolve_python_executable() -> str:
-    return shutil.which("python") or sys.executable
+    return sys.executable or shutil.which("python") or "python"
 
 
 def _sql_identifier(value: str) -> str:
@@ -167,7 +217,13 @@ def command_up(config: DevPostgresClusterConfig) -> dict[str, object]:
             ]
         )
 
-    if not _is_port_open(config.host, config.port):
+    port_is_open = _is_port_open(config.host, config.port)
+    if port_is_open and not _is_expected_cluster_running(config):
+        raise RuntimeError(
+            f"Local PostgreSQL dev port {config.host}:{config.port} is already occupied by a "
+            "different process; refusing to run migrations or bootstrap against it."
+        )
+    if not port_is_open:
         _remove_stale_postmaster_pid(config)
         _spawn_postgres_start(config)
     _wait_for_postgres_ready(config)
@@ -214,10 +270,6 @@ def command_status(config: DevPostgresClusterConfig) -> dict[str, object]:
 
 
 def command_print_env(config: DevPostgresClusterConfig) -> dict[str, str]:
-    try:
-        _prepare_runtime_clean_paths(config)
-    except PermissionError:
-        pass
     return build_env_mapping(config)
 
 
@@ -531,20 +583,69 @@ def _seed_runtime_governance_from_repo_if_needed(config: DevPostgresClusterConfi
 
 
 def _resolve_storage_root_for_env(config: DevPostgresClusterConfig) -> Path:
-    """Pick DuckDB + sidecar dir for MOSS_* paths.
+    """Pick one stable filesystem root for DuckDB and its sidecar paths."""
 
-    Prefer ``data/moss.duckdb`` whenever it already carries seed rows so local
-    materialization scripts (which default to ``data/``) match ``dev-api`` / ``dev-env``.
+    def is_regular_database_path(path: Path, label: str) -> bool:
+        try:
+            entry = path.lstat()
+        except FileNotFoundError:
+            current = path.parent
+            while True:
+                try:
+                    ancestor = current.lstat()
+                except FileNotFoundError:
+                    if current == current.parent:
+                        return False
+                    current = current.parent
+                    continue
+                except OSError as exc:
+                    raise RuntimeError(
+                        f"Unable to inspect {label} database path metadata: {path}"
+                    ) from exc
 
-    If the repo db is empty but ``runtime-clean`` was populated (smoke copy), use runtime.
-    """
+                if stat.S_ISLNK(ancestor.st_mode):
+                    try:
+                        ancestor = current.stat()
+                    except FileNotFoundError as exc:
+                        raise RuntimeError(
+                            f"Refusing broken symlink in {label} database path: {current}"
+                        ) from exc
+                    except OSError as exc:
+                        raise RuntimeError(
+                            f"Unable to inspect {label} database path metadata: {current}"
+                        ) from exc
+                if not stat.S_ISDIR(ancestor.st_mode):
+                    raise RuntimeError(
+                        f"Expected directory ancestor for {label} database path: {current}"
+                    )
+                return False
+        except OSError as exc:
+            raise RuntimeError(
+                f"Unable to inspect {label} database path metadata: {path}"
+            ) from exc
+
+        if stat.S_ISLNK(entry.st_mode):
+            try:
+                entry = path.stat()
+            except FileNotFoundError as exc:
+                raise RuntimeError(
+                    f"Refusing broken symlink for {label} database path: {path}"
+                ) from exc
+            except OSError as exc:
+                raise RuntimeError(
+                    f"Unable to inspect {label} database path metadata: {path}"
+                ) from exc
+        if not stat.S_ISREG(entry.st_mode):
+            raise RuntimeError(
+                f"Expected {label} database path to be a regular file: {path}"
+            )
+        return True
+
     repo_data_root = config.repo_root / "data"
-    if _duckdb_has_seed_data(repo_data_root / "moss.duckdb"):
+    if is_regular_database_path(repo_data_root / "moss.duckdb", "repo"):
         return repo_data_root
 
-    if _duckdb_has_seed_data(config.runtime_duckdb_path):
-        return config.runtime_root
-
+    is_regular_database_path(config.runtime_duckdb_path, "runtime")
     return config.runtime_root
 
 
@@ -581,6 +682,23 @@ def _is_port_open(host: str, port: int) -> bool:
     with socket.socket() as sock:
         sock.settimeout(0.5)
         return sock.connect_ex((host, port)) == 0
+
+
+def _is_expected_cluster_running(config: DevPostgresClusterConfig) -> bool:
+    if not config.data_dir.exists():
+        return False
+    status = subprocess.run(
+        [
+            str(config.bin_dir / "pg_ctl.exe"),
+            "-D",
+            str(config.data_dir),
+            "status",
+        ],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    return status.returncode == 0
 
 
 def _probe_postgres_ready(config: DevPostgresClusterConfig, *, database: str | None = None) -> bool:
@@ -622,8 +740,9 @@ def _spawn_postgres_start(config: DevPostgresClusterConfig) -> None:
         ],
         check=True,
         text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
 
 
@@ -709,6 +828,7 @@ def main() -> int:
         Path(args.pg_bin_dir).resolve() if args.pg_bin_dir else None,
     )
 
+    payload: dict[str, object]
     try:
         if args.command == "up":
             payload = command_up(config)
@@ -719,7 +839,7 @@ def main() -> int:
         elif args.command == "reset-schema":
             payload = command_reset_schema(config)
         else:
-            payload = command_print_env(config)
+            payload = dict(command_print_env(config))
     except RuntimeError as exc:
         print(json.dumps({"error": str(exc)}, ensure_ascii=True), file=sys.stderr)
         return 1

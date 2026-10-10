@@ -23,7 +23,7 @@
 }
 
 .alert-list__dot--warning {
-  background: #d97706;
+  background: var(--moss-color-warning-500);
 }
 
 .alert-list__dot--caution {
@@ -31,7 +31,7 @@
 }
 
 .alert-list__dot--info {
-  background: #3b82f6;
+  background: var(--moss-color-info-500);
 }
 
 .alert-list__content {

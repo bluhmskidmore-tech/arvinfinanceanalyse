@@ -4,13 +4,27 @@ import calendar
 import uuid
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
+from typing import TypedDict
 
+from backend.app.core_finance.bond_analytics.common import (
+    compute_macaulay_duration_and_convexity,
+    resolve_ytm_with_par_fallback,
+)
 from backend.app.core_finance.bond_duration import estimate_duration
 from backend.app.core_finance.cashflow_projection import MonthlyBucket, compute_duration_gap
+from backend.app.core_finance.decimal_utils import to_decimal_strict
+from backend.app.core_finance.fixed_income_version_set import FIXED_INCOME_VERSION_SET
+from backend.app.core_finance.interest_mode import (
+    classify_interest_rate_style,
+    coupon_frequency_per_year,
+    is_bullet_repayment,
+    resolve_interest_payment_frequency,
+)
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 from backend.app.repositories.cashflow_projection_repo import CashflowProjectionRepository
 from backend.app.schemas.cashflow_projection import CashflowProjectionResponse
+from backend.app.schemas.common_numeric import NumericRawScale, NumericUnit
 from backend.app.services.explicit_numeric import numeric_json
 from backend.app.services.formal_result_runtime import (
     build_analytical_result_meta,
@@ -18,13 +32,35 @@ from backend.app.services.formal_result_runtime import (
 )
 
 Q8 = Decimal("0.00000000")
-CACHE_VERSION = "cv_cashflow_projection_read_v1"
-RULE_VERSION = "rv_cashflow_projection_read_v1"
+CACHE_VERSION = "cv_cashflow_projection_read_v3"
+RULE_VERSION = "rv_cashflow_projection_read_v3"
 EMPTY_SOURCE_VERSION = "sv_cashflow_projection_empty"
 DATE_BASIS = "cashflow_projection_report_date"
 ZQTZ_FORMAL_TABLE = "fact_formal_zqtz_balance_daily"
 TYW_FORMAL_TABLE = "fact_formal_tyw_balance_daily"
+BOND_ANALYTICS_FORMAL_TABLE = "fact_formal_bond_analytics_daily"
+EXPECTED_BOND_ANALYTICS_RULE_VERSION = FIXED_INCOME_VERSION_SET.bond_analytics.rule_version
+FORMAL_BOND_ANALYTICS_RULE_VERSION_PREFIX = "rv_bond_analytics_formal_materialize_v"
 TYWL_DEMAND_PRODUCTS = frozenset({"同业存放", "存放同业"})
+
+
+class _MaturingCandidate(TypedDict):
+    instrument_code: str
+    instrument_name: str
+    maturity_date: date
+    face_value: Decimal
+    market_value: Decimal
+    currency_code: str
+
+
+class _QualityDisclosures(TypedDict):
+    floating_rate_proxy_count: int
+    floating_rate_proxy_market_value: Decimal
+    payment_frequency_fallback_count: int
+    payment_frequency_fallback_market_value: Decimal
+    bullet_value_date_fallback_count: int
+    bullet_value_date_fallback_market_value: Decimal
+    warnings: list[str]
 
 
 def get_cashflow_projection(report_date: date) -> dict[str, object]:
@@ -43,13 +79,16 @@ def get_cashflow_projection(report_date: date) -> dict[str, object]:
         currency_basis="CNY",
     )
     analytics_rows = analytics_repo.fetch_bond_analytics_rows(report_date=report_date_text)
+    _require_current_bond_analytics_rule(analytics_rows, report_date=report_date_text)
     zqtz_rows = _attach_macaulay_duration(zqtz_rows, analytics_rows)
+    quality_disclosures = _cashflow_projection_quality_disclosures(zqtz_rows)
+    projection_zqtz_rows = _with_effective_payment_frequency(zqtz_rows)
 
     if not zqtz_rows and not tyw_rows:
         raise ValueError(f"No cashflow projection data found for report_date={report_date_text}.")
 
     result = compute_duration_gap(
-        zqtz_rows=zqtz_rows,
+        zqtz_rows=projection_zqtz_rows,
         tyw_rows=tyw_rows,
         report_date=report_date,
         horizon_months=24,
@@ -60,11 +99,20 @@ def get_cashflow_projection(report_date: date) -> dict[str, object]:
         result_kind="cashflow_projection.overview",
         cache_version=CACHE_VERSION,
         source_version=_merge_versions(
-            [*_collect_values(zqtz_rows, "source_version"), *_collect_values(tyw_rows, "source_version")],
+            [
+                *_collect_values(zqtz_rows, "source_version"),
+                *_collect_values(tyw_rows, "source_version"),
+                *_collect_values(analytics_rows, "source_version"),
+            ],
             empty_value=EMPTY_SOURCE_VERSION,
         ),
         rule_version=_merge_versions(
-            [*_collect_values(zqtz_rows, "rule_version"), *_collect_values(tyw_rows, "rule_version")],
+            [
+                RULE_VERSION,
+                *_collect_values(zqtz_rows, "rule_version"),
+                *_collect_values(tyw_rows, "rule_version"),
+                *_collect_values(analytics_rows, "rule_version"),
+            ],
             empty_value=RULE_VERSION,
         ),
         requested_report_date=report_date_text,
@@ -76,23 +124,54 @@ def get_cashflow_projection(report_date: date) -> dict[str, object]:
             "position_scope": "all",
             "currency_basis": "CNY",
         },
-        tables_used=[ZQTZ_FORMAL_TABLE, TYW_FORMAL_TABLE],
-        evidence_rows=len(zqtz_rows) + len(tyw_rows),
+        tables_used=[ZQTZ_FORMAL_TABLE, TYW_FORMAL_TABLE, BOND_ANALYTICS_FORMAL_TABLE],
+        evidence_rows=len(zqtz_rows) + len(tyw_rows) + len(analytics_rows),
         source_surface="cashflow",
     )
 
-    response = CashflowProjectionResponse(
-        report_date=report_date,
-        duration_gap=numeric_json(result.duration_gap, "years", True),
-        asset_duration=numeric_json(result.asset_weighted_duration, "years", False),
-        liability_duration=numeric_json(result.liability_weighted_duration, "years", False),
-        equity_duration=numeric_json(result.equity_duration, "years", True),
-        rate_sensitivity_1bp=numeric_json(result.rate_sensitivity_1bp, "yuan", True),
-        reinvestment_risk_12m=numeric_json(result.reinvestment_risk_12m, "pct", False),
-        monthly_buckets=[_serialize_monthly_bucket(bucket) for bucket in result.monthly_buckets],
-        top_maturing_assets_12m=_build_top_maturing_assets_12m(zqtz_rows, tyw_rows, report_date),
-        warnings=list(result.warnings),
-        computed_at=meta.generated_at.isoformat(),
+    # model_validate shares the same validation pipeline as __init__ but accepts
+    # the Numeric-JSON dicts that the mode="before" validators are designed for.
+    response = CashflowProjectionResponse.model_validate(
+        {
+            "report_date": report_date,
+            "duration_gap": _exact_numeric_json(result.duration_gap, "years", True),
+            "asset_duration": _exact_numeric_json(result.asset_weighted_duration, "years", False),
+            "liability_duration": _exact_numeric_json(result.liability_weighted_duration, "years", False),
+            "equity_duration": _exact_numeric_json(result.equity_duration, "years", True),
+            "rate_sensitivity_1bp": _exact_numeric_json(result.rate_sensitivity_1bp, "yuan", True),
+            "reinvestment_risk_12m": _ratio_pct_numeric_json(result.reinvestment_risk_12m),
+            "asset_duration_covered_balance": _exact_numeric_json(
+                result.asset_duration_covered_balance, "yuan", False
+            ),
+            "liability_duration_covered_balance": _exact_numeric_json(
+                result.liability_duration_covered_balance, "yuan", False
+            ),
+            "asset_excluded_balance": _exact_numeric_json(result.asset_excluded_balance, "yuan", False),
+            "liability_excluded_balance": _exact_numeric_json(result.liability_excluded_balance, "yuan", False),
+            "asset_duration_coverage_ratio": _ratio_pct_numeric_json(result.asset_duration_coverage_ratio),
+            "liability_duration_coverage_ratio": _ratio_pct_numeric_json(result.liability_duration_coverage_ratio),
+            "input_lineage": _build_input_lineage(
+                (ZQTZ_FORMAL_TABLE, zqtz_rows),
+                (TYW_FORMAL_TABLE, tyw_rows),
+                (BOND_ANALYTICS_FORMAL_TABLE, analytics_rows),
+            ),
+            "monthly_buckets": [_serialize_monthly_bucket(bucket) for bucket in result.monthly_buckets],
+            "top_maturing_assets_12m": _build_top_maturing_assets_12m(zqtz_rows, tyw_rows, report_date),
+            "floating_rate_proxy_count": int(quality_disclosures["floating_rate_proxy_count"]),
+            "floating_rate_proxy_market_value": _exact_numeric_json(
+                Decimal(quality_disclosures["floating_rate_proxy_market_value"]), "yuan", False
+            ),
+            "payment_frequency_fallback_count": int(quality_disclosures["payment_frequency_fallback_count"]),
+            "payment_frequency_fallback_market_value": _exact_numeric_json(
+                Decimal(quality_disclosures["payment_frequency_fallback_market_value"]), "yuan", False
+            ),
+            "bullet_value_date_fallback_count": int(quality_disclosures["bullet_value_date_fallback_count"]),
+            "bullet_value_date_fallback_market_value": _exact_numeric_json(
+                Decimal(quality_disclosures["bullet_value_date_fallback_market_value"]), "yuan", False
+            ),
+            "warnings": [*result.warnings, *quality_disclosures["warnings"]],
+            "computed_at": meta.generated_at.isoformat(),
+        }
     )
     return build_formal_result_envelope(
         result_meta=meta,
@@ -100,13 +179,40 @@ def get_cashflow_projection(report_date: date) -> dict[str, object]:
     )
 
 
+def _exact_numeric_json(
+    raw: Decimal | None,
+    unit: NumericUnit,
+    sign_aware: bool,
+    *,
+    raw_scale: NumericRawScale = "auto",
+) -> dict[str, object]:
+    return numeric_json(
+        raw,
+        unit,
+        sign_aware,
+        raw_scale=raw_scale,
+        preserve_decimal=True,
+    )
+
+
+def _ratio_pct_numeric_json(raw: Decimal | None) -> dict[str, object]:
+    """Build a pct Numeric JSON from a verified decimal-ratio input.
+
+    ``reinvestment_risk_12m`` is maturing face value / total asset market value
+    (see ``core_finance.cashflow_projection``) — a decimal ratio that can
+    legitimately reach or exceed 1, so it must bypass the legacy "auto" rescale
+    heuristic via ``raw_scale="ratio"``.
+    """
+    return _exact_numeric_json(raw, "pct", False, raw_scale="ratio")
+
+
 def _serialize_monthly_bucket(bucket: MonthlyBucket) -> dict[str, object]:
     return {
         "year_month": bucket.year_month,
-        "asset_inflow": numeric_json(bucket.asset_inflow, "yuan", False),
-        "liability_outflow": numeric_json(bucket.liability_outflow, "yuan", False),
-        "net_cashflow": numeric_json(bucket.net_cashflow, "yuan", True),
-        "cumulative_net": numeric_json(bucket.cumulative_net, "yuan", True),
+        "asset_inflow": _exact_numeric_json(bucket.asset_inflow, "yuan", False),
+        "liability_outflow": _exact_numeric_json(bucket.liability_outflow, "yuan", False),
+        "net_cashflow": _exact_numeric_json(bucket.net_cashflow, "yuan", True),
+        "cumulative_net": _exact_numeric_json(bucket.cumulative_net, "yuan", True),
     }
 
 
@@ -115,8 +221,10 @@ def _build_top_maturing_assets_12m(
     tyw_rows: list[dict[str, object]],
     report_date: date,
 ) -> list[dict[str, object]]:
-    horizon_end = date(report_date.year + 1, report_date.month, report_date.day)
-    candidates: list[dict[str, object]] = []
+    horizon_year = report_date.year + 1
+    horizon_day = min(report_date.day, calendar.monthrange(horizon_year, report_date.month)[1])
+    horizon_end = date(horizon_year, report_date.month, horizon_day)
+    candidates: list[_MaturingCandidate] = []
 
     for row in zqtz_rows:
         if _row_scope(row) != "asset":
@@ -147,7 +255,13 @@ def _build_top_maturing_assets_12m(
         maturity_date = _effective_tyw_maturity_date(row, report_date)
         if maturity_date is None or maturity_date <= report_date or maturity_date > horizon_end:
             continue
-        principal = _coerce_decimal(row.get("principal_amount") or row.get("principal_native"))
+        # 余额为 0 是合法业务值，而 ``principal_native`` 是换汇前的原币口径：用 ``or``
+        # 会在余额为 0 时静默改用原币金额，凭空造出到期现金流。只有字段缺失才回退。
+        # 口径与 ``core_finance/cashflow_projection.py`` 的 ``_get_value`` 一致。
+        principal_raw = row.get("principal_amount")
+        if principal_raw is None:
+            principal_raw = row.get("principal_native")
+        principal = _coerce_decimal(principal_raw)
         candidates.append(
             {
                 "instrument_code": str(row.get("position_id") or ""),
@@ -171,8 +285,8 @@ def _build_top_maturing_assets_12m(
             "instrument_code": str(row["instrument_code"]),
             "instrument_name": str(row["instrument_name"]),
             "maturity_date": row["maturity_date"].isoformat(),
-            "face_value": numeric_json(Decimal(str(row["face_value"])), "yuan", False),
-            "market_value": numeric_json(Decimal(str(row["market_value"])), "yuan", False),
+            "face_value": _exact_numeric_json(Decimal(str(row["face_value"])), "yuan", False),
+            "market_value": _exact_numeric_json(Decimal(str(row["market_value"])), "yuan", False),
             "currency_code": str(row["currency_code"]),
         }
         for row in candidates[:10]
@@ -181,6 +295,55 @@ def _build_top_maturing_assets_12m(
 
 def _collect_values(rows: list[dict[str, object]], field_name: str) -> list[str]:
     return [str(row.get(field_name) or "").strip() for row in rows if str(row.get(field_name) or "").strip()]
+
+
+def _build_input_lineage(
+    *sources: tuple[str, list[dict[str, object]]],
+) -> list[dict[str, object]]:
+    """Serialize each fact read by the projection without hiding empty lineage."""
+
+    return [
+        {
+            "table_name": table_name,
+            "row_count": len(rows),
+            "source_versions": sorted(set(_collect_values(rows, "source_version"))),
+            "rule_versions": sorted(set(_collect_values(rows, "rule_version"))),
+            "ingest_batch_ids": sorted(set(_collect_values(rows, "ingest_batch_id"))),
+            "trace_ids": sorted(set(_collect_values(rows, "trace_id"))),
+        }
+        for table_name, rows in sources
+    ]
+
+
+def _require_current_bond_analytics_rule(
+    analytics_rows: list[dict[str, object]],
+    *,
+    report_date: str,
+) -> None:
+    """Fail closed on a stale configured formal materialization version.
+
+    The cashflow projection is analytical, but it consumes materialized bond
+    duration values. It must therefore not relabel a v4 (or other configured
+    materialization version) bond-analytics fact as a result assembled under this
+    v3 service. Rows with no rule marker, or legacy non-materialization labels,
+    remain visibly unversioned/legacy in ``input_lineage``; this preserves the
+    existing read-time analytical fallback rather than inventing a current-rule
+    claim for an absent duration fact.
+    """
+
+    observed_versions = sorted(set(_collect_values(analytics_rows, "rule_version")))
+    stale_versions = [
+        version
+        for version in observed_versions
+        if version.startswith(FORMAL_BOND_ANALYTICS_RULE_VERSION_PREFIX)
+        and version != EXPECTED_BOND_ANALYTICS_RULE_VERSION
+    ]
+    if stale_versions:
+        raise RuntimeError(
+            "Bond analytics fact stale against configured rule version for "
+            f"report_date={report_date}; expected {EXPECTED_BOND_ANALYTICS_RULE_VERSION}, "
+            f"got {', '.join(stale_versions)}. Rematerialize required."
+        )
 
 
 def _merge_versions(values: list[str], *, empty_value: str) -> str:
@@ -239,20 +402,25 @@ def _attach_macaulay_duration(
     zqtz_rows: list[dict[str, object]],
     analytics_rows: list[dict[str, object]],
 ) -> list[dict[str, object]]:
-    macaulay_by_key: dict[tuple[str, str, str, str], Decimal] = {}
+    macaulay_by_key: dict[tuple[str, str, str, str], tuple[Decimal, bool]] = {}
+    duration_quality_by_key: dict[tuple[str, str, str, str], str] = {}
     for row in analytics_rows:
-        value = _recompute_macaulay_duration(row)
-        if value is None:
-            value = row.get("macaulay_duration")
-        if value in (None, ""):
-            continue
         key = (
             str(row.get("instrument_code") or ""),
             str(row.get("portfolio_name") or ""),
             str(row.get("cost_center") or ""),
             str(row.get("currency_code") or ""),
         )
-        macaulay_by_key[key] = _coerce_decimal(value)
+        duration_quality_flag: str | None = str(row.get("duration_quality_flag") or "").strip()
+        if duration_quality_flag:
+            duration_quality_by_key[key] = duration_quality_flag
+        value = _materialized_macaulay_duration(row.get("macaulay_duration"))
+        if value is None:
+            value, par_fallback_used = _recompute_macaulay_duration_with_assumption(row)
+        else:
+            par_fallback_used = duration_quality_flag == "ytm_par_fallback"
+        if value is not None:
+            macaulay_by_key[key] = (value, par_fallback_used)
 
     enriched: list[dict[str, object]] = []
     for row in zqtz_rows:
@@ -265,34 +433,203 @@ def _attach_macaulay_duration(
             str(row.get("cost_center") or ""),
             str(row.get("currency_code") or ""),
         )
-        macaulay_duration = macaulay_by_key.get(key)
-        if macaulay_duration is None:
-            enriched.append(row)
+        duration_entry = macaulay_by_key.get(key)
+        duration_quality_flag = duration_quality_by_key.get(key)
+        if duration_entry is None and duration_quality_flag is None:
+            enriched.append(
+                {**row, "_par_duration_assumption_used": False}
+                if "_par_duration_assumption_used" in row
+                else row
+            )
             continue
-        enriched.append({**row, "macaulay_duration": macaulay_duration})
+        updates: dict[str, object] = {"_par_duration_assumption_used": False}
+        if duration_entry is not None:
+            macaulay_duration, par_fallback_used = duration_entry
+            updates["macaulay_duration"] = macaulay_duration
+            if par_fallback_used and str(duration_quality_flag or "").lower() not in (
+                "maturity_unavailable",
+                "no_remaining_term",
+            ):
+                updates["_par_duration_assumption_used"] = True
+                if str(duration_quality_flag or "").lower() in ("", "observed"):
+                    duration_quality_flag = "ytm_par_fallback"
+        if duration_quality_flag is not None:
+            updates["duration_quality_flag"] = duration_quality_flag
+        enriched.append({**row, **updates})
     return enriched
 
 
 def _recompute_macaulay_duration(row: dict[str, object]) -> Decimal | None:
+    duration, _par_fallback_used = _recompute_macaulay_duration_with_assumption(row)
+    return duration
+
+
+def _recompute_macaulay_duration_with_assumption(
+    row: dict[str, object],
+) -> tuple[Decimal | None, bool]:
     maturity_date = _coerce_date(row.get("maturity_date"))
     report_date = _coerce_date(row.get("report_date"))
     if maturity_date is None or report_date is None:
-        return None
-    coupon_rate = _normalize_rate(row.get("coupon_rate"))
-    ytm = _normalize_rate(row.get("ytm") or row.get("ytm_value"))
-    return estimate_duration(
+        return None, False
+    coupon_rate = _coerce_decimal(row.get("coupon_rate"))
+    ytm_value = row.get("ytm")
+    if ytm_value in (None, ""):
+        ytm_value = row.get("ytm_value")
+    try:
+        observed_ytm = to_decimal_strict(ytm_value)
+    except (ArithmeticError, TypeError, ValueError):
+        observed_ytm = None
+    # Missing/invalid yields use the shared par rule; observed zero stays zero.
+    ytm, par_fallback_used = resolve_ytm_with_par_fallback(coupon_rate, observed_ytm)
+    interest_mode = row.get("interest_mode")
+    _frequency, used_fallback = resolve_interest_payment_frequency(interest_mode)
+    frequency_source = (
+        row.get("interest_payment_frequency")
+        if used_fallback and row.get("interest_payment_frequency") not in (None, "")
+        else interest_mode
+    )
+    if is_bullet_repayment(frequency_source):
+        # 与 bond_analytics.engine 的 bullet 口径对齐：到期一次还本付息的唯一现金流
+        # 落在到期日，不得按年付虚构中途票息（会把 Macaulay 拉向票息时点、低估久期）。
+        # 复用 core_finance 单笔现金流路径，Macaulay 恒等于剩余年限。
+        remaining_days = (maturity_date - report_date).days
+        if remaining_days <= 0:
+            return Decimal("0"), False
+        macaulay_duration, _convexity = compute_macaulay_duration_and_convexity(
+            coupon_rate=coupon_rate,
+            ytm=ytm,
+            years_to_maturity=Decimal(str(remaining_days)) / Decimal("365"),
+            single_cashflow_at_maturity=True,
+        )
+        return macaulay_duration, par_fallback_used
+    duration = estimate_duration(
         maturity_date,
         report_date,
-        coupon_rate=coupon_rate or Decimal("0"),
+        coupon_rate=coupon_rate,
         ytm=ytm,
         bond_code=str(row.get("instrument_code") or ""),
+        coupon_frequency=coupon_frequency_per_year(frequency_source),
+    )
+    return duration, par_fallback_used and maturity_date > report_date
+
+
+def _materialized_macaulay_duration(value: object) -> Decimal | None:
+    if value in (None, ""):
+        return None
+    try:
+        duration = _coerce_decimal(value)
+    except (ArithmeticError, TypeError, ValueError):
+        return None
+    if not duration.is_finite() or duration < Decimal("0"):
+        return None
+    return duration
+
+
+def _cashflow_projection_quality_disclosures(
+    rows: list[dict[str, object]],
+) -> _QualityDisclosures:
+    floating_rows: list[dict[str, object]] = []
+    frequency_fallback_rows: list[dict[str, object]] = []
+    bullet_value_date_fallback_rows: list[dict[str, object]] = []
+    par_duration_rows: list[dict[str, object]] = []
+    par_duration_market_value = Decimal("0")
+    for row in rows:
+        if (
+            _row_scope(row) == "asset"
+            and row.get("_par_duration_assumption_used") is True
+            and str(row.get("duration_quality_flag") or "").strip().lower()
+            not in ("maturity_unavailable", "no_remaining_term")
+            and _materialized_macaulay_duration(row.get("macaulay_duration")) is not None
+        ):
+            market_value = _coerce_decimal(
+                row.get("market_value", row.get("market_value_amount", row.get("market_value_native")))
+            )
+            if market_value.is_finite() and market_value > 0:
+                par_duration_rows.append(row)
+                par_duration_market_value += market_value
+        raw_mode = row.get("interest_mode")
+        frequency, used_fallback = resolve_interest_payment_frequency(raw_mode)
+        explicit_frequency = row.get("interest_payment_frequency")
+        if used_fallback and explicit_frequency not in (None, ""):
+            frequency, used_fallback = resolve_interest_payment_frequency(explicit_frequency)
+        if used_fallback:
+            frequency_fallback_rows.append(row)
+        if classify_interest_rate_style(row.get("interest_rate_style") or raw_mode) == "floating":
+            floating_rows.append(row)
+        if frequency == "bullet" and not _has_valid_date(
+            row.get("value_date"), before=row.get("maturity_date")
+        ):
+            bullet_value_date_fallback_rows.append(row)
+
+    floating_market_value = _quality_market_value(floating_rows)
+    frequency_fallback_market_value = _quality_market_value(frequency_fallback_rows)
+    bullet_fallback_market_value = _quality_market_value(bullet_value_date_fallback_rows)
+    warnings: list[str] = []
+    if floating_rows:
+        warnings.append(
+            f"{len(floating_rows)} floating-rate rows with market_value={floating_market_value} "
+            "use the current coupon rate as a frozen proxy for the full projection horizon; "
+            "reset rates are not modeled."
+        )
+    if frequency_fallback_rows:
+        warnings.append(
+            f"{len(frequency_fallback_rows)} rows with market_value="
+            f"{frequency_fallback_market_value} lack an explicit payment frequency; "
+            "annual coupon frequency is used as a proxy."
+        )
+    if bullet_value_date_fallback_rows:
+        warnings.append(
+            f"{len(bullet_value_date_fallback_rows)} explicit bullet rows with market_value="
+            f"{bullet_fallback_market_value} lack a valid value_date; a one-year interest proxy is used."
+        )
+    if par_duration_rows:
+        warnings.append(
+            f"{len(par_duration_rows)} asset rows with market_value="
+            f"{par_duration_market_value} used a par assumption (ytm=coupon_rate) "
+            "for Macaulay duration because observed ytm was missing or invalid."
+        )
+    return {
+        "floating_rate_proxy_count": len(floating_rows),
+        "floating_rate_proxy_market_value": floating_market_value,
+        "payment_frequency_fallback_count": len(frequency_fallback_rows),
+        "payment_frequency_fallback_market_value": frequency_fallback_market_value,
+        "bullet_value_date_fallback_count": len(bullet_value_date_fallback_rows),
+        "bullet_value_date_fallback_market_value": bullet_fallback_market_value,
+        "warnings": warnings,
+    }
+
+
+def _with_effective_payment_frequency(
+    rows: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    projected_rows: list[dict[str, object]] = []
+    for row in rows:
+        frequency, used_fallback = resolve_interest_payment_frequency(row.get("interest_mode"))
+        explicit_frequency = row.get("interest_payment_frequency")
+        if used_fallback and explicit_frequency not in (None, ""):
+            frequency, _explicit_fallback = resolve_interest_payment_frequency(explicit_frequency)
+        projected_rows.append({**row, "interest_mode": frequency})
+    return projected_rows
+
+
+def _quality_market_value(rows: list[dict[str, object]]) -> Decimal:
+    return sum(
+        (
+            _coerce_decimal(
+                row.get("market_value")
+                or row.get("market_value_amount")
+                or row.get("market_value_native")
+            )
+            for row in rows
+        ),
+        Decimal("0"),
     )
 
 
-def _normalize_rate(value: object) -> Decimal | None:
-    if value in (None, ""):
-        return None
-    dec = _coerce_decimal(value)
-    if abs(dec) > Decimal("1"):
-        return dec / Decimal("100")
-    return dec
+def _has_valid_date(value: object, *, before: object) -> bool:
+    try:
+        value_date = _coerce_date(value)
+        boundary_date = _coerce_date(before)
+    except (TypeError, ValueError):
+        return False
+    return value_date is not None and boundary_date is not None and value_date < boundary_date

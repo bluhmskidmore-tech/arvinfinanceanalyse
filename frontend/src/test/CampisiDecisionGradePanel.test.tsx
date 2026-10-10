@@ -10,6 +10,21 @@ const decisionGradePayload: CampisiDecisionGradePayload = {
   period_start: "2026-01-01",
   period_end: "2026-01-31",
   num_days: 30,
+  pnl_window: {
+    start: "2026-01-31",
+    end: "2026-01-31",
+    kind: "single_day",
+  },
+  curve_window: {
+    start: "2026-01-01",
+    end: "2026-01-31",
+    kind: "curve_displacement",
+  },
+  window_disclosure: {
+    level: "info",
+    message:
+      "口径说明：市场效应按 curve_window（2026-01-01→2026-01-31，30 天）整段曲线位移计算，而 formal PnL 仅取 pnl_window 单日（2026-01-31）；selection_proxy 含该窗口跨度影响，解读主动管理能力时需扣除。",
+  },
   summary: {
     formal_actual_pnl: 107,
     explained_pnl: 107,
@@ -134,6 +149,21 @@ const decisionGradePayload: CampisiDecisionGradePayload = {
 };
 
 describe("CampisiDecisionGradePanel", () => {
+  it("shows pending scope, unmatched gross amount, and unknown input without fabricating zero", () => {
+    render(<CampisiDecisionGradePanel data={{ ...decisionGradePayload, scope_disclosure: {
+      actual_scope: "matched_beginning_positions", scope_decision_status: "PENDING",
+      full_input_pnl: null, matched_input_pnl: 100, included_pnl: 100, unmatched_pnl: 0,
+      full_input_absolute_pnl: null, unmatched_absolute_pnl: 200000000,
+      input_row_count: 3, matched_row_count: 1, included_row_count: 1, unmatched_row_count: 2,
+      full_month_coverage: false, message: "仅核对已匹配期初持仓；范围待确认。",
+    } }} state={{ kind: "ok" }} onRetry={() => {}} />);
+    const scope = screen.getByTestId("campisi-decision-scope-disclosure");
+    expect(scope).toHaveTextContent("完整输入 —（3 行）");
+    expect(scope).toHaveTextContent("未匹配绝对金额 +2.00 亿");
+    expect(scope).toHaveTextContent("范围决定：PENDING");
+    expect(screen.getByTestId("campisi-decision-headline")).toHaveTextContent("已匹配期初组合");
+  });
+
   it("renders formal PnL, valuation OCI, and ability boundary separately", () => {
     render(
       <CampisiDecisionGradePanel
@@ -150,5 +180,62 @@ describe("CampisiDecisionGradePanel", () => {
     expect(screen.getByText("残差不算能力")).toBeInTheDocument();
     expect(screen.getByText("剩余/选券只作为代理指标")).toBeInTheDocument();
     expect(screen.queryByText("交易员能力")).not.toBeInTheDocument();
+    expect(screen.getByTestId("campisi-decision-window-context")).toHaveTextContent("single_day");
+    expect(screen.getByTestId("campisi-decision-window-context")).toHaveTextContent("curve_displacement");
+    expect(screen.getByTestId("campisi-decision-window-disclosure")).toHaveTextContent("selection_proxy");
+  });
+
+  it("renders warning window disclosure and EM_DASH when windows are missing", () => {
+    render(
+      <CampisiDecisionGradePanel
+        data={{
+          ...decisionGradePayload,
+          pnl_window: undefined,
+          curve_window: undefined,
+          window_disclosure: {
+            level: "warning",
+            message: "口径错配：selection_proxy 含窗口错配影响，不得解读为主动管理能力。",
+          },
+        }}
+        state={{ kind: "ok" }}
+        onRetry={() => {}}
+      />,
+    );
+
+    expect(screen.getByTestId("campisi-decision-window-context")).toHaveTextContent("—");
+    expect(screen.getByTestId("campisi-decision-window-disclosure")).toHaveTextContent("口径错配");
+  });
+
+  it("omits window disclosure callout when payload window_disclosure is null", () => {
+    render(
+      <CampisiDecisionGradePanel
+        data={{
+          ...decisionGradePayload,
+          window_disclosure: null,
+        }}
+        state={{ kind: "ok" }}
+        onRetry={() => {}}
+      />,
+    );
+
+    expect(screen.queryByTestId("campisi-decision-window-disclosure")).not.toBeInTheDocument();
+  });
+
+  it("renders unavailable residual ratio as a dash", () => {
+    render(
+      <CampisiDecisionGradePanel
+        data={{
+          ...decisionGradePayload,
+          summary: {
+            ...decisionGradePayload.summary,
+            residual_ratio: null,
+          },
+        }}
+        state={{ kind: "ok" }}
+        onRetry={() => {}}
+      />,
+    );
+
+    expect(screen.getByTestId("campisi-decision-formal-view")).toHaveTextContent("—");
   });
 });

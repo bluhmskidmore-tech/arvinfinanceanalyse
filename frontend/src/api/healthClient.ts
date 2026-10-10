@@ -1,4 +1,5 @@
 import type { HealthResponse, HealthStatusResponse } from "./contracts";
+import { requestPlainJson } from "./transport";
 
 type FetchLike = typeof fetch;
 
@@ -13,41 +14,17 @@ export type HealthClientMethods = {
   getHealthSummary: () => Promise<HealthStatusResponse>;
 };
 
-type Delay = () => Promise<void>;
-
-export function createDemoHealthClient(delay: Delay): HealthClientMethods {
-  return {
-    async getHealth() {
-      await delay();
-      return { status: "ok" };
-    },
-    async getHealthLive() {
-      await delay();
-      return { status: "ok" };
-    },
-    async getHealthSummary() {
-      await delay();
-      return { status: "ok" };
-    },
-  };
-}
-
-export const createMockHealthClient = createDemoHealthClient;
-
-async function requestHealthJson<T>(
+/**
+ * Health payloads are plain `{ status }` JSON (no ApiEnvelope), served via the
+ * shared transport: status-only error messages plus the default 60s timeout
+ * (previously a bare fetch that could hang forever).
+ */
+function requestHealthJson<T>(
   fetchImpl: FetchLike,
   baseUrl: string,
   path: string,
 ): Promise<T> {
-  const response = await fetchImpl(`${baseUrl}${path}`, {
-    headers: { Accept: "application/json" },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Request failed: ${path} (${response.status})`);
-  }
-
-  return (await response.json()) as T;
+  return requestPlainJson<T>(fetchImpl, baseUrl, path);
 }
 
 export function createRealHealthClient(

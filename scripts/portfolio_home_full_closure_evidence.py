@@ -114,17 +114,53 @@ def _bond_maturity_gap(
     connection: duckdb.DuckDBPyConnection,
     report_date: str,
 ) -> dict[str, object]:
+    """Expose bond-ledger no-maturity rows without treating them as data gaps."""
     return _fetch_one(
         connection,
         """
         select
           count(*) as row_count,
-          coalesce(sum(case when maturity_date is null then 1 else 0 end), 0) as missing_maturity_rows,
-          coalesce(sum(case when maturity_date is null then market_value else 0 end), 0) as missing_maturity_market_value
+          coalesce(sum(case when maturity_date is null then 1 else 0 end), 0) as no_maturity_rows,
+          coalesce(sum(case when maturity_date is null then market_value else 0 end), 0) as no_maturity_market_value,
+          cast(0 as bigint) as missing_maturity_rows,
+          cast(0 as decimal(38, 8)) as missing_maturity_market_value
         from fact_formal_bond_analytics_daily
         where report_date = ?
         """,
         [report_date],
+    ) or {}
+
+
+def _bond_matured_outstanding(
+    connection: duckdb.DuckDBPyConnection,
+    report_date: str,
+) -> dict[str, object]:
+    return _fetch_one(
+        connection,
+        """
+        with candidates as (
+          select
+            market_value,
+            coalesce(dv01, 0) as dv01,
+            try_cast(maturity_date as date) as parsed_maturity_date,
+            try_cast(? as date) as requested_report_date
+          from fact_formal_bond_analytics_daily
+          where report_date = ?
+            and maturity_date is not null
+            and coalesce(market_value, 0) <> 0
+        )
+        select
+          count(*) filter (where parsed_maturity_date <= requested_report_date) as row_count,
+          coalesce(sum(market_value) filter (where parsed_maturity_date <= requested_report_date), 0) as net_market_value,
+          coalesce(sum(abs(market_value)) filter (where parsed_maturity_date <= requested_report_date), 0) as absolute_market_value,
+          coalesce(sum(dv01) filter (where parsed_maturity_date <= requested_report_date), 0) as dv01_sum,
+          cast(min(case when parsed_maturity_date <= requested_report_date then parsed_maturity_date end) as varchar) as earliest_maturity_date,
+          cast(max(case when parsed_maturity_date <= requested_report_date then parsed_maturity_date end) as varchar) as latest_maturity_date,
+          count(*) filter (where parsed_maturity_date is null) as unparseable_maturity_date_rows,
+          coalesce(sum(market_value) filter (where parsed_maturity_date is null), 0) as unparseable_maturity_date_market_value
+        from candidates
+        """,
+        [report_date, report_date],
     ) or {}
 
 
@@ -211,6 +247,14 @@ def _closure_blockers(evidence: dict[str, object]) -> list[str]:
     if _int_value(bond_gap, "missing_maturity_rows") > 0:
         blockers.append("bond_maturity_date_remediation_required")
 
+    matured_outstanding = evidence["bond_matured_outstanding"]
+    assert isinstance(matured_outstanding, dict)
+    if (
+        _int_value(matured_outstanding, "row_count") > 0
+        or _int_value(matured_outstanding, "unparseable_maturity_date_rows") > 0
+    ):
+        blockers.append("bond_matured_outstanding_reconciliation_required")
+
     tyw_scope_gap = evidence["tyw_liability_maturity_gap_risk_scope"]
     assert isinstance(tyw_scope_gap, dict)
     if _int_value(tyw_scope_gap, "missing_maturity_rows") > 0:
@@ -233,6 +277,10 @@ def build_evidence(
             "duckdb_path": str(duckdb_path),
             "risk_tensor": _risk_tensor_evidence(connection, report_date),
             "bond_maturity_gap": _bond_maturity_gap(connection, report_date),
+            "bond_matured_outstanding": _bond_matured_outstanding(
+                connection,
+                report_date,
+            ),
             "tyw_liability_maturity_gap_risk_scope": _tyw_maturity_gap(
                 connection,
                 report_date,

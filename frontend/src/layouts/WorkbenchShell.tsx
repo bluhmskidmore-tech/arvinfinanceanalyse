@@ -1,9 +1,20 @@
-import { lazy, Suspense, useEffect, type MouseEvent, type ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { LightIcon } from "../components/LightIcon";
+import "../styles/workbenchNavigation.css";
+import "../styles/marketOverviewShell.css";
 import {
   findWorkbenchSectionByPath,
+  isAgentFrontendEnabled,
   pathMatchesWorkbenchSection,
   primaryWorkbenchNavigationGroups,
   resolveWorkbenchGroupKey,
@@ -12,16 +23,18 @@ import {
   type WorkbenchSection,
   visibleWorkbenchNavigation,
   workbenchNavigation,
-} from "../mocks/navigation";
+} from "../app/navigation";
 import { DataModeRibbon } from "../components/DataModeRibbon";
+import {
+  COCKPIT_SHELL_SECTION_KEYS,
+  DASHBOARD_COCKPIT_SECTION_KEYS,
+  INSTITUTIONAL_CONSOLE_SECTION_KEYS,
+  MODULE_HOME_SECTION_KEYS,
+  SECTION_SUBNAV_EXCLUDED_SECTION_KEYS,
+  TERMINAL_BAR_EXCLUDED_SECTION_KEYS,
+} from "./workbenchShellSections";
 
 const WorkbenchShellMarketTicker = lazy(() => import("./WorkbenchShellMarketTicker"));
-const institutionalConsoleShellSectionKeys = new Set([
-  "cross-asset",
-  "ledger-pnl",
-  "product-category-pnl",
-  "pnl-attribution",
-]);
 
 const unknownWorkbenchSection: WorkbenchSection = {
   key: "__unknown-route",
@@ -81,7 +94,7 @@ function sectionReadinessTone(
 const shellSupportEntries = [
   {
     key: "reports",
-    label: "报表中心",
+    label: "报表与数据",
     to: "/reports",
     icon: <LightIcon name="file-text" />,
   },
@@ -91,13 +104,14 @@ const shellSupportEntries = [
     to: "/platform-config",
     icon: <LightIcon name="settings" />,
   },
-  {
-    key: "help",
-    label: "帮助文档",
-    to: "/",
-    icon: <LightIcon name="question-circle" />,
-  },
 ] as const;
+
+const unavailableShellSupportEntry = {
+  key: "help",
+  label: "帮助文档",
+  availabilityLabel: "未接入",
+  icon: <LightIcon name="question-circle" />,
+} as const;
 
 type PortfolioStage = {
   title: string;
@@ -109,12 +123,12 @@ const portfolioFlow = [
   {
     key: "balance-analysis",
     title: "先看资产负债",
-    detail: "用正式余额与 basis 分解确认今天的组合状态和错配位置。",
+    detail: "按业务口径核对正式余额，确认组合状态和错配位置。",
   },
   {
     key: "bank-ledger-dashboard",
     title: "再看银行台账",
-    detail: "用 as_of_date 台账快照核对资产、发行负债、净敞口和明细 trace。",
+    detail: "按数据日期核对台账资产、发行负债、净敞口与明细。",
   },
   {
     key: "ledger-pnl",
@@ -155,22 +169,160 @@ function findSectionByKey(sections: WorkbenchSection[], key: string) {
   return sections.find((section) => section.key === key);
 }
 
+/** 组内子导航单行内联上限；其余页面收进「更多」下拉（DESIGN.md §6 溯源分层 + 降噪 PRD FR-3）。 */
+const SUBNAV_MAX_INLINE = 7;
+
 export function WorkbenchShell() {
   const location = useLocation();
+  const [governanceDetailOpen, setGovernanceDetailOpen] = useState(false);
+  const [subnavMoreOpen, setSubnavMoreOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const governanceNoticeRef = useRef<HTMLElement | null>(null);
+  const governanceToggleRef = useRef<HTMLButtonElement | null>(null);
+  const subnavMoreRef = useRef<HTMLDivElement | null>(null);
+  const subnavMoreToggleRef = useRef<HTMLButtonElement | null>(null);
+  const mobileNavDrawerRef = useRef<HTMLElement | null>(null);
+  const mobileNavToggleRef = useRef<HTMLButtonElement | null>(null);
+  const mobileNavCloseRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    setGovernanceDetailOpen(false);
+    setSubnavMoreOpen(false);
+    setMobileNavOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!subnavMoreOpen) {
+      return undefined;
+    }
+
+    function onPointerDown(event: PointerEvent) {
+      if (
+        subnavMoreRef.current &&
+        !subnavMoreRef.current.contains(event.target as Node)
+      ) {
+        setSubnavMoreOpen(false);
+      }
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSubnavMoreOpen(false);
+        subnavMoreToggleRef.current?.focus();
+      }
+    }
+
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [subnavMoreOpen]);
+
+  useEffect(() => {
+    if (!governanceDetailOpen) return undefined;
+
+    function onPointerDown(event: PointerEvent) {
+      if (!governanceNoticeRef.current?.contains(event.target as Node)) {
+        setGovernanceDetailOpen(false);
+      }
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setGovernanceDetailOpen(false);
+        governanceToggleRef.current?.focus();
+      }
+    }
+
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [governanceDetailOpen]);
+
+  useEffect(() => {
+    if (!mobileNavOpen) {
+      return undefined;
+    }
+
+    const previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    mobileNavCloseRef.current?.focus();
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMobileNavOpen(false);
+        mobileNavToggleRef.current?.focus();
+        return;
+      }
+
+      if (event.key !== "Tab") {
+        return;
+      }
+
+      const focusableElements = Array.from(
+        mobileNavDrawerRef.current?.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      );
+      const firstFocusable = focusableElements[0];
+      const lastFocusable = focusableElements[focusableElements.length - 1];
+
+      if (!firstFocusable || !lastFocusable) {
+        return;
+      }
+
+      if (event.shiftKey && document.activeElement === firstFocusable) {
+        event.preventDefault();
+        lastFocusable.focus();
+      } else if (!event.shiftKey && document.activeElement === lastFocusable) {
+        event.preventDefault();
+        firstFocusable.focus();
+      }
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [mobileNavOpen]);
+
+  const isAgentLabRoute = location.pathname === "/agent-lab";
   const pathnameResolved = resolveWorkbenchPathAlias(location.pathname);
   const searchParams = new URLSearchParams(location.search);
-  const matchedSection = findWorkbenchSectionByPath(location.pathname, workbenchNavigation);
+  const isPublicationCaptureMode = searchParams.get("publication_capture") === "1";
+  const agentFrontendEnabled = isAgentFrontendEnabled();
+  const matchedSectionCandidate = findWorkbenchSectionByPath(
+    location.pathname,
+    workbenchNavigation,
+  );
+  const matchedSection =
+    matchedSectionCandidate?.key === "agent" && !agentFrontendEnabled
+      ? null
+      : matchedSectionCandidate;
   const currentSection = matchedSection ?? unknownWorkbenchSection;
   const currentRouteKnown = Boolean(matchedSection);
+  const showReadinessBanner =
+    currentSection.readiness !== "live" &&
+    !isAgentLabRoute &&
+    currentSection.key !== "agent";
   const isStockAnalysisShell = currentSection.key === "stock-analysis";
   const agentWorkbenchSection = visibleWorkbenchNavigation.find((section) => section.key === "agent");
   const agentWorkbenchActive = agentWorkbenchSection
     ? pathMatchesWorkbenchSection(agentWorkbenchSection.path, pathnameResolved)
     : false;
-  const agentNavSectionLabel = isStockAnalysisShell ? "复核" : "Agent";
-  const agentNavLabel = isStockAnalysisShell ? "复核助手" : agentWorkbenchSection?.label;
-  const agentNavBadgeLabel = isStockAnalysisShell ? "可用" : agentWorkbenchSection?.readinessLabel;
-  const agentNavHint = isStockAnalysisShell ? "跨页证据" : "Hermes Agent";
+  const agentNavSectionLabel = "对话";
+  const agentNavLabel = agentWorkbenchSection?.label;
+  const agentNavBadgeLabel = agentWorkbenchSection?.readinessLabel;
+  const agentNavHint = "直接提问";
   const currentGroup = currentRouteKnown
     ? (primaryWorkbenchNavigationGroups.find(
         (group) => group.key === resolveWorkbenchGroupKey(currentSection),
@@ -183,17 +335,29 @@ export function WorkbenchShell() {
     : [];
   const currentGroupSections =
     currentGroup?.key === "market" ? currentGroupVisibleSections : (currentGroup?.sections ?? []);
-  const isModuleHomePage = [
-    "portfolio-home",
-    "market-overview",
-    "risk-overview",
-    "performance-home",
-    "reports-center",
-  ].includes(currentSection.key);
+  /** 固定前七项，避免切换路由后页签位置变化；当前页在溢出区时由「更多」承接高亮。 */
+  const inlineSubnavSections = currentGroupSections.slice(0, SUBNAV_MAX_INLINE);
+  const inlineSubnavKeys = new Set(inlineSubnavSections.map((section) => section.key));
+  const overflowSubnavSections = currentGroupSections.filter(
+    (section) => !inlineSubnavKeys.has(section.key),
+  );
+  const activeSubnavInOverflow = overflowSubnavSections.some((section) =>
+    pathMatchesWorkbenchSection(section.path, pathnameResolved),
+  );
+  const plannedWorkbenchNavigation = secondaryWorkbenchNavigation.filter(
+    (section) => section.key !== "agent",
+  );
+  const isModuleHomePage = MODULE_HOME_SECTION_KEYS.includes(currentSection.key);
+  const isPortfolioHomeShell =
+    currentSection.key === "portfolio-home" &&
+    pathnameResolved.replace(/\/+$/, "") === currentSection.path;
   const isPortfolioGroup = currentGroup?.key === "portfolio";
-  const isDashboardCockpitShell =
-    currentSection.key === "dashboard" || currentSection.key === "portfolio-home";
-  const useInstitutionalConsoleShell = institutionalConsoleShellSectionKeys.has(currentSection.key);
+  const isDashboardCockpitShell = DASHBOARD_COCKPIT_SECTION_KEYS.includes(
+    currentSection.key,
+  );
+  const useInstitutionalConsoleShell = INSTITUTIONAL_CONSOLE_SECTION_KEYS.includes(
+    currentSection.key,
+  );
   useInstitutionalConsoleCss(useInstitutionalConsoleShell);
   useWorkbenchChromeCss(currentSection.key !== "dashboard");
   const isBondAnalysisMinimalShell = currentSection.key === "bond-analysis";
@@ -202,39 +366,43 @@ export function WorkbenchShell() {
   const isPnlAttributionShell = currentSection.key === "pnl-attribution";
   /** 资产负债页以正式内容为主：壳层只保留页面顶栏，不再重复大号标题与市场条。 */
   const isBalanceAnalysisCompactChrome = currentSection.key === "balance-analysis";
-  const useCockpitShellFrame =
-    isDashboardCockpitShell ||
-    isBondAnalysisMinimalShell ||
-    isBalanceAnalysisCompactChrome ||
-    isProductCategoryPnlShell ||
-    isModuleHomePage;
-  const showShellTerminalBar =
-    !isDashboardCockpitShell &&
-    !isBondAnalysisMinimalShell &&
-    !isBalanceAnalysisCompactChrome &&
-    !isModuleHomePage;
-  const showShellMarketTicker = showShellTerminalBar && !isDashboardCockpitShell;
+  const isStockAnalysisMinimalShell = currentSection.key === "stock-analysis";
+  const useCockpitShellFrame = COCKPIT_SHELL_SECTION_KEYS.includes(currentSection.key);
+  const showShellTerminalBar = pathnameResolved !== "/market-overview" && !TERMINAL_BAR_EXCLUDED_SECTION_KEYS.includes(
+    currentSection.key,
+  );
+  /* 2026-09-02 铬件统一：凡渲染终端条的路由都带行情带（组合首页此前单独抑制，切页时行情带忽隐忽现）。 */
+  const showShellMarketTicker = showShellTerminalBar;
   const isBalanceMovementAnalysisCompactChrome =
     currentSection.key === "balance-movement-analysis";
-  /** 负债结构分析页以页面正文为主，不显示组合导读 Hero / Suggested Flow 占位。 */
+  /** 负债结构分析页以页面正文为主，不显示组合导读 Hero / 阅读路径占位。 */
   const isLiabilityAnalyticsCompactChrome = currentSection.key === "liability-analytics";
   /** 与 bond-analysis 类似：去掉 main 外圈大卡片感，让页面自行铺色。跨资产仍保留组内子导航（市场数据 / 跨资产 / 新闻）。 */
   const isCrossAssetImmersiveMain = currentSection.key === "cross-asset";
+  const isMarketDataTerminalMain = currentSection.key === "market-data";
   const isPortfolioPageOwnedChrome =
     isBalanceAnalysisCompactChrome ||
     isBalanceMovementAnalysisCompactChrome ||
     isLiabilityAnalyticsCompactChrome ||
     isProductCategoryPnlShell;
   const isMinimalMainChrome =
+    currentSection.key === "agent" ||
+    isAgentLabRoute ||
     isDashboardCockpitShell ||
     isBondAnalysisMinimalShell ||
+    isStockAnalysisMinimalShell ||
     isCrossAssetImmersiveMain ||
+    isMarketDataTerminalMain ||
     isPortfolioPageOwnedChrome ||
     isModuleHomePage;
   const showFullWorkspaceGuidance =
+    !isAgentLabRoute &&
+    currentSection.key !== "agent" &&
     currentSection.readiness !== "live" &&
     !isBondAnalysisMinimalShell &&
+    !isStockAnalysisMinimalShell &&
     !isCrossAssetImmersiveMain &&
+    !isMarketDataTerminalMain &&
     !isBalanceMovementAnalysisCompactChrome &&
     !isLiabilityAnalyticsCompactChrome &&
     (isPortfolioGroup || currentSection.key !== "dashboard");
@@ -243,12 +411,10 @@ export function WorkbenchShell() {
     isPortfolioGroup &&
     currentSection.readiness !== "live" &&
     !isBondAnalysisMinimalShell &&
+    !isStockAnalysisMinimalShell &&
     !isPortfolioPageOwnedChrome;
   const currentGroupSectionCount = currentGroupSections.length;
   const explicitReportDate = searchParams.get("report_date")?.trim() ?? "";
-  const shellReportDate =
-    explicitReportDate ||
-    "默认路由";
   const portfolioLeadSections = portfolioFlow
     .map((item) => ({
       ...item,
@@ -280,6 +446,71 @@ export function WorkbenchShell() {
     mainContent.focus();
   }
 
+  function closeMobileNavigationAndRestoreFocus() {
+    setMobileNavOpen(false);
+    window.setTimeout(() => mobileNavToggleRef.current?.focus(), 0);
+  }
+
+  function onRailClick(event: MouseEvent<HTMLElement>) {
+    if (
+      mobileNavOpen
+      && event.target instanceof Element
+      && event.target.closest("a")
+    ) {
+      closeMobileNavigationAndRestoreFocus();
+    }
+  }
+
+  const governanceNotice = currentSection.governanceStatus === "temporary-exception" ? (
+    <section
+      ref={governanceNoticeRef}
+      data-testid="workbench-governance-pill"
+      className="workbench-governance-pill"
+    >
+      <button
+        ref={governanceToggleRef}
+        type="button"
+        className="workbench-governance-pill__toggle"
+        aria-expanded={governanceDetailOpen}
+        aria-controls="workbench-governance-pill-detail"
+        onClick={() => {
+          setSubnavMoreOpen(false);
+          setGovernanceDetailOpen((open) => !open);
+        }}
+      >
+        <span className="workbench-governance-pill__dot" aria-hidden="true" />
+        <span>使用说明</span>
+        <span aria-hidden="true">{governanceDetailOpen ? "▴" : "▾"}</span>
+      </button>
+      {governanceDetailOpen ? (
+        <div
+          id="workbench-governance-pill-detail"
+          data-testid="workbench-governance-detail"
+          className="workbench-governance-pill__detail"
+        >
+          <div className="workbench-governance-pill__detail-title">本页使用范围</div>
+          <p className="workbench-governance-pill__detail-body">
+            {currentSection.usageNote ?? "请以本页标注的数据日期、口径和使用范围为准。"}
+          </p>
+          <details data-testid="workbench-governance-diagnostics">
+            <summary>技术诊断</summary>
+            {currentSection.governanceBanner ? (
+              <p className="workbench-governance-pill__detail-body">
+                {currentSection.governanceBanner}
+              </p>
+            ) : null}
+            <p className="workbench-governance-pill__detail-body">
+              {currentSection.readinessNote}
+            </p>
+            <p className="workbench-governance-pill__detail-hint">
+              第一阶段仅在页面契约收口期间保留该路由可见；不要把它视为已完全治理的页面。
+            </p>
+          </details>
+        </div>
+      ) : null}
+    </section>
+  ) : null;
+
   return (
     <>
     <DataModeRibbon variant={isDashboardCockpitShell ? "cockpit" : "default"} />
@@ -295,19 +526,61 @@ export function WorkbenchShell() {
         useInstitutionalConsoleShell ? " workbench-shell-grid--institutional-console" : ""
       }${
         useCockpitShellFrame ? " workbench-shell-grid--cockpit" : " workbench-shell-grid--desktop-aligned"
+      }${isPortfolioHomeShell ? " workbench-shell-grid--portfolio-home" : ""
       }${isBondAnalysisMinimalShell ? " workbench-shell-grid--bond-analysis" : ""}${
         isStockAnalysisShell ? " workbench-shell-grid--stock-analysis" : ""
       }${isLedgerPnlShell ? " workbench-shell-grid--ledger-pnl" : ""
       }${isProductCategoryPnlShell ? " workbench-shell-grid--product-category-pnl" : ""
       }${isPnlAttributionShell ? " workbench-shell-grid--pnl-attribution" : ""
       }${isCrossAssetImmersiveMain ? " workbench-shell-grid--cross-asset" : ""
+      }${isBalanceMovementAnalysisCompactChrome ? " workbench-shell-grid--balance-movement" : ""
+      }${pathnameResolved === "/market-overview" ? " workbench-shell-grid--market-overview" : ""
+      }${isPublicationCaptureMode ? " workbench-shell-root--publication-capture" : ""
       }`}
     >
+      <div className="workbench-shell-mobile-nav-bar">
+        <button
+          ref={mobileNavToggleRef}
+          type="button"
+          className="workbench-shell-mobile-nav-toggle"
+          aria-controls="workbench-primary-navigation"
+          aria-expanded={mobileNavOpen}
+          aria-label={mobileNavOpen ? "关闭主导航" : "打开主导航"}
+          onClick={() => {
+            if (mobileNavOpen) {
+              closeMobileNavigationAndRestoreFocus();
+            } else {
+              setMobileNavOpen(true);
+            }
+          }}
+        >
+          <LightIcon name="unordered-list" />
+        </button>
+        <div className="workbench-shell-mobile-nav-context">
+          <span>{currentGroup?.label ?? "MOSS 工作台"}</span>
+          <strong>{currentSection.label}</strong>
+        </div>
+      </div>
+
       <aside
+        ref={mobileNavDrawerRef}
+        id="workbench-primary-navigation"
+        aria-label="全局工作台导航"
+        data-mobile-nav-open={mobileNavOpen ? "true" : "false"}
         className={`workbench-shell-aside workbench-shell-rail${
           isMinimalMainChrome ? " workbench-shell-rail--minimal" : ""
         }`}
+        onClick={onRailClick}
       >
+        <button
+          ref={mobileNavCloseRef}
+          type="button"
+          className="workbench-shell-mobile-nav-close"
+          aria-label="关闭主导航"
+          onClick={closeMobileNavigationAndRestoreFocus}
+        >
+          <span aria-hidden="true">×</span>
+        </button>
         <div className="workbench-shell-rail-brand-wrap">
           <div className="workbench-shell-rail-brand-row">
             <div className="workbench-shell-rail-mark">
@@ -331,24 +604,38 @@ export function WorkbenchShell() {
             data-testid="workbench-group-nav"
             className="workbench-group-nav-shell"
           >
-            {primaryWorkbenchNavigationGroups.map((group) => {
-              const active = currentGroup ? group.key === currentGroup.key : false;
+            {primaryWorkbenchNavigationGroups.map((group) => ({
+                  key: group.key,
+                  label: group.label,
+                  icon: group.icon,
+                  defaultPath: group.defaultPath,
+                  // agent（MOSS Chat）在专属「对话」导航区单独承接高亮，
+                  // 不再点亮其归属的工作台分组，避免 /agent 双高亮。
+                  active:
+                    currentGroup && currentSection.key !== "agent"
+                      ? group.key === currentGroup.key
+                      : false,
+                  countLabel: "首页",
+                })).map((item) => {
+              const active = item.active;
 
               return (
                 <NavLink
-                  key={group.key}
-                  to={group.defaultPath}
+                  key={item.key}
+                  to={item.defaultPath}
+                  aria-label={item.label}
+                  title={item.label}
                   className="workbench-shell-group-link"
                   data-active={active ? "true" : "false"}
                 >
                   <span className="workbench-shell-group-icon">
-                    {iconMap[group.icon]}
+                    {iconMap[item.icon]}
                   </span>
                   <span className="workbench-shell-group-label">
-                    {group.label}
+                    {item.label}
                   </span>
                   <span className="workbench-shell-group-count">
-                    {String(group.sections.length).padStart(2, "0")}
+                    {item.countLabel}
                   </span>
                 </NavLink>
               );
@@ -390,14 +677,14 @@ export function WorkbenchShell() {
           </section>
         ) : null}
 
-        {!isBondAnalysisMinimalShell && secondaryWorkbenchNavigation.length > 0 ? (
+        {plannedWorkbenchNavigation.length > 0 ? (
           <section
             className="workbench-shell-rail-section workbench-shell-rail-section--gap-6"
           >
             <span className="workbench-shell-section-label workbench-shell-section-label--rail">
               规划入口
             </span>
-            {secondaryWorkbenchNavigation.map((item) => {
+            {plannedWorkbenchNavigation.map((item) => {
               const active = pathMatchesWorkbenchSection(item.path, pathnameResolved);
 
               return (
@@ -431,7 +718,7 @@ export function WorkbenchShell() {
             支持入口
           </span>
           {shellSupportEntries.map((item) => {
-            const active = item.to !== "/" && pathnameResolved === item.to;
+            const active = pathnameResolved === item.to;
 
             return (
               <NavLink
@@ -445,8 +732,32 @@ export function WorkbenchShell() {
               </NavLink>
             );
           })}
+          <div
+            className="workbench-shell-support-unavailable"
+            aria-disabled="true"
+            title="帮助文档尚未接入，当前不会跳转"
+          >
+            <span className="workbench-shell-support-icon">
+              {unavailableShellSupportEntry.icon}
+            </span>
+            <span className="workbench-shell-support-label">
+              {unavailableShellSupportEntry.label}
+            </span>
+            <span className="workbench-shell-support-availability">
+              {unavailableShellSupportEntry.availabilityLabel}
+            </span>
+          </div>
         </section>
       </aside>
+
+      <button
+        type="button"
+        className="workbench-shell-mobile-nav-backdrop"
+        aria-label="关闭主导航"
+        hidden={!mobileNavOpen}
+        tabIndex={-1}
+        onClick={closeMobileNavigationAndRestoreFocus}
+      />
 
       <div className="workbench-main-column">
         {showShellTerminalBar ? (
@@ -459,24 +770,35 @@ export function WorkbenchShell() {
               data-testid="workbench-page-context"
               className="workbench-page-context-shell"
             >
-              <div className="workbench-page-title-display">
-                {currentSection.label}
+              {/*
+               * 终端条不再重复页面 h1（每个 live 路由都自带页标题行），改为「组 › 页」面包屑：
+               * 2026-09-02 铬件统一后 12 个原本抑制终端条的页面若再叠一个 30px 大标题，
+               * 会与页头 h1 在 100px 内出现两次同名标题。
+               */}
+              <div className="workbench-page-title-display" data-variant="crumb">
+                {currentGroup && currentGroup.label !== currentSection.label ? (
+                  <>
+                    <span className="workbench-page-crumb-group">{currentGroup.label}</span>
+                    <span className="workbench-page-crumb-sep" aria-hidden="true">
+                      ›
+                    </span>
+                  </>
+                ) : null}
+                <span className="workbench-page-crumb-current">{currentSection.label}</span>
               </div>
-              <span className="workbench-shell-report-chip">
-                {"\u62a5\u544a\u65e5"} {shellReportDate}
-              </span>
+              {explicitReportDate ? (
+                <span className="workbench-shell-report-chip">
+                  {"\u62a5\u544a\u65e5"} {explicitReportDate}
+                </span>
+              ) : null}
             </section>
 
             <section
               data-testid="workbench-operator-zone"
               className="workbench-operator-zone-shell"
             >
-              <span className="workbench-operator-pill-quiet">
-                <LightIcon name="user" />
-                <span>{"\u7ba1\u7406\u89c6\u89d2"}</span>
-              </span>
+              {governanceNotice}
               {shellSupportEntries
-                .filter((item) => item.key !== "help")
                 .map((item) => {
                   const active = pathnameResolved === item.to;
 
@@ -496,7 +818,21 @@ export function WorkbenchShell() {
           </div>
 
           {showShellMarketTicker ? (
-            <Suspense fallback={null}>
+            <Suspense
+              fallback={
+                // data-testid 必须与真实行情带一致：workbenchShell.css 里
+                // `[data-testid="workbench-market-ticker"]` 的 order/flex-basis
+                // 几何规则按该属性选择器匹配，占位用不同 testid 会导致占位期
+                // order 退回默认值 0（插到 page-context 前面），行情带 chunk
+                // 到达后再跳回 order:2，引发比“只是高度变化”更大的整行重排。
+                <section
+                  className="workbench-market-ticker-shell"
+                  aria-hidden="true"
+                  data-testid="workbench-market-ticker"
+                  data-shell-market-ticker-placeholder="true"
+                />
+              }
+            >
               <WorkbenchShellMarketTicker />
             </Suspense>
           ) : null}
@@ -518,7 +854,7 @@ export function WorkbenchShell() {
                 </span>
                 <p className="portfolio-workbench-light-hint__copy">
                   <strong className="portfolio-workbench-light-hint__strong">先以正式余额下结论</strong>
-                  ，再下钻损益、仓位与归因；占位模块不混入首屏判断。
+                  ，再查看损益、持仓与归因，结合各页使用范围复核。
                 </p>
                 <nav className="portfolio-workbench-light-hint__nav">
                   <span className="portfolio-workbench-light-hint__nav-label">后续：</span>
@@ -555,7 +891,7 @@ export function WorkbenchShell() {
                       组合状态先看错配，再看损益，最后定位仓位与归因
                     </div>
                     <div className="portfolio-workbench-lead__description">
-                      当前工作台聚合 {currentGroup?.label ?? ""} 的核心页面。首屏不再平铺全部入口，而是先用正式链路做判断，再进入结构、仓位和归因页面解释原因，避免把占位页或分析口径结果误读成正式结论。
+                      当前工作台汇总 {currentGroup?.label ?? ""} 信息。先查看资产负债和损益，再按需要查看结构、持仓与归因；各项结果的适用范围以页面说明为准。
                     </div>
                   </div>
 
@@ -574,7 +910,7 @@ export function WorkbenchShell() {
                       {
                         label: "阅读原则",
                         value: "先正式后解释",
-                        detail: "占位模块不混入首屏判断",
+                        detail: "先核对结果，再查看原因解释",
                       },
                     ].map((item) => (
                       <div
@@ -604,7 +940,7 @@ export function WorkbenchShell() {
                 >
                   <div className="portfolio-workbench-flow__header">
                     <span className="portfolio-workbench-flow__eyebrow">
-                      Suggested Flow
+                      阅读路径
                     </span>
                     <div className="portfolio-workbench-flow__title">
                       先用正式结果做结论，再下钻解释原因
@@ -638,7 +974,7 @@ export function WorkbenchShell() {
                             {item.detail}
                           </div>
                           <div className="portfolio-workbench-flow__meta">
-                            {item.section.label} · {item.section.readinessNote}
+                            {item.section.label} · {item.section.usageNote ?? "请查看页面标注的数据日期和使用范围。"}
                           </div>
                         </NavLink>
                       );
@@ -653,7 +989,7 @@ export function WorkbenchShell() {
                     一期状态
                   </span>
                   <div className="workbench-shell-status-summary__title">
-                    当前只突出可验证的真实读链路
+                    从当前可用的分析页面开始
                   </div>
                   <div className="workbench-shell-status-summary__description">
                     当前工作台：{currentGroup?.label ?? ""}。页面切换收进组内导航，避免在壳层堆满入口。
@@ -668,7 +1004,7 @@ export function WorkbenchShell() {
                     {currentSection.label} · {currentSection.readinessLabel}
                   </span>
                   <span className="workbench-shell-status-meta__note">
-                    {currentSection.readinessNote}
+                    {currentSection.usageNote ?? "请查看页面标注的数据日期和使用范围。"}
                   </span>
                 </div>
               </>
@@ -738,26 +1074,18 @@ export function WorkbenchShell() {
             </section>
           ) : null}
 
-          {!isDashboardCockpitShell &&
-          !isBondAnalysisMinimalShell &&
-          !isBalanceAnalysisCompactChrome &&
-          !isModuleHomePage &&
+          {!isAgentLabRoute &&
+          !SECTION_SUBNAV_EXCLUDED_SECTION_KEYS.includes(currentSection.key) &&
           currentGroup ? (
             <section
               data-testid="workbench-section-subnav"
               className="workbench-section-subnav"
             >
-              <div className="workbench-section-subnav__header">
-                <span className="workbench-section-subnav__eyebrow">
-                  {isPortfolioGroup ? "全部已开放页面" : "当前工作台页面"}
-                </span>
-                <div className="workbench-section-subnav__title">
-                  {currentGroup.label}
-                </div>
-              </div>
-
-              <div className="workbench-section-subnav__links">
-                {currentGroupSections.map((section) => {
+              <nav
+                aria-label={`${currentGroup.label}页面`}
+                className="workbench-section-subnav__links"
+              >
+                {inlineSubnavSections.map((section) => {
                   const active = pathMatchesWorkbenchSection(section.path, pathnameResolved);
 
                   return (
@@ -772,11 +1100,66 @@ export function WorkbenchShell() {
                     </NavLink>
                   );
                 })}
-              </div>
+              </nav>
+
+              {overflowSubnavSections.length > 0 ? (
+                <div className="workbench-section-subnav__more" ref={subnavMoreRef}>
+                  <button
+                    ref={subnavMoreToggleRef}
+                    type="button"
+                    className="workbench-section-subnav__more-toggle"
+                    aria-expanded={subnavMoreOpen}
+                    aria-controls="workbench-section-subnav-more-menu"
+                    aria-label={
+                      activeSubnavInOverflow
+                        ? `更多工作台页面，当前页 ${currentSection.label}`
+                        : "更多工作台页面"
+                    }
+                    data-active={activeSubnavInOverflow ? "true" : "false"}
+                    onClick={() => {
+                      setGovernanceDetailOpen(false);
+                      setSubnavMoreOpen((open) => !open);
+                    }}
+                  >
+                    <span>更多</span>
+                    <span aria-hidden="true">{subnavMoreOpen ? "▴" : "▾"}</span>
+                  </button>
+                  {subnavMoreOpen ? (
+                    <nav
+                      id="workbench-section-subnav-more-menu"
+                      data-testid="workbench-section-subnav-more-menu"
+                      aria-label="更多工作台页面"
+                      className="workbench-section-subnav__more-menu"
+                    >
+                      {overflowSubnavSections.map((section) => {
+                        const active = pathMatchesWorkbenchSection(
+                          section.path,
+                          pathnameResolved,
+                        );
+
+                        return (
+                          <NavLink
+                            key={section.key}
+                            to={section.path}
+                            className="workbench-section-subnav__more-link"
+                            data-active={active ? "true" : "false"}
+                            onClick={() => setSubnavMoreOpen(false)}
+                          >
+                            <span className="workbench-section-subnav__icon">
+                              {iconMap[section.icon]}
+                            </span>
+                            <span>{section.label}</span>
+                          </NavLink>
+                        );
+                      })}
+                    </nav>
+                  ) : null}
+                </div>
+              ) : null}
             </section>
           ) : null}
 
-          {currentSection.readiness !== "live" ? (
+          {showReadinessBanner ? (
             <section
               data-testid="workbench-readiness-banner"
               className="workbench-notice"
@@ -784,30 +1167,31 @@ export function WorkbenchShell() {
             >
               <div className="workbench-notice__title">
                 {currentSection.readiness === "placeholder"
-                  ? "当前页面仍是占位壳层"
-                  : "当前页面尚未物化真实数据链路"}
+                  ? "该功能暂未开放"
+                  : "该功能暂不可用"}
               </div>
-              <div className="workbench-notice__body">{currentSection.readinessNote}</div>
+              <div className="workbench-notice__body">
+                {currentSection.usageNote ?? "请从工作台选择其他可用页面。"}
+              </div>
               <div className="workbench-notice__hint">
-                如需先查看可验证的数据页面，请优先使用当前工作台中的已开放子页面。
+                可通过工作台导航继续查看其他分析。
               </div>
+              <details>
+                <summary>技术诊断</summary>
+                <p>{currentSection.readinessNote}</p>
+              </details>
             </section>
           ) : null}
 
-          {currentSection.governanceStatus === "temporary-exception" ? (
-            <section
-              data-testid="workbench-governance-banner"
-              className="workbench-notice"
-              data-notice-tone="governance"
+          {!showShellTerminalBar ? governanceNotice : null}
+
+          {currentSection.usageRestriction ? (
+            <p
+              data-testid="workbench-usage-restriction"
+              className="workbench-governance-pill__detail-body"
             >
-              <div className="workbench-notice__title">临时例外</div>
-              <div className="workbench-notice__body">
-                {currentSection.governanceBanner ?? currentSection.readinessNote}
-              </div>
-              <div className="workbench-notice__hint">
-                第一阶段仅在页面契约收口期间保留该路由可见；不要把它视为已完全治理的页面。
-              </div>
-            </section>
+              {currentSection.usageRestriction}
+            </p>
           ) : null}
 
           <Outlet />

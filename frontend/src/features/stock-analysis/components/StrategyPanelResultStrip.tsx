@@ -10,22 +10,23 @@ type StrategyPanelResultStripProps = {
 };
 
 function valueToneClass(valueTone?: StockStrategyPanelMiniStatValueTone): string {
-  if (valueTone === "up") return "stock-analysis-page__panel-kpi-tile--up";
-  if (valueTone === "down") return "stock-analysis-page__panel-kpi-tile--down";
-  if (valueTone === "warning") return "stock-analysis-page__panel-kpi-tile--warning";
-  if (valueTone === "emphasis") return "stock-analysis-page__panel-kpi-tile--emphasis";
-  return "";
+  if (valueTone === "up") return "text-success bg-success/10 border-success/20";
+  if (valueTone === "down") return "text-danger bg-danger/10 border-danger/20";
+  if (valueTone === "warning") return "text-warning bg-warning/10 border-warning/20";
+  if (valueTone === "emphasis") return "text-primary bg-primary/10 border-primary/20";
+  return "text-default-700 bg-default-100/50 border-default-200";
 }
 
 function legacyToneClass(tone?: StockClosedLoopTone): string {
-  if (tone === "positive") return "stock-analysis-page__panel-kpi-tile--emphasis";
-  if (tone === "negative") return "stock-analysis-page__panel-kpi-tile--down";
-  if (tone === "warning") return "stock-analysis-page__panel-kpi-tile--warning";
-  return "";
+  if (tone === "positive") return "text-primary bg-primary/10 border-primary/20";
+  if (tone === "negative") return "text-danger bg-danger/10 border-danger/20";
+  if (tone === "warning") return "text-warning bg-warning/10 border-warning/20";
+  return "text-default-700 bg-default-100/50 border-default-200";
 }
 
 function tileClass(stat: StockStrategyPanelResultSummary["stats"][number]): string {
-  return `stock-analysis-page__panel-kpi-tile ${valueToneClass(stat.valueTone) || legacyToneClass(stat.tone)}`.trim();
+  const tone = valueToneClass(stat.valueTone) || legacyToneClass(stat.tone);
+  return `flex flex-col p-2 rounded-lg border ${tone}`;
 }
 
 type StrategyPanelKpiGridProps = {
@@ -47,7 +48,7 @@ export function StrategyPanelKpiGrid({
   }
   return (
     <div
-      className={`stock-analysis-page__panel-kpi-grid${className ? ` ${className}` : ""}`}
+      className={`grid grid-cols-2 gap-3 ${className ?? ""}`}
       aria-label="执行结果摘要"
       data-testid={testId}
     >
@@ -57,8 +58,8 @@ export function StrategyPanelKpiGrid({
           className={tileClass(stat)}
           data-testid={testId ? `${testId}-stat-${stat.key}` : undefined}
         >
-          <span className="stock-analysis-page__panel-kpi-label">{stat.label}</span>
-          <strong className="stock-analysis-page__panel-kpi-value stock-analysis-page__tabular">
+          <span className="text-xs opacity-80 mb-1">{stat.label}</span>
+          <strong className="text-lg font-semibold tabular-nums leading-none">
             {stat.value}
           </strong>
         </article>
@@ -70,14 +71,14 @@ export function StrategyPanelKpiGrid({
 export function StrategyPanelResultStrip({ summary, testId }: StrategyPanelResultStripProps) {
   return (
     <div
-      className={`stock-analysis-page__panel-result${summary.tone ? ` stock-analysis-page__panel-result--${summary.tone}` : ""}`}
+      className="flex flex-col gap-3 p-3 bg-default-50 rounded-lg border border-default-100 mt-2"
       data-testid={testId}
     >
       <StrategyPanelKpiGrid stats={summary.stats} testId={testId} />
       {summary.headline ? (
-        <p className="stock-analysis-page__panel-result-headline">{summary.headline}</p>
+        <p className="text-sm font-medium text-foreground">{summary.headline}</p>
       ) : null}
-      {summary.detail ? <p className="stock-analysis-page__panel-result-detail">{summary.detail}</p> : null}
+      {summary.detail ? <p className="text-xs text-default-500">{summary.detail}</p> : null}
     </div>
   );
 }
@@ -93,9 +94,9 @@ export function StrategyPanelComplianceDetails({
     return null;
   }
   return (
-    <details className="stock-analysis-page__panel-compliance" data-testid={testId}>
-      <summary>口径与限制</summary>
-      <p>{complianceDetail}</p>
+    <details className="mt-3 text-xs text-default-500 border border-default-200 rounded-lg p-3 bg-default-100/30 group" data-testid={testId}>
+      <summary className="cursor-pointer font-medium hover:text-default-700 transition-colors">口径与限制</summary>
+      <p className="mt-2 pt-2 border-t border-default-200/50 leading-relaxed">{complianceDetail}</p>
     </details>
   );
 }

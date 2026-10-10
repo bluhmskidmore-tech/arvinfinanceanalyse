@@ -1,0 +1,8 @@
+{
+  "method": "GET",
+  "path": "/api/ledger/dashboard",
+  "params": {
+    "as_of_date": "2026-03-17"
+  },
+  "basis": "imported-ledger-position-snapshot"
+}

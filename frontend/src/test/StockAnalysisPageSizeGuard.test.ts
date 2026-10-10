@@ -6,7 +6,7 @@ describe("StockAnalysisPage extraction guard", () => {
   it("keeps the page container from regrowing beyond the current extraction boundary", () => {
     const pagePath = resolve(
       process.cwd(),
-      "src/features/stock-analysis/pages/StockAnalysisPage.tsx",
+      "src/features/stock-analysis/pages/StockAnalysisPageImpl.tsx",
     );
     const lineCount = readFileSync(pagePath, "utf8")
       .replace(/\r\n/g, "\n")
@@ -14,7 +14,7 @@ describe("StockAnalysisPage extraction guard", () => {
       .trimEnd()
       .split("\n").length;
 
-    expect(lineCount).toBeLessThanOrEqual(4000);
+    expect(lineCount).toBeLessThanOrEqual(1878);
   });
 
   it("keeps stock-analysis behavior split across focused modules", () => {
@@ -26,5 +26,57 @@ describe("StockAnalysisPage extraction guard", () => {
     ].filter((fileName) => /\.(ts|tsx)$/.test(fileName)).length;
 
     expect(moduleCount).toBeGreaterThanOrEqual(35);
+  });
+
+  // CSS ratchet: the page stylesheet once grew to 21k lines / 2.4k `!important`
+  // by stacking whole layout generations as end-of-file overrides, which is how
+  // stale `grid-template-areas` shells ended up shredding the redesigned first
+  // screen. Budgets may be lowered freely; raising one must be a deliberate,
+  // reviewed decision. Prefer editing or deleting existing rules over appending
+  // a new override pass, and cover layout with the Playwright geometry spec
+  // (tests/playwright/stock-analysis-first-screen-geometry.spec.mjs), not with
+  // CSS source-text pins.
+  it("keeps the stock-analysis stylesheets from regrowing override layers", () => {
+    const budgets = [
+      {
+        path: "src/features/stock-analysis/pages/StockAnalysisPage.css",
+        maxLines: 6710,
+        maxImportant: 419,
+      },
+      {
+        path: "src/features/stock-analysis/pages/StockAnalysisEditorialLedger.css",
+        maxLines: 705,
+        maxImportant: 1,
+      },
+      {
+        path: "src/features/stock-analysis/pages/StockAnalysisDeepResearch.css",
+        maxLines: 2203,
+        maxImportant: 295,
+      },
+      {
+        path: "src/features/stock-analysis/components/StockAnalysisReadOnlyResearchZone.css",
+        maxLines: 206,
+        maxImportant: 0,
+      },
+    ];
+
+    let combinedImportantCount = 0;
+
+    for (const budget of budgets) {
+      const cssPath = resolve(process.cwd(), budget.path);
+      const css = readFileSync(cssPath, "utf8");
+      const lineCount = css
+        .replace(/\r\n/g, "\n")
+        .replace(/\r/g, "\n")
+        .trimEnd()
+        .split("\n").length;
+      const importantCount = (css.match(/!important/g) ?? []).length;
+      combinedImportantCount += importantCount;
+
+      expect(lineCount).toBeLessThanOrEqual(budget.maxLines);
+      expect(importantCount).toBeLessThanOrEqual(budget.maxImportant);
+    }
+
+    expect(combinedImportantCount).toBeLessThanOrEqual(715);
   });
 });

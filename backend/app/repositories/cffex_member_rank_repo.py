@@ -1,16 +1,40 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import duckdb
 import pandas as pd
+from backend.app.core_finance.macro.toolkit.cffex_member_rank_shared import (
+    TABLE_NAME,
+    VIEW_NAME,
+    load_member_rank_frame,
+    normalize_cffex_contract,
+    normalize_trade_date,
+)
+from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
 from backend.app.repositories.task_write_guard import require_repository_task_write_scope
 from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_registry_sql_text
 
-TABLE_NAME = "fact_cffex_member_rank_daily"
-VIEW_NAME = "vw_cffex_member_rank_daily"
+__all__ = [
+    "TABLE_NAME",
+    "VIEW_NAME",
+    "RULE_VERSION",
+    "DEFAULT_CFFEX_CONTRACTS",
+    "CffexMemberRankRow",
+    "ensure_cffex_member_rank_schema",
+    "normalize_cffex_contract",
+    "normalize_cffex_sources",
+    "normalize_trade_date",
+    "product_code_from_contract",
+    "table_stats",
+    "load_member_rank_frame",
+    "replace_member_rank_rows",
+    "rows_from_records",
+]
+
 RULE_VERSION = "rv_cffex_member_rank_choice_tushare_v1"
 DEFAULT_CFFEX_CONTRACTS = ("TS.CFE", "TF.CFE", "T.CFE", "TL.CFE")
 
@@ -43,18 +67,10 @@ def ensure_cffex_member_rank_schema(conn: duckdb.DuckDBPyConnection) -> None:
         conn.execute(statement)
 
 
-def normalize_cffex_contract(contract: str) -> str:
-    raw = str(contract or "").strip().upper()
-    if not raw:
-        return "T.CFE"
-    raw = raw.replace(".CFFEX", ".CFE")
-    if raw.startswith("CFFEX."):
-        raw = f"{raw.split('.', 1)[1]}.CFE"
-    elif raw.startswith("CFE."):
-        raw = f"{raw.split('.', 1)[1]}.CFE"
-    elif "." not in raw:
-        raw = f"{raw}.CFE"
-    return raw
+def normalize_cffex_sources(sources: Iterable[object]) -> tuple[str, ...]:
+    return tuple(
+        dict.fromkeys(str(source).strip().lower() for source in sources if str(source).strip())
+    )
 
 
 def product_code_from_contract(contract: str) -> str:
@@ -63,15 +79,8 @@ def product_code_from_contract(contract: str) -> str:
     return letters or code
 
 
-def normalize_trade_date(value: str) -> str:
-    raw = str(value or "").strip()
-    if len(raw) == 8 and raw.isdigit():
-        return f"{raw[:4]}-{raw[4:6]}-{raw[6:8]}"
-    return raw[:10]
-
-
 def table_stats(duckdb_path: str | Path) -> dict[str, object]:
-    path = Path(duckdb_path)
+    path = Path(resolve_effective_read_path(duckdb_path))
     if not path.exists():
         return _empty_stats("missing_database")
     try:
@@ -112,25 +121,19 @@ def table_stats(duckdb_path: str | Path) -> dict[str, object]:
         conn.close()
 
 
-def load_member_rank_frame(
-    duckdb_path: str | Path,
-    *,
-    trade_date: str,
-    contract: str,
-) -> pd.DataFrame:
-    path = Path(duckdb_path)
-    if not path.exists():
-        return _empty_rank_frame()
+def replace_member_rank_rows(conn: duckdb.DuckDBPyConnection, rows: list[CffexMemberRankRow]) -> int:
+    require_repository_task_write_scope("replace_member_rank_rows")
+    if not rows:
+        return 0
+    _raise_on_duplicate_natural_keys(rows)
+    ensure_cffex_member_rank_schema(conn)
+    transaction_started = False
     try:
-        conn = duckdb.connect(str(path), read_only=True)
-    except duckdb.Error:
-        return _empty_rank_frame()
-    try:
-        if not _table_exists(conn, TABLE_NAME):
-            return _empty_rank_frame()
-        source = VIEW_NAME if _table_exists(conn, VIEW_NAME) else TABLE_NAME
-        frame = conn.execute(
+        conn.execute("begin transaction")
+        transaction_started = True
+        conn.execute(
             f"""
+            create or replace temp table cffex_member_rank_stage as
             select
               trade_date,
               contract,
@@ -149,61 +152,108 @@ def load_member_rank_frame(
               vendor_version,
               rule_version,
               ingest_batch_id,
-              created_at
-            from {source}
-            where trade_date = ? and contract = ?
+              raw_payload_json
+            from {TABLE_NAME}
+            where false
+            """
+        )
+        conn.executemany(
+            """
+            insert into cffex_member_rank_stage
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            [normalize_trade_date(trade_date), normalize_cffex_contract(contract)],
-        ).fetchdf()
-    except duckdb.Error:
-        return _empty_rank_frame()
-    finally:
-        conn.close()
-    return frame
-
-
-def replace_member_rank_rows(conn: duckdb.DuckDBPyConnection, rows: list[CffexMemberRankRow]) -> int:
-    require_repository_task_write_scope("replace_member_rank_rows")
-    if not rows:
-        return 0
-    ensure_cffex_member_rank_schema(conn)
-    keys = {
-        (row.trade_date, row.contract, row.source_vendor)
-        for row in rows
-        if row.trade_date and row.contract and row.source_vendor
-    }
-    for trade_date, contract, source_vendor in keys:
+            [_row_values(row) for row in rows],
+        )
+        # DuckDB can reject delete/reinsert of persisted unique keys after a
+        # reconnect. Update retained members in place, then remove absent ones.
         conn.execute(
-            f"delete from {TABLE_NAME} where trade_date = ? and contract = ? and source_vendor = ?",
-            [trade_date, contract, source_vendor],
+            f"""
+            insert into {TABLE_NAME} (
+              trade_date,
+              contract,
+              product_code,
+              exchange,
+              member_name,
+              source_vendor,
+              source_row_no,
+              volume,
+              volume_change,
+              long_holding,
+              long_change,
+              short_holding,
+              short_change,
+              source_version,
+              vendor_version,
+              rule_version,
+              ingest_batch_id,
+              raw_payload_json
+            )
+            select * from cffex_member_rank_stage
+            on conflict (trade_date, contract, member_name, source_vendor) do update set
+              product_code = excluded.product_code,
+              exchange = excluded.exchange,
+              source_row_no = excluded.source_row_no,
+              volume = excluded.volume,
+              volume_change = excluded.volume_change,
+              long_holding = excluded.long_holding,
+              long_change = excluded.long_change,
+              short_holding = excluded.short_holding,
+              short_change = excluded.short_change,
+              source_version = excluded.source_version,
+              vendor_version = excluded.vendor_version,
+              rule_version = excluded.rule_version,
+              ingest_batch_id = excluded.ingest_batch_id,
+              raw_payload_json = excluded.raw_payload_json,
+              created_at = now()
+            """
         )
-    conn.executemany(
-        f"""
-        insert into {TABLE_NAME} (
-          trade_date,
-          contract,
-          product_code,
-          exchange,
-          member_name,
-          source_vendor,
-          source_row_no,
-          volume,
-          volume_change,
-          long_holding,
-          long_change,
-          short_holding,
-          short_change,
-          source_version,
-          vendor_version,
-          rule_version,
-          ingest_batch_id,
-          raw_payload_json
-        )
-        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        [_row_values(row) for row in rows],
-    )
+        keys = {
+            (row.trade_date, row.contract, row.source_vendor)
+            for row in rows
+            if row.trade_date and row.contract and row.source_vendor
+        }
+        for trade_date, contract, source_vendor in keys:
+            conn.execute(
+                f"""
+                delete from {TABLE_NAME} as target
+                where target.trade_date = ?
+                  and target.contract = ?
+                  and target.source_vendor = ?
+                  and not exists (
+                    select 1
+                    from cffex_member_rank_stage as stage
+                    where stage.trade_date = target.trade_date
+                      and stage.contract = target.contract
+                      and stage.member_name = target.member_name
+                      and stage.source_vendor = target.source_vendor
+                  )
+                """,
+                [trade_date, contract, source_vendor],
+            )
+        conn.execute("drop table cffex_member_rank_stage")
+        conn.execute("commit")
+        transaction_started = False
+    except Exception:
+        if transaction_started:
+            try:
+                conn.execute("rollback")
+            except Exception:  # noqa: BLE001, S110 - rollback failure must not mask the insert error re-raised below.
+                pass
+        raise
     return len(rows)
+
+
+def _raise_on_duplicate_natural_keys(rows: list[CffexMemberRankRow]) -> None:
+    seen: set[tuple[str, str, str, str]] = set()
+    for row in rows:
+        key = (row.trade_date, row.contract, row.member_name, row.source_vendor)
+        if key in seen:
+            raise duckdb.ConstraintException(
+                "Duplicate CFFEX member-rank input key "
+                f"trade_date={row.trade_date!r}, contract={row.contract!r}, "
+                f"member_name={row.member_name!r}, source_vendor={row.source_vendor!r}"
+            )
+        seen.add(key)
 
 
 def rows_from_records(
@@ -337,28 +387,3 @@ def _empty_stats(status: str, *, materialized: bool = False) -> dict[str, object
         "contracts": [],
         "source_vendors": [],
     }
-
-
-def _empty_rank_frame() -> pd.DataFrame:
-    return pd.DataFrame(
-        columns=[
-            "trade_date",
-            "contract",
-            "product_code",
-            "exchange",
-            "member_name",
-            "source_vendor",
-            "source_row_no",
-            "volume",
-            "volume_change",
-            "long_holding",
-            "long_change",
-            "short_holding",
-            "short_change",
-            "source_version",
-            "vendor_version",
-            "rule_version",
-            "ingest_batch_id",
-            "created_at",
-        ]
-    )

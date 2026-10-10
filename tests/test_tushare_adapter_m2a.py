@@ -80,6 +80,21 @@ def test_fetch_macro_snapshot_normalizes_money_supply_dataframe(monkeypatch):
     assert rows[1]["value"] == pytest.approx(8.6)
 
 
+def test_fetch_macro_snapshot_drops_vendor_nan_rows_but_preserves_zero(monkeypatch):
+    monkeypatch.setenv(_TOKEN_ENV, "test-token")
+    frame = pd.DataFrame(
+        [
+            {"month": "202401", "ppi_yoy": float("nan")},
+            {"month": "202402", "ppi_yoy": 0.0},
+        ]
+    )
+    _install_fake_tushare(_FakePro(frame, kind="cn_ppi"), monkeypatch)
+
+    out = VendorAdapter().fetch_macro_snapshot("tushare.macro.cn_ppi.monthly")
+
+    assert out["rows"] == [{"trade_date": "2024-02-01", "value": 0.0}]
+
+
 def test_fetch_macro_snapshot_no_token_raises(monkeypatch):
     monkeypatch.delenv(_TOKEN_ENV, raising=False)
     monkeypatch.setitem(
@@ -171,6 +186,11 @@ class _FakePro:
 
     def cn_gdp(self, **_kwargs: object) -> pd.DataFrame:
         if self._kind == "cn_gdp":
+            return self._frame
+        raise AssertionError
+
+    def cn_ppi(self, **_kwargs: object) -> pd.DataFrame:
+        if self._kind == "cn_ppi":
             return self._frame
         raise AssertionError
 

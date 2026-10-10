@@ -4,10 +4,17 @@ import { Alert, Button, Input, Modal, Table, Tag, Typography } from "antd";
 
 import type { KpiMetricWithValue, KpiOwner } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
+import { observeKpiWrite, type KpiPendingWriteProps, type PendingKpiWrite } from "./pendingKpiWrite";
+import { EM_DASH } from "../../../utils/format";
 
 const { Paragraph, Text } = Typography;
 
-export type BatchPasteModalProps = {
+/** 单次批量粘贴的最大导入行数；超限拒绝解析，提示分批导入。 */
+export const BATCH_PASTE_MAX_ROWS = 500;
+/** 预览表分页大小，避免一次渲染全部行。 */
+const PREVIEW_PAGE_SIZE = 50;
+
+export type BatchPasteModalProps = KpiPendingWriteProps & {
   open: boolean;
   onClose: () => void;
   owner: KpiOwner | null;
@@ -33,31 +40,74 @@ export function BatchPasteModal({
   asOfDate,
   metrics,
   onSuccess,
+  writePending = false,
+  onUnconfirmedWrite,
 }: BatchPasteModalProps) {
   const client = useApiClient();
   const [pasteText, setPasteText] = React.useState("");
   const [parsedRows, setParsedRows] = React.useState<ParsedRow[]>([]);
+  const [parseError, setParseError] = React.useState<string | null>(null);
   const [importing, setImporting] = React.useState(false);
   const [importResult, setImportResult] = React.useState<{
     success: number;
     failed: number;
     errors: string[];
+    unconfirmed?: boolean;
   } | null>(null);
+  const requestSeq = React.useRef(0);
+  const pending = React.useRef(false);
+  const pendingWrite = React.useRef<PendingKpiWrite | null>(null);
+  const successTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => {
+    requestSeq.current += 1;
+    pending.current = false;
+    pendingWrite.current = null;
+    setImporting(false);
+    setPasteText("");
+    setParsedRows([]);
+    setParseError(null);
+    setImportResult(null);
+    return () => {
+      requestSeq.current += 1;
+      if (successTimer.current !== null) clearTimeout(successTimer.current);
+      successTimer.current = null;
+    };
+  }, [open, owner?.owner_id, owner?.year, asOfDate]);
+
+  // A readback can replace the list while a newer draft or a write is open.
+  // Discard the old mapping, but preserve the text and the request's lifetime.
+  React.useEffect(() => {
+    setParsedRows([]);
+  }, [metrics]);
 
   const metricCodeMap = React.useMemo(() => {
     const map = new Map<string, KpiMetricWithValue>();
     metrics.forEach((m) => {
-      map.set(m.metric_code.toLowerCase(), m);
+      if (owner && m.owner_id === owner.owner_id && m.year === owner.year) {
+        map.set(m.metric_code.toLowerCase(), m);
+      }
     });
     return map;
-  }, [metrics]);
+  }, [metrics, owner]);
 
   const handleParse = React.useCallback(() => {
     if (!pasteText.trim()) {
       setParsedRows([]);
+      setParseError(null);
       return;
     }
     const lines = pasteText.trim().split("\n");
+    const nonEmptyLineCount = lines.filter((line) => line.trim()).length;
+    if (nonEmptyLineCount > BATCH_PASTE_MAX_ROWS) {
+      setParsedRows([]);
+      setImportResult(null);
+      setParseError(
+        `共 ${nonEmptyLineCount} 行，超出单次最大导入 ${BATCH_PASTE_MAX_ROWS} 行，请分批粘贴导入。`,
+      );
+      return;
+    }
+    setParseError(null);
     const rows: ParsedRow[] = [];
     lines.forEach((line, index) => {
       const trimmedLine = line.trim();
@@ -127,8 +177,16 @@ export function BatchPasteModal({
   }, [pasteText, metricCodeMap]);
 
   const handleImport = React.useCallback(async () => {
+    if (!open || !owner || pending.current || writePending) return;
     const validRows = parsedRows.filter((r) => r.status === "valid" && r.metric);
     if (validRows.length === 0) return;
+    if (validRows.some((row) => metricCodeMap.get(row.metricCode.toLowerCase())?.metric_id !== row.metric?.metric_id)) {
+      setParsedRows([]);
+      setParseError("指标已变更，请重新解析后导入");
+      return;
+    }
+    pending.current = true;
+    const requestId = ++requestSeq.current;
     setImporting(true);
     setImportResult(null);
     try {
@@ -137,30 +195,52 @@ export function BatchPasteModal({
         actual_value: row.actualValue || undefined,
         progress_pct: row.progressPct || undefined,
       }));
-      const response = await client.batchUpdateKpiValues(asOfDate, items);
+      const operation = client.batchUpdateKpiValues(asOfDate, items);
+      pendingWrite.current = observeKpiWrite(operation, (result) => ({
+        changed: result.success_count > 0,
+        confirmed: true,
+        error: result.failed_count > 0 ? `成功 ${result.success_count} 条，未成功 ${result.failed_count} 条：${(result.errors || []).join("；")}` : undefined,
+      }));
+      const response = await operation;
+      if (requestId !== requestSeq.current) return;
       setImportResult({
         success: response.success_count,
         failed: response.failed_count,
         errors: response.errors || [],
       });
       if (response.success_count > 0) {
-        setTimeout(() => onSuccess(), 1200);
+        setParsedRows([]);
+        successTimer.current = setTimeout(() => {
+          if (requestId === requestSeq.current) {
+            successTimer.current = null;
+            pending.current = false;
+            setImporting(false);
+            onSuccess();
+          }
+        }, 1200);
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "导入失败";
+      if (requestId !== requestSeq.current) return;
+      if (pendingWrite.current) onUnconfirmedWrite?.(pendingWrite.current);
+      const msg = err instanceof Error ? err.message : "导入结果尚未确认";
       setImportResult({
         success: 0,
-        failed: validRows.length,
+        failed: 0,
         errors: [msg],
+        unconfirmed: true,
       });
     } finally {
-      setImporting(false);
+      if (requestId === requestSeq.current && successTimer.current === null) {
+        pending.current = false;
+        setImporting(false);
+      }
     }
-  }, [client, parsedRows, asOfDate, onSuccess]);
+  }, [client, parsedRows, asOfDate, onSuccess, open, owner, metricCodeMap, writePending, onUnconfirmedWrite]);
 
   const handleClear = React.useCallback(() => {
     setPasteText("");
     setParsedRows([]);
+    setParseError(null);
     setImportResult(null);
   }, []);
 
@@ -170,20 +250,40 @@ export function BatchPasteModal({
     return { valid, invalid, total: parsedRows.length };
   }, [parsedRows]);
 
+  const stopWaiting = () => {
+    const write = pendingWrite.current;
+    if (!write || !onUnconfirmedWrite) return;
+    pendingWrite.current = null;
+    requestSeq.current += 1;
+    onUnconfirmedWrite(write);
+    onClose();
+  };
+
   if (!owner) return null;
 
   return (
     <Modal
+      rootClassName="kpi-modal-v2 kpi-modal-v2--batch"
+      /* portal 主题逃逸：同 MetricEditModal，modalRender 包 Nocturne scope 容器。 */
+      modalRender={(node) => (
+        <div className="theme-dh-api" data-moss-theme-scope="kpi">
+          {node}
+        </div>
+      )}
       title={
-        <span>
-          <InboxOutlined style={{ marginRight: 8 }} />
+        <span className="kpi-modal-v2__title-inline">
+          <InboxOutlined className="kpi-modal-v2__title-icon" />
           批量导入
         </span>
       }
       open={open}
-      onCancel={onClose}
+      closable={!importing}
+      maskClosable={!importing}
+      keyboard={!importing}
+      onCancel={() => { if (!pending.current) onClose(); }}
       width={880}
       footer={[
+        importing && onUnconfirmedWrite ? <Button key="stop" onClick={stopWaiting}>停止等待</Button> : null,
         <Button key="cancel" onClick={onClose} disabled={importing}>
           取消
         </Button>,
@@ -192,53 +292,73 @@ export function BatchPasteModal({
           type="primary"
           loading={importing}
           icon={<UploadOutlined />}
-          disabled={stats.valid === 0}
+          disabled={stats.valid === 0 || writePending}
           onClick={() => void handleImport()}
         >
           导入（{stats.valid} 条）
         </Button>,
       ]}
     >
-      <Paragraph type="secondary" style={{ marginBottom: 16 }}>
+      {((importing) && onUnconfirmedWrite) || writePending ? (
+        <Alert type="warning" showIcon message={writePending
+          ? "前一笔写入结果尚未确认，请关闭窗口后刷新核实，勿重复提交。"
+          : "停止等待只关闭窗口，不会取消服务端写入；结果仍需核实。"} />
+      ) : null}
+      <Paragraph type="secondary" className="kpi-modal-v2__subtitle">
         {owner.owner_name} · {asOfDate}
       </Paragraph>
       <Alert
         type="info"
         showIcon
-        style={{ marginBottom: 16 }}
+        className="kpi-modal-v2__alert kpi-modal-v2__alert--intro"
         message="使用说明"
         description={
-          <ul style={{ margin: 0, paddingLeft: 18 }}>
+          <ul className="kpi-modal-v2__help-list">
             <li>从 Excel 复制后粘贴到文本框</li>
             <li>
               格式：<Text code>指标代码 [Tab] 实际值 [Tab] 序时进度</Text>（序时进度可选）
             </li>
-            <li>点击「解析」预览，再「导入」</li>
+            <li>点击「解析」预览，再「导入」；单次最多 {BATCH_PASTE_MAX_ROWS} 行</li>
           </ul>
         }
       />
-      <div style={{ marginBottom: 8 }}>
+      <div className="kpi-modal-v2__field-label">
         <Text strong>粘贴数据</Text>
       </div>
       <Input.TextArea
+        className="kpi-modal-v2__paste-area"
         value={pasteText}
-        onChange={(e) => setPasteText(e.target.value)}
+        disabled={importing}
+        onChange={(e) => {
+          setPasteText(e.target.value);
+          setParsedRows([]);
+          setParseError(null);
+          setImportResult(null);
+        }}
         placeholder="从 Excel 粘贴…"
         rows={6}
-        style={{ fontFamily: "monospace", marginBottom: 8 }}
       />
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
+      <div className="kpi-modal-v2__toolbar">
         <Text type="secondary">当前共 {metrics.length} 个指标</Text>
-        <div style={{ display: "flex", gap: 8 }}>
-          <Button onClick={handleClear}>清空</Button>
-          <Button type="primary" onClick={handleParse}>
+        <div className="kpi-modal-v2__toolbar-actions">
+          <Button onClick={handleClear} disabled={importing}>清空</Button>
+          <Button type="primary" onClick={handleParse} disabled={importing}>
             解析
           </Button>
         </div>
       </div>
+      {parseError ? (
+        <Alert
+          type="error"
+          showIcon
+          className="kpi-modal-v2__alert"
+          message={parseError.includes("超出单次最大导入") ? "超出导入行数上限" : "请重新解析"}
+          description={parseError}
+        />
+      ) : null}
       {parsedRows.length > 0 ? (
         <>
-          <div style={{ marginBottom: 8, display: "flex", justifyContent: "space-between" }}>
+          <div className="kpi-modal-v2__preview-header">
             <Text strong>预览</Text>
             <Text>
               <Text type="success">有效 {stats.valid}</Text>
@@ -248,8 +368,13 @@ export function BatchPasteModal({
             </Text>
           </div>
           <Table
+            className="kpi-modal-v2__table"
             size="small"
-            pagination={false}
+            pagination={{
+              pageSize: PREVIEW_PAGE_SIZE,
+              hideOnSinglePage: true,
+              showSizeChanger: false,
+            }}
             scroll={{ y: 220 }}
             dataSource={parsedRows.map((r, i) => ({ ...r, key: i }))}
             columns={[
@@ -258,19 +383,19 @@ export function BatchPasteModal({
               {
                 title: "指标名称",
                 dataIndex: "metric",
-                render: (_: unknown, row: ParsedRow) => row.metric?.metric_name || "-",
+                render: (_: unknown, row: ParsedRow) => row.metric?.metric_name || EM_DASH,
               },
               {
                 title: "实际值",
                 dataIndex: "actualValue",
                 align: "right",
-                render: (t: string) => t || "-",
+                render: (t: string) => t || EM_DASH,
               },
               {
                 title: "序时进度",
                 dataIndex: "progressPct",
                 align: "right",
-                render: (t: string) => (t ? `${t}%` : "-"),
+                render: (t: string) => (t ? `${t}%` : EM_DASH),
               },
               {
                 title: "状态",
@@ -292,10 +417,10 @@ export function BatchPasteModal({
             <Alert
               type="error"
               showIcon
-              style={{ marginTop: 12 }}
+              className="kpi-modal-v2__alert"
               message="以下行将被跳过"
               description={
-                <ul style={{ margin: 0, paddingLeft: 18 }}>
+                <ul className="kpi-modal-v2__help-list">
                   {parsedRows
                     .filter((r) => r.status === "invalid")
                     .slice(0, 5)
@@ -313,17 +438,17 @@ export function BatchPasteModal({
       ) : null}
       {importResult ? (
         <Alert
-          type={importResult.failed === 0 ? "success" : "warning"}
+          type={!importResult.unconfirmed && importResult.failed === 0 ? "success" : "warning"}
           showIcon
-          style={{ marginTop: 16 }}
-          message="导入结果"
+          className="kpi-modal-v2__alert"
+          message={importResult.unconfirmed ? "导入结果尚未确认" : "导入结果"}
           description={
             <>
-              <div>
+              {!importResult.unconfirmed ? <div>
                 成功 {importResult.success} 条，失败 {importResult.failed} 条
-              </div>
+              </div> : null}
               {importResult.errors.length > 0 ? (
-                <ul style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+                <ul className="kpi-modal-v2__help-list kpi-modal-v2__help-list--stacked">
                   {importResult.errors.map((e, i) => (
                     <li key={i}>{e}</li>
                   ))}

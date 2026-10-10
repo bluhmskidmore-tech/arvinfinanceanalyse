@@ -374,12 +374,23 @@ def test_lead_lag_detection():
     assert results[0].target_yield == "treasury_10Y"
     assert results[0].lead_lag_days == 5
     assert results[0].direction == "positive"
+    assert results[0].direction_source_window in {"1y", "6m", "3m", "best_lag"}
     assert results[0].correlation_3m is not None
     assert results[0].correlation_3m > 0.8
     assert results[0].sample_size is not None and results[0].sample_size >= 2
     assert results[0].lead_lag_confidence is not None
     assert results[0].winsorized is False
     assert results[0].zscore_applied is False
+
+
+def test_direction_from_correlation_discloses_source_window():
+    mod = _core_module()
+    # 1y is below ±0.2 while 3m is strong: direction still comes from 3m.
+    assert mod._direction_from_correlation(0.1, None, 0.5, 0.4) == ("positive", "3m")
+    assert mod._direction_from_correlation(0.3, 0.5, 0.8, 0.9) == ("positive", "1y")
+    assert mod._direction_from_correlation(-0.1, -0.25, -0.6, None) == ("negative", "6m")
+    assert mod._direction_from_correlation(0.19, 0.15, None, 0.05) == ("neutral", "none")
+    assert mod._direction_from_correlation(None, None, None, 0.21) == ("positive", "best_lag")
 
 
 def test_alignment_modes_differ_for_low_frequency_macro_vs_daily_yield():
@@ -460,6 +471,136 @@ def test_compute_macro_bond_correlations_reuses_sorted_alignment_inputs(monkeypa
 
     assert len(results) == 6
     assert date_map_sort_count <= len(macro_series) + len(yield_series)
+
+
+@pytest.mark.parametrize("alignment_mode", ["conservative", "market_timing"])
+@pytest.mark.parametrize("winsorize_tail_fraction", [None, 0.1])
+def test_repeated_date_grids_reuse_lead_lag_alignment_without_changing_results(
+    monkeypatch,
+    alignment_mode,
+    winsorize_tail_fraction,
+):
+    mod = _core_module()
+    assert mod._np is not None, "NumPy is a required backend dependency for the alignment cache regression."
+
+    start = date(2026, 1, 1)
+    macro_offsets = [offset for offset in range(105) if offset % 3 == 0 and offset not in {18, 51}]
+    yield_offsets = [offset for offset in range(105) if offset % 7 != 0]
+    macro_series = {
+        f"macro_{series_index}": [
+            (
+                start + timedelta(days=offset),
+                math.sin(offset / 8.0 + series_index) + offset / 90.0
+                + (8.0 if offset == 72 and series_index == 1 else 0.0),
+            )
+            for offset in macro_offsets
+        ]
+        for series_index in range(2)
+    }
+    yield_series = {
+        f"yield_{target_index}": [
+            (
+                start + timedelta(days=offset),
+                math.sin((offset - 5) / 8.0 + target_index / 2.0)
+                + offset / 120.0
+                + (10.0 if offset == 73 and target_index == 1 else 0.0),
+            )
+            for offset in yield_offsets
+        ]
+        for target_index in range(2)
+    }
+    original_best_lead_lag = mod._best_lead_lag_details
+
+    def without_alignment_cache(*args, **kwargs):
+        kwargs.pop("alignment_cache", None)
+        return original_best_lead_lag(*args, **kwargs)
+
+    monkeypatch.setattr(mod, "_best_lead_lag_details", without_alignment_cache)
+    expected = mod.compute_macro_bond_correlations(
+        macro_series,
+        yield_series,
+        lookback_days=120,
+        alignment_mode=alignment_mode,
+        winsorize_tail_fraction=winsorize_tail_fraction,
+    )
+    monkeypatch.setattr(mod, "_best_lead_lag_details", original_best_lead_lag)
+
+    original_aligned_arrays = mod._aligned_arrays
+    lead_lag_alignment_count = 0
+
+    def count_lead_lag_alignments(*args, **kwargs):
+        nonlocal lead_lag_alignment_count
+        if kwargs.get("start_ordinal") is None and kwargs.get("end_ordinal") is None:
+            lead_lag_alignment_count += 1
+        return original_aligned_arrays(*args, **kwargs)
+
+    monkeypatch.setattr(mod, "_aligned_arrays", count_lead_lag_alignments)
+    actual = mod.compute_macro_bond_correlations(
+        macro_series,
+        yield_series,
+        lookback_days=120,
+        alignment_mode=alignment_mode,
+        winsorize_tail_fraction=winsorize_tail_fraction,
+    )
+
+    assert len(actual) == len(expected) == 4
+    assert actual == expected
+    assert lead_lag_alignment_count == 61
+
+
+def test_correlation_screening_skips_lead_lag_but_preserves_window_strengths(monkeypatch):
+    mod = _core_module()
+    start = date(2026, 1, 1)
+    macro_series = {
+        "macro_a": [
+            (start + timedelta(days=offset), math.sin(offset / 6.0))
+            for offset in range(75)
+            if offset % 4 != 0
+        ],
+        "macro_b": [
+            (start + timedelta(days=offset), math.cos(offset / 7.0))
+            for offset in range(75)
+            if offset % 4 != 0
+        ],
+    }
+    yield_series = {
+        "yield_a": [
+            (start + timedelta(days=offset), math.sin((offset - 3) / 6.0))
+            for offset in range(75)
+            if offset % 6 != 0
+        ],
+    }
+    full = mod.compute_macro_bond_correlations(
+        macro_series,
+        yield_series,
+        lookback_days=90,
+        alignment_mode="market_timing",
+    )
+
+    def unexpected_lead_lag(*args, **kwargs):
+        raise AssertionError("screening must not compute lead-lag or observation span")
+
+    monkeypatch.setattr(mod, "_compute_lead_lag", unexpected_lead_lag)
+    monkeypatch.setattr(mod, "_alignment_span_days", unexpected_lead_lag)
+    screening = mod.compute_macro_bond_correlations(
+        macro_series,
+        yield_series,
+        lookback_days=90,
+        alignment_mode="market_timing",
+        include_lead_lag=False,
+    )
+
+    assert len(screening) == len(full) == 2
+    for quick, complete in zip(screening, full, strict=True):
+        assert (quick.series_id, quick.target_yield) == (complete.series_id, complete.target_yield)
+        assert (quick.correlation_3m, quick.correlation_6m, quick.correlation_1y) == (
+            complete.correlation_3m,
+            complete.correlation_6m,
+            complete.correlation_1y,
+        )
+        assert quick.sample_size is None
+        assert quick.lead_lag_confidence is None
+        assert quick.effective_observation_span_days is None
 
 
 def test_compute_macro_bond_correlations_is_scale_invariant_without_zscore_flag():
@@ -679,13 +820,117 @@ def test_environment_score_liquidity_is_robust_to_baseline_outlier():
     score = mod.compute_macro_environment_score(latest, history, lookback_days=90)
 
     assert score.liquidity_score < 0
-    assert sum(
-        item["signed_contribution"] for item in score.composite_contributions
-    ) == pytest.approx(score.composite_score)
-    liquidity_contribution = next(
-        item for item in score.composite_contributions if item["component"] == "liquidity"
+
+
+def _liquidity_isolation_history(
+    *,
+    liquidity_recent_value: float,
+    mild_rate_pressure: bool = False,
+) -> dict[str, list[tuple[date, float]]]:
+    start = REPORT_DATE - timedelta(days=89)
+    baseline_dates = [REPORT_DATE - timedelta(days=24 - index) for index in range(20)]
+    recent_dates = [REPORT_DATE - timedelta(days=4 - index) for index in range(5)]
+
+    def liquidity_points(base_value: float, recent_value: float) -> list[tuple[date, float]]:
+        return [
+            *((current_date, base_value) for current_date in baseline_dates),
+            *((current_date, recent_value) for current_date in recent_dates),
+        ]
+
+    if mild_rate_pressure:
+        rate_points = {
+            "EMM00166466": [(start, 2.00), (REPORT_DATE - timedelta(days=45), 2.01), (REPORT_DATE, 2.02)],
+            "EMM00166462": [(start, 1.80), (REPORT_DATE - timedelta(days=45), 1.81), (REPORT_DATE, 1.82)],
+            "EMM00166458": [(start, 1.50), (REPORT_DATE - timedelta(days=45), 1.51), (REPORT_DATE, 1.52)],
+        }
+    else:
+        rate_points = {
+            "EMM00166466": [(start, 2.00), (REPORT_DATE, 2.00)],
+            "EMM00166462": [(start, 1.80), (REPORT_DATE, 1.80)],
+            "EMM00166458": [(start, 1.50), (REPORT_DATE, 1.50)],
+        }
+
+    return {
+        **rate_points,
+        "EMM00166252": liquidity_points(2.00, liquidity_recent_value),
+        "EMM00166253": liquidity_points(2.02, liquidity_recent_value + 0.02),
+        "CA.DR007": liquidity_points(2.04, liquidity_recent_value + 0.04),
+        "EMM00008445": [(start, 1.2), (REPORT_DATE, 1.2)],
+        "EMM00619381": [(start, 100.0), (REPORT_DATE, 100.0)],
+        "EMM00072301": [(REPORT_DATE, 2.0)],
+    }
+
+
+def test_environment_score_liquidity_easing_remains_positive():
+    mod = _core_module()
+    history = _liquidity_isolation_history(liquidity_recent_value=1.00)
+    latest = {series_id: points[-1] for series_id, points in history.items()}
+
+    score = mod.compute_macro_environment_score(latest, history, lookback_days=90)
+
+    assert score.rate_direction_score == 0
+    assert score.growth_score == 0
+    assert score.inflation_score == 0
+    assert score.liquidity_score == pytest.approx(1.0)
+    assert score.composite_formula_version == "macro_env_composite_v2_liquidity_inverted"
+
+
+def test_environment_composite_inverts_liquidity_when_other_dimensions_neutral():
+    mod = _core_module()
+    loose_history = _liquidity_isolation_history(liquidity_recent_value=1.00)
+    tight_history = _liquidity_isolation_history(liquidity_recent_value=3.00)
+    loose_latest = {series_id: points[-1] for series_id, points in loose_history.items()}
+    tight_latest = {series_id: points[-1] for series_id, points in tight_history.items()}
+
+    loose_score = mod.compute_macro_environment_score(loose_latest, loose_history, lookback_days=90)
+    tight_score = mod.compute_macro_environment_score(tight_latest, tight_history, lookback_days=90)
+
+    assert loose_score.liquidity_score == pytest.approx(1.0)
+    assert loose_score.composite_score == pytest.approx(-0.3)
+    assert "缩短久期" not in loose_score.signal_description
+    loose_contributions = {
+        item["component"]: item for item in loose_score.composite_contributions
+    }
+    assert sum(item["signed_contribution"] for item in loose_score.composite_contributions) == pytest.approx(
+        loose_score.composite_score
     )
-    assert liquidity_contribution["weight"] == -0.3
+    assert loose_contributions["liquidity"] == {
+        "component": "liquidity",
+        "raw_score": 1.0,
+        "weight": -0.3,
+        "signed_contribution": -0.3,
+    }
+
+    assert tight_score.liquidity_score == pytest.approx(-1.0)
+    assert tight_score.composite_score == pytest.approx(0.3)
+    assert loose_score.composite_score < tight_score.composite_score
+
+
+def test_liquidity_easing_does_not_generate_restrictive_duration_signal_under_mild_rate_pressure():
+    mod = _core_module()
+    loose_history = _liquidity_isolation_history(
+        liquidity_recent_value=1.00,
+        mild_rate_pressure=True,
+    )
+    tight_history = _liquidity_isolation_history(
+        liquidity_recent_value=3.00,
+        mild_rate_pressure=True,
+    )
+    loose_latest = {series_id: points[-1] for series_id, points in loose_history.items()}
+    tight_latest = {series_id: points[-1] for series_id, points in tight_history.items()}
+
+    loose_score = mod.compute_macro_environment_score(loose_latest, loose_history, lookback_days=90)
+    tight_score = mod.compute_macro_environment_score(tight_latest, tight_history, lookback_days=90)
+
+    assert loose_score.rate_direction_score == pytest.approx(0.1974)
+    assert loose_score.liquidity_score == pytest.approx(1.0)
+    assert loose_score.composite_score == pytest.approx(-0.221, abs=1e-3)
+    assert "缩短久期" not in loose_score.signal_description
+
+    assert tight_score.rate_direction_score == pytest.approx(0.1974)
+    assert tight_score.liquidity_score == pytest.approx(-1.0)
+    assert tight_score.composite_score == pytest.approx(0.379, abs=1e-3)
+    assert "缩短久期" in tight_score.signal_description
 
 
 def test_environment_score_contributing_factors_include_method_metadata():
@@ -845,6 +1090,10 @@ def test_api_returns_envelope(tmp_path, monkeypatch):
     assert payload["result_meta"]["result_kind"] == "macro_bond_linkage.analysis"
     assert payload["result"]["report_date"] == REPORT_DATE.isoformat()
     assert "environment_score" in payload["result"]
+    assert (
+        payload["result"]["environment_score"]["composite_formula_version"]
+        == "macro_env_composite_v2_liquidity_inverted"
+    )
     assert "portfolio_impact" in payload["result"]
     assert len(payload["result"]["top_correlations"]) > 0
     first_correlation = payload["result"]["top_correlations"][0]
@@ -926,6 +1175,7 @@ def test_api_cross_layer_exposes_correlation_statistical_metadata(tmp_path, monk
         "zscore_applied",
         "lead_lag_confidence",
         "effective_observation_span_days",
+        "direction_source_window",
     )
     for track in ("conservative", "market_timing"):
         rows = result["method_variants"][track]["top_correlations"]
@@ -941,6 +1191,7 @@ def test_api_cross_layer_exposes_correlation_statistical_metadata(tmp_path, monk
     assert top0["lead_lag_confidence"] is not None
     assert top0["zscore_applied"] is False
     assert isinstance(top0["winsorized"], bool)
+    assert top0["direction_source_window"] in {"1y", "6m", "3m", "best_lag", "none"}
 
     get_settings.cache_clear()
 
@@ -1140,6 +1391,42 @@ def test_equity_bond_spread_axis_uses_explicit_rule_table_thresholds():
     assert neutral.stance == "neutral"
 
 
+def test_commodities_inflation_axis_treats_positive_pressure_as_restrictive():
+    mod = _core_module()
+
+    restrictive = mod._build_commodities_inflation_axis(
+        mod.MacroEnvironmentScore(
+            report_date=REPORT_DATE,
+            rate_direction="neutral",
+            rate_direction_score=0.0,
+            liquidity_score=0.0,
+            growth_score=1.0,
+            inflation_score=1.0,
+            composite_score=0.3,
+            signal_description="inflation and growth pressure",
+            contributing_factors=[],
+            warnings=[],
+        )
+    )
+    supportive = mod._build_commodities_inflation_axis(
+        mod.MacroEnvironmentScore(
+            report_date=REPORT_DATE,
+            rate_direction="neutral",
+            rate_direction_score=0.0,
+            liquidity_score=0.0,
+            growth_score=-1.0,
+            inflation_score=-1.0,
+            composite_score=-0.3,
+            signal_description="inflation and growth easing",
+            contributing_factors=[],
+            warnings=[],
+        )
+    )
+
+    assert restrictive.stance == "restrictive"
+    assert supportive.stance == "supportive"
+
+
 def test_mean_empty_sequence_returns_zero_for_optional_macro_windows():
     mod = _core_module()
 
@@ -1286,40 +1573,68 @@ def test_duration_summary_does_not_overattribute_to_equity_when_global_rates_alr
     assert "股债相对估值传导轴偏有利" not in view.summary
 
 
-def test_commodities_inflation_axis_treats_positive_pressure_as_restrictive():
+def test_restrictive_inflation_axis_blocks_bullish_duration_view():
     mod = _core_module()
-
-    restrictive = mod._build_commodities_inflation_axis(
-        mod.MacroEnvironmentScore(
-            report_date=REPORT_DATE,
-            rate_direction="neutral",
-            rate_direction_score=0.0,
-            liquidity_score=0.0,
-            growth_score=1.0,
-            inflation_score=1.0,
-            composite_score=0.3,
-            signal_description="inflation and growth pressure",
-            contributing_factors=[],
-            warnings=[],
-        )
+    macro_environment = mod.MacroEnvironmentScore(
+        report_date=REPORT_DATE,
+        rate_direction="falling",
+        rate_direction_score=-0.4,
+        liquidity_score=0.0,
+        growth_score=0.0,
+        inflation_score=1.0,
+        composite_score=0.0,
+        signal_description="falling rates but high inflation pressure",
+        contributing_factors=[],
+        warnings=[],
     )
-    supportive = mod._build_commodities_inflation_axis(
-        mod.MacroEnvironmentScore(
-            report_date=REPORT_DATE,
-            rate_direction="neutral",
-            rate_direction_score=0.0,
-            liquidity_score=0.0,
-            growth_score=-1.0,
-            inflation_score=-1.0,
-            composite_score=-0.3,
-            signal_description="inflation and growth easing",
-            contributing_factors=[],
-            warnings=[],
-        )
+    inflation_axis = mod._build_commodities_inflation_axis(macro_environment)
+
+    view = mod._build_duration_view(
+        macro_environment,
+        {
+            "global_rates": mod.MacroBondTransmissionAxisResult(
+                axis_key="global_rates",
+                status="ready",
+                stance="supportive",
+                summary="global supportive",
+                impacted_views=["duration"],
+                required_series_ids=[],
+                warnings=[],
+            ),
+            "liquidity": mod.MacroBondTransmissionAxisResult(
+                axis_key="liquidity",
+                status="ready",
+                stance="neutral",
+                summary="liquidity neutral",
+                impacted_views=["duration"],
+                required_series_ids=[],
+                warnings=[],
+            ),
+            "equity_bond_spread": mod.MacroBondTransmissionAxisResult(
+                axis_key="equity_bond_spread",
+                status="pending_signal",
+                stance="neutral",
+                summary="equity pending",
+                impacted_views=["duration"],
+                required_series_ids=[],
+                warnings=[],
+            ),
+            "commodities_inflation": inflation_axis,
+            "mega_cap_equities": mod.MacroBondTransmissionAxisResult(
+                axis_key="mega_cap_equities",
+                status="pending_signal",
+                stance="neutral",
+                summary="pending",
+                impacted_views=["instrument"],
+                required_series_ids=[],
+                warnings=[],
+            ),
+        },
+        [],
     )
 
-    assert restrictive.stance == "restrictive"
-    assert supportive.stance == "supportive"
+    assert inflation_axis.stance == "restrictive"
+    assert view.stance != "bullish"
 
 
 def test_mega_cap_equity_axis_uses_explicit_rule_table_thresholds():
@@ -1435,6 +1750,7 @@ def test_service_conservative_top_correlations_mirror_method_variant(tmp_path, m
     assert result["method_variants"]["market_timing"]["top_correlations"][0]["alignment_mode"] == "market_timing"
     assert result["top_correlations"][0]["alignment_mode"] == "conservative"
     assert "environment_score" in result
+    assert result["environment_score"]["composite_formula_version"] == "macro_env_composite_v2_liquidity_inverted"
     assert result["report_date"] == REPORT_DATE.isoformat()
     assert "computed_at" in result
 
@@ -1472,6 +1788,131 @@ def test_service_reuses_macro_components_without_reusing_request_envelope(tmp_pa
     get_settings.cache_clear()
 
 
+def _seed_unmapped_macro_series(duckdb_path: str, *, macro_points: int) -> None:
+    """Seed enough trade dates to pass the coverage gate, but no scored indicator series."""
+    _seed_macro_and_curve_inputs(duckdb_path, macro_points=macro_points, rising_rates=True)
+    conn = duckdb.connect(duckdb_path, read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_choice_macro_daily
+            set series_id = 'CA.UNMAPPED_TEST', series_name = '未映射测试序列'
+            """
+        )
+    finally:
+        conn.close()
+
+
+def test_macro_bond_linkage_withholds_duration_direction_when_environment_evidence_is_absent(
+    tmp_path, monkeypatch
+):
+    duckdb_path = tmp_path / "macro-bond-linkage-no-evidence.duckdb"
+    _seed_unmapped_macro_series(str(duckdb_path), macro_points=45)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    from backend.app.services.runtime_cache import clear_runtime_cache
+
+    svc = _service_module()
+    clear_runtime_cache("macro_bond_linkage_components")
+
+    result = svc.get_macro_bond_linkage(REPORT_DATE)["result"]
+    environment_score = result["environment_score"]
+
+    assert environment_score["signal_status"] == "unavailable"
+    assert environment_score["signal_evidence_categories"] == []
+    assert set(environment_score["signal_missing_categories"]) == {
+        "rate",
+        "liquidity",
+        "growth",
+        "inflation",
+    }
+    assert environment_score["rate_direction"] == "unknown"
+    assert environment_score["signal_description"] == "宏观环境评分缺少可用指标证据，暂无信号。"
+    assert "久期" not in environment_score["signal_description"]
+    assert any("暂无信号" in warning for warning in result["warnings"])
+
+    assert result["research_views"], "research views should still be listed as pending"
+    for view in result["research_views"]:
+        assert view["status"] == "pending_signal"
+        assert view["summary"] == "宏观环境评分缺少可用指标证据，暂无信号。"
+    for axis in result["transmission_axes"]:
+        assert axis["status"] == "pending_signal"
+
+    clear_runtime_cache("macro_bond_linkage_components")
+    get_settings.cache_clear()
+
+
+def test_macro_bond_linkage_marks_full_evidence_coverage_as_ready(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "macro-bond-linkage-full-evidence.duckdb"
+    _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=True)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    from backend.app.services.runtime_cache import clear_runtime_cache
+
+    svc = _service_module()
+    clear_runtime_cache("macro_bond_linkage_components")
+
+    environment_score = svc.get_macro_bond_linkage(REPORT_DATE)["result"]["environment_score"]
+
+    assert environment_score["signal_status"] == "ready"
+    assert environment_score["signal_missing_categories"] == []
+    assert environment_score["rate_direction"] in {"rising", "falling", "neutral"}
+
+    clear_runtime_cache("macro_bond_linkage_components")
+    get_settings.cache_clear()
+
+
+def test_macro_bond_linkage_cache_hit_preserves_computed_at_and_reports_served_at(
+    tmp_path, monkeypatch
+):
+    duckdb_path = tmp_path / "macro-bond-linkage-served-at.duckdb"
+    _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=True)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    from backend.app.services.runtime_cache import clear_runtime_cache
+
+    svc = _service_module()
+    clear_runtime_cache("macro_bond_linkage_components")
+
+    first = svc.get_macro_bond_linkage(REPORT_DATE)["result"]
+    second = svc.get_macro_bond_linkage(REPORT_DATE)["result"]
+
+    assert first["cache_hit"] is False
+    assert second["cache_hit"] is True
+    assert first["computed_at"] == second["computed_at"]
+    assert second["served_at"] > second["computed_at"]
+    assert second["served_at"] >= first["served_at"]
+
+    clear_runtime_cache("macro_bond_linkage_components")
+    get_settings.cache_clear()
+
+
+def test_macro_environment_context_cache_hit_preserves_computed_at(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "macro-environment-context-served-at.duckdb"
+    _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=True)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    from backend.app.services.runtime_cache import clear_runtime_cache
+
+    svc = _service_module()
+    clear_runtime_cache("macro_environment_context")
+
+    first = svc.get_macro_environment_context(REPORT_DATE)["result"]
+    second = svc.get_macro_environment_context(REPORT_DATE)["result"]
+
+    assert first["cache_hit"] is False
+    assert second["cache_hit"] is True
+    assert first["computed_at"] == second["computed_at"]
+    assert second["served_at"] > second["computed_at"]
+
+    clear_runtime_cache("macro_environment_context")
+    get_settings.cache_clear()
+
+
 def test_macro_environment_context_skips_full_correlation_analysis(tmp_path, monkeypatch):
     duckdb_path = tmp_path / "macro-environment-context.duckdb"
     _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=True)
@@ -1492,7 +1933,41 @@ def test_macro_environment_context_skips_full_correlation_analysis(tmp_path, mon
 
     assert envelope["result_meta"]["result_kind"] == "macro_bond_linkage.environment_context"
     assert envelope["result"]["environment_score"]["composite_score"] is not None
+    assert (
+        envelope["result"]["environment_score"]["composite_formula_version"]
+        == "macro_env_composite_v2_liquidity_inverted"
+    )
     assert "top_correlations" not in envelope["result"]
+
+    clear_runtime_cache("macro_environment_context")
+    get_settings.cache_clear()
+
+
+def test_macro_context_v1_wraps_environment_context_for_downstream_reuse(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "macro-context-v1.duckdb"
+    _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=True)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    from backend.app.services.runtime_cache import clear_runtime_cache
+
+    svc = _service_module()
+    clear_runtime_cache("macro_environment_context")
+
+    context = svc.get_macro_context_v1(REPORT_DATE)
+
+    assert context["macro_contract_version"] == "rv_macro_context_v1"
+    assert str(context["macro_context_id"]).startswith("macroctx_")
+    assert context["asof_date"] == REPORT_DATE.isoformat()
+    assert context["report_date"] == REPORT_DATE.isoformat()
+    assert context["coverage_ratio"] == 1.0
+    assert context["evidence_rows"] == 45
+    assert context["dimension_scores"]["composite_score"] is not None
+    assert context["score_polarity"]["liquidity_score"] == "positive=liquidity_easing"
+    assert context["score_polarity"]["composite_score"] == "positive=bond_unfavorable_restrictive_macro_pressure"
+    assert "- 0.3*liquidity_score" in context["composite_formula"]
+    assert context["composite_formula_version"] == "macro_env_composite_v2_liquidity_inverted"
+    assert "computed_at" not in context
 
     clear_runtime_cache("macro_environment_context")
     get_settings.cache_clear()

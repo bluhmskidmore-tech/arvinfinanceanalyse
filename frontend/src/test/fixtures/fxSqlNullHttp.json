@@ -1,0 +1,88 @@
+{
+  "result_meta": {
+    "trace_id": "tr_fx_analytical",
+    "basis": "analytical",
+    "result_kind": "fx.analytical.groups",
+    "formal_use_allowed": false,
+    "amount_currency_basis": null,
+    "amount_currency_basis_note": null,
+    "source_version": "sv_synthetic_observation_1",
+    "vendor_version": "vv_synthetic_observation_1",
+    "rule_version": "rv_fx_analytical_v1",
+    "cache_version": "cv_fx_analytical_v1",
+    "cache_key": null,
+    "quality_flag": "warning",
+    "vendor_status": "ok",
+    "fallback_mode": "none",
+    "requested_report_date": null,
+    "resolved_report_date": null,
+    "scenario_flag": false,
+    "as_of_date": null,
+    "date_basis": null,
+    "fallback_date": null,
+    "generated_at": "2026-10-07T12:18:27.858922Z",
+    "data_built_at": null,
+    "filters_applied": {
+      "warnings": [
+        "series_id=synthetic-fx: USD/CNY analytical LOCF: target_date=2026-10-06, observed_date=2026-10-05",
+        "series_id=synthetic-fx: FX analytical latest_change omitted after observation fallback: target_date=2026-10-06, observed_date=2026-10-05"
+      ]
+    },
+    "tables_used": [],
+    "evidence_rows": null,
+    "next_drill": [],
+    "source_surface": null
+  },
+  "result": {
+    "read_target": "duckdb",
+    "groups": [
+      {
+        "group_key": "middle_rate",
+        "title": "Analytical FX: middle-rates",
+        "description": "Catalog-observed middle-rate series remain analytical views and do not redefine the formal seam.",
+        "series": [
+          {
+            "group_key": "middle_rate",
+            "series_id": "synthetic-fx",
+            "series_name": "中间价:美元兑人民币",
+            "trade_date": "2026-10-05",
+            "value_numeric": 7.2,
+            "frequency": "daily",
+            "unit": "synthetic-unit",
+            "source_version": "sv_synthetic_observation_1",
+            "vendor_version": "vv_synthetic_observation_1",
+            "refresh_tier": "stable",
+            "fetch_mode": "date_slice",
+            "fetch_granularity": "batch",
+            "policy_note": "Synthetic policy is retained",
+            "quality_flag": "warning",
+            "latest_change": null,
+            "recent_points": [
+              {
+                "trade_date": "2026-10-06",
+                "value_numeric": null,
+                "source_version": "sv_synthetic_observation_0",
+                "vendor_version": "vv_synthetic_observation_0",
+                "quality_flag": "ok"
+              },
+              {
+                "trade_date": "2026-10-05",
+                "value_numeric": 7.2,
+                "source_version": "sv_synthetic_observation_1",
+                "vendor_version": "vv_synthetic_observation_1",
+                "quality_flag": "ok"
+              },
+              {
+                "trade_date": "2026-10-04",
+                "value_numeric": 7.1,
+                "source_version": "sv_synthetic_observation_2",
+                "vendor_version": "vv_synthetic_observation_2",
+                "quality_flag": "ok"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

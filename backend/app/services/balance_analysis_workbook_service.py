@@ -11,9 +11,6 @@ from backend.app.core_finance.balance_analysis import (
     FormalZqtzBalanceFactRow,
 )
 from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
-from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font
-from openpyxl.worksheet.worksheet import Worksheet
 
 EXPORT_WORKBOOK_TABLES = (
     ("\u503a\u5238\u6301\u4ed3", ("zqtz_balance", "bond_business_types")),
@@ -21,11 +18,38 @@ EXPORT_WORKBOOK_TABLES = (
     ("\u671f\u9650\u5206\u5e03", ("maturity_distribution", "maturity_gap")),
     ("\u5229\u7387\u5206\u5e03", ("rate_distribution",)),
 )
-EXCEL_HEADER_FONT = Font(bold=True)
-EXCEL_RIGHT_ALIGNMENT = Alignment(horizontal="right")
+# JSON also serializes numeric Decimals as strings. Only proven current-table
+# dimensions bypass numeric coercion; historical aliases keep their old contract.
+EXPORT_WORKBOOK_TEXT_DIMENSIONS = {
+    "bond_business_types": "bond_type",
+    "counterparty_types": "counterparty_type",
+    "maturity_gap": "bucket",
+    "rate_distribution": "bucket",
+}
 EXCEL_AMOUNT_FORMAT = "#,##0.00000000"
 EXCEL_NUMBER_FORMAT = "0.00000000"
 EXCEL_INTEGER_FORMAT = "0"
+
+_excel_header_font: Any | None = None
+_excel_right_alignment: Any | None = None
+
+
+def _excel_header_font_style() -> Any:
+    global _excel_header_font
+    if _excel_header_font is None:
+        from openpyxl.styles import Font
+
+        _excel_header_font = Font(bold=True)
+    return _excel_header_font
+
+
+def _excel_right_alignment_style() -> Any:
+    global _excel_right_alignment
+    if _excel_right_alignment is None:
+        from openpyxl.styles import Alignment
+
+        _excel_right_alignment = Alignment(horizontal="right")
+    return _excel_right_alignment
 
 
 def _build_balance_workbook_payload(
@@ -47,39 +71,74 @@ def _build_balance_workbook_payload(
     if report_date not in repo.list_report_dates():
         raise ValueError(f"No balance-analysis data found for report_date={report_date}.")
 
-    zqtz_native_rows = [
+    # Main tables must honor the requested currency_basis. Previously they always
+    # fetched native rows while echoing currency_basis="CNY" in the payload
+    # (audit H-2: mixed-currency sum under a CNY label). currency_split still
+    # always uses CNY-converted fact rows.
+    zqtz_rows = [
         _to_formal_zqtz_fact_row(row)
         for row in repo.fetch_formal_zqtz_rows(
             report_date=report_date,
             position_scope=position_scope,
-            currency_basis="native",
+            currency_basis=currency_basis,
         )
     ]
-    tyw_native_rows = [
+    tyw_rows = [
         _to_formal_tyw_fact_row(row)
         for row in repo.fetch_formal_tyw_rows(
             report_date=report_date,
             position_scope=position_scope,
-            currency_basis="native",
+            currency_basis=currency_basis,
         )
     ]
-    zqtz_currency_rows = [
-        _to_formal_zqtz_fact_row(row)
-        for row in repo.fetch_formal_zqtz_rows(
-            report_date=report_date,
-            position_scope=position_scope,
-            currency_basis="CNY",
-        )
-    ]
+    if currency_basis == "CNY":
+        zqtz_currency_rows = zqtz_rows
+    else:
+        zqtz_currency_rows = [
+            _to_formal_zqtz_fact_row(row)
+            for row in repo.fetch_formal_zqtz_rows(
+                report_date=report_date,
+                position_scope=position_scope,
+                currency_basis="CNY",
+            )
+        ]
+    # Cross-scope tables need both asset and liability rows at the same currency
+    # basis as the main tables. scope="all" reuses the already-fetched rows.
+    if position_scope == "all":
+        zqtz_full_rows = zqtz_rows
+        tyw_full_rows = tyw_rows
+    else:
+        zqtz_full_rows = [
+            _to_formal_zqtz_fact_row(row)
+            for row in repo.fetch_formal_zqtz_rows(
+                report_date=report_date,
+                position_scope="all",
+                currency_basis=currency_basis,
+            )
+        ]
+        tyw_full_rows = [
+            _to_formal_tyw_fact_row(row)
+            for row in repo.fetch_formal_tyw_rows(
+                report_date=report_date,
+                position_scope="all",
+                currency_basis=currency_basis,
+            )
+        ]
     workbook_mod = import_module_fn(workbook_module_name)
     workbook_mod = reload_module_fn(workbook_mod)
     workbook = workbook_mod.build_balance_analysis_workbook_payload(
-        report_date=zqtz_native_rows[0].report_date if zqtz_native_rows else tyw_native_rows[0].report_date,
+        report_date=(
+            zqtz_full_rows[0].report_date
+            if zqtz_full_rows
+            else tyw_full_rows[0].report_date
+        ),
         position_scope=position_scope,
         currency_basis=currency_basis,
-        zqtz_rows=zqtz_native_rows,
-        tyw_rows=tyw_native_rows,
+        zqtz_rows=zqtz_rows,
+        tyw_rows=tyw_rows,
         zqtz_currency_rows=zqtz_currency_rows,
+        zqtz_full_rows=zqtz_full_rows,
+        tyw_full_rows=tyw_full_rows,
     )
     return workbook, resolve_completed_formal_build_lineage_fn(
         governance_dir=governance_dir,
@@ -167,6 +226,8 @@ def _to_formal_tyw_fact_row(row: dict[str, object]) -> FormalTywBalanceFactRow:
 
 
 def _build_balance_analysis_workbook_xlsx_bytes(payload: dict[str, Any]) -> bytes:
+    from openpyxl import Workbook
+
     workbook = Workbook()
     overview_sheet = workbook.active
     overview_sheet.title = "\u6982\u89c8"
@@ -198,48 +259,59 @@ def _pick_workbook_export_table(payload: dict[str, Any], *candidate_keys: str) -
     )
 
 
-def _write_workbook_cards_sheet(sheet: Worksheet, cards: list[dict[str, Any]]) -> None:
-    sheet.append(["label", "value"])
+def _append_workbook_row(sheet: Any, values: list[Any]) -> None:
+    sheet.append(values)
+    for column_index, value in enumerate(values, start=1):
+        if isinstance(value, str):
+            # openpyxl otherwise infers formulas (=...) and Excel error tokens.
+            sheet.cell(row=sheet.max_row, column=column_index).data_type = "s"
+
+
+def _write_workbook_cards_sheet(sheet: Any, cards: list[dict[str, Any]]) -> None:
+    _append_workbook_row(sheet, ["label", "value"])
     _style_header_row(sheet, column_count=2)
     for card in cards:
         value = _coerce_excel_value(card.get("value"))
-        sheet.append([card.get("label"), value])
+        _append_workbook_row(sheet, [card.get("label"), value])
         _style_numeric_cell(sheet.cell(row=sheet.max_row, column=2), value, column_key="value")
     _autosize_sheet_columns(sheet)
 
 
-def _write_workbook_table_sheet(sheet: Worksheet, table: dict[str, Any]) -> None:
+def _write_workbook_table_sheet(sheet: Any, table: dict[str, Any]) -> None:
     columns = list(table.get("columns") or [])
     rows = list(table.get("rows") or [])
     headers = [str(column.get("label") or "") for column in columns]
     column_keys = [str(column.get("key") or "") for column in columns]
+    text_dimension = EXPORT_WORKBOOK_TEXT_DIMENSIONS.get(str(table.get("key")))
 
-    sheet.append(headers)
+    _append_workbook_row(sheet, headers)
     _style_header_row(sheet, column_count=len(headers))
 
     for row in rows:
         values = []
         coerced_values: list[object] = []
         for column_key in column_keys:
-            coerced = _coerce_excel_value(row.get(column_key))
+            value = row.get(column_key)
+            coerced = value if column_key == text_dimension and isinstance(value, str) else _coerce_excel_value(value)
             values.append(coerced)
             coerced_values.append(coerced)
-        sheet.append(values)
+        _append_workbook_row(sheet, values)
         for column_index, (column_key, value) in enumerate(zip(column_keys, coerced_values, strict=False), start=1):
             _style_numeric_cell(sheet.cell(row=sheet.max_row, column=column_index), value, column_key=column_key)
 
     _autosize_sheet_columns(sheet)
 
 
-def _style_header_row(sheet: Worksheet, *, column_count: int) -> None:
+def _style_header_row(sheet: Any, *, column_count: int) -> None:
+    header_font = _excel_header_font_style()
     for column_index in range(1, column_count + 1):
-        sheet.cell(row=1, column=column_index).font = EXCEL_HEADER_FONT
+        sheet.cell(row=1, column=column_index).font = header_font
 
 
 def _style_numeric_cell(cell: Any, value: object, *, column_key: str) -> None:
     if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
         return
-    cell.alignment = EXCEL_RIGHT_ALIGNMENT
+    cell.alignment = _excel_right_alignment_style()
     if _is_amount_column(column_key):
         cell.number_format = EXCEL_AMOUNT_FORMAT
         return
@@ -275,7 +347,7 @@ def _coerce_excel_value(value: object) -> object:
     return value
 
 
-def _autosize_sheet_columns(sheet: Worksheet) -> None:
+def _autosize_sheet_columns(sheet: Any) -> None:
     for column_cells in sheet.columns:
         values = ["" if cell.value is None else str(cell.value) for cell in column_cells]
         max_length = max(len(value) for value in values) if values else 0

@@ -10,7 +10,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from app.core_finance.macro.helpers import to_decimal_safe as _d
+from backend.app.core_finance.macro.helpers import to_decimal_safe as _d
 
 _M15_SCENARIOS: tuple[dict[str, Any], ...] = (
     {
@@ -145,6 +145,16 @@ def build_bond_portfolio_profile(
     }
 
 
+_OBSERVATION_FLAGS = {
+    "observation_only": True,
+    "formal_use_allowed": False,
+}
+
+_REQUIRED_SCENARIO_TENORS = ("1Y", "3Y", "5Y", "7Y", "10Y")
+
+_TENOR_YEARS = {"1Y": 1, "3Y": 3, "5Y": 5, "7Y": 7, "10Y": 10}
+
+
 def compute_macro_portfolio_impact(
     portfolio_profile: dict[str, Any],
     current_curve: dict[str, float],
@@ -154,6 +164,7 @@ def compute_macro_portfolio_impact(
 ) -> dict[str, Any]:
     """
     current_curve: 百分数收益率，键为 1Y/3Y/5Y/7Y/10Y。
+    缺必要期限节点时不得用默认收益率（如 2.5%）填洞。
     """
     scenarios_cfg = scenarios if scenarios is not None else _M15_SCENARIOS
     total_mv = portfolio_profile.get("total_mv") or 0
@@ -161,11 +172,32 @@ def compute_macro_portfolio_impact(
         return {
             "report_date": report_date.isoformat(),
             "data_status": "unavailable",
+            **_OBSERVATION_FLAGS,
             "scenarios": [],
             "portfolio": portfolio_profile,
             "current_curve": current_curve,
             "warnings": ["NO_PORTFOLIO"],
         }
+
+    missing_tenors = [
+        tenor
+        for tenor in _REQUIRED_SCENARIO_TENORS
+        if current_curve.get(tenor) is None
+    ]
+    if len(missing_tenors) == len(_REQUIRED_SCENARIO_TENORS):
+        return {
+            "report_date": report_date.isoformat(),
+            "data_status": "unavailable",
+            **_OBSERVATION_FLAGS,
+            "scenarios": [],
+            "portfolio": portfolio_profile,
+            "current_curve": current_curve,
+            "warnings": ["NO_GOVERNMENT_CURVE_TENORS"],
+        }
+
+    warnings: list[str] = []
+    if missing_tenors:
+        warnings.append("CURVE_TENORS_MISSING:" + ",".join(missing_tenors))
 
     scenarios_out: list[dict[str, Any]] = []
     tenor_to_bucket = {"1Y": "0-1Y", "3Y": "1-3Y", "5Y": "3-5Y", "7Y": "5-7Y", "10Y": "7-10Y"}
@@ -176,14 +208,18 @@ def compute_macro_portfolio_impact(
         credit_shift_bp = sc.get("credit_spread_shift_bp", 0)
 
         new_curve: dict[str, float] = {}
+        usable_shifts: dict[str, float] = {}
         for tenor, shift in curve_shifts.items():
-            base = float(current_curve.get(tenor, 2.5))
-            new_curve[tenor] = round(base + shift / 100.0, 4)
+            base = current_curve.get(tenor)
+            if base is None:
+                continue
+            new_curve[tenor] = round(float(base) + shift / 100.0, 4)
+            usable_shifts[tenor] = shift
 
         total_delta = 0.0
         bucket_impacts: dict[str, Any] = {}
 
-        for tenor, shift_bp in curve_shifts.items():
+        for tenor, shift_bp in usable_shifts.items():
             bucket_label = tenor_to_bucket.get(tenor)
             if not bucket_label or bucket_label not in profile_buckets:
                 continue
@@ -199,15 +235,35 @@ def compute_macro_portfolio_impact(
                 "credit_shift_bp": credit_shift_bp,
             }
 
-        remaining_mv = sum(
-            profile_buckets[bl]["market_value"] for bl in profile_buckets if bl not in bucket_impacts
-        )
-        if remaining_mv > 0:
-            avg_shift = sum(curve_shifts.values()) / len(curve_shifts) if curve_shifts else 0
-            remaining_dur = portfolio_profile.get("weighted_duration") or 0.0
-            delta_remaining = -remaining_mv * remaining_dur * (avg_shift + credit_shift_bp) / 10000.0
-            total_delta += delta_remaining
-            bucket_impacts["other"] = {"delta_mv": round(delta_remaining, 2)}
+        # 剩余（未被 tenor_to_bucket 覆盖的）桶逐个用自身 avg_duration 处理，
+        # 不再合并为单一 other 条目、不再借用组合加权久期（长端桶久期通常远高于
+        # 组合平均，借用会系统性低估长端情景损失）。
+        if usable_shifts:
+            avg_shift = sum(usable_shifts.values()) / len(usable_shifts)
+            longest_tenor = max(usable_shifts, key=lambda t: _TENOR_YEARS.get(t, 0))
+            longest_shift = usable_shifts[longest_tenor]
+            for bucket_label, b in profile_buckets.items():
+                if bucket_label in bucket_impacts:
+                    continue
+                b_mv = b["market_value"]
+                if b_mv <= 0:
+                    continue
+                b_dur = b["avg_duration"]
+                if bucket_label == "10Y+":
+                    shift_bp = longest_shift
+                    shift_source_tenor = longest_tenor
+                else:
+                    shift_bp = avg_shift
+                    shift_source_tenor = "avg_of_available_tenors"
+                combined_shift = shift_bp + credit_shift_bp
+                delta = -b_mv * b_dur * combined_shift / 10000.0
+                total_delta += delta
+                bucket_impacts[bucket_label] = {
+                    "delta_mv": round(delta, 2),
+                    "rate_shift_bp": shift_bp,
+                    "credit_shift_bp": credit_shift_bp,
+                    "shift_source_tenor": shift_source_tenor,
+                }
 
         pnl_pct = round(total_delta / total_mv * 100, 2) if total_mv else 0.0
 
@@ -229,9 +285,10 @@ def compute_macro_portfolio_impact(
 
     return {
         "report_date": report_date.isoformat(),
-        "data_status": "complete",
+        "data_status": "degraded" if warnings else "complete",
+        **_OBSERVATION_FLAGS,
         "current_curve": current_curve,
         "scenarios": scenarios_out,
         "portfolio": portfolio_profile,
-        "warnings": [],
+        "warnings": warnings,
     }

@@ -10,6 +10,7 @@ import pytest
 from tests.helpers import load_module
 
 REPORT_DATE = "2026-03-31"
+OTHER_REPORT_DATE = "2026-02-28"
 
 
 def _load_modules():
@@ -61,8 +62,8 @@ def _seed_bond_snapshot_rows(duckdb_path: str) -> None:
                 Decimal("99"),
                 Decimal("98.5"),
                 Decimal("1.0"),
-                Decimal("0.02"),
-                Decimal("0.018"),
+                Decimal("2.0"),
+                Decimal("1.8"),
                 "2027-03-31",
                 None,
                 0,
@@ -90,8 +91,8 @@ def _seed_bond_snapshot_rows(duckdb_path: str) -> None:
                 Decimal("190"),
                 Decimal("188"),
                 Decimal("2.0"),
-                Decimal("0.03"),
-                Decimal("0.032"),
+                Decimal("3.0"),
+                Decimal("3.2"),
                 "2031-03-31",
                 None,
                 0,
@@ -119,8 +120,8 @@ def _seed_bond_snapshot_rows(duckdb_path: str) -> None:
                 Decimal("140"),
                 Decimal("138"),
                 Decimal("1.5"),
-                Decimal("0.04"),
-                Decimal("0.045"),
+                Decimal("4.0"),
+                Decimal("4.5"),
                 "2036-03-31",
                 None,
                 0,
@@ -148,8 +149,8 @@ def _seed_bond_snapshot_rows(duckdb_path: str) -> None:
                 Decimal("120"),
                 Decimal("120"),
                 Decimal("0"),
-                Decimal("0.02"),
-                Decimal("0.021"),
+                Decimal("2.0"),
+                Decimal("2.1"),
                 "2027-03-31",
                 None,
                 0,
@@ -180,6 +181,93 @@ def _seed_bond_snapshot_rows(duckdb_path: str) -> None:
         conn.close()
 
 
+def _seed_foreign_bond_snapshot_row(
+    duckdb_path: str,
+    *,
+    instrument_code: str = "USD-CB-CLOSURE",
+    source_version: str = "sv_bond_snap_usd_closure",
+) -> None:
+    conn = duckdb.connect(duckdb_path, read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into zqtz_bond_daily_snapshot (
+              report_date, instrument_code, instrument_name, portfolio_name, cost_center,
+              account_category, asset_class, bond_type, issuer_name, industry_name, rating,
+              currency_code, face_value_native, market_value_native, amortized_cost_native,
+              accrued_interest_native, coupon_rate, ytm_value, maturity_date, next_call_date,
+              overdue_days, is_issuance_like, interest_mode, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            [
+                REPORT_DATE,
+                instrument_code,
+                "USD formal CNY closure bond",
+                "Portfolio USD",
+                "CC-USD",
+                "bank book",
+                "credit bond",
+                "corporate bond",
+                "Issuer USD",
+                "Industry",
+                "A",
+                "USD",
+                Decimal("100"),
+                Decimal("100"),
+                Decimal("98"),
+                Decimal("1"),
+                Decimal("3.0"),
+                Decimal("4.0"),
+                "2031-03-31",
+                None,
+                0,
+                False,
+                "annual",
+                source_version,
+                "rv_bond_snap_usd",
+                "ib_bond_usd",
+                f"trace_{instrument_code.lower()}",
+            ],
+        )
+    finally:
+        conn.close()
+
+
+def _clone_fact_rows_for_report_date(
+    duckdb_path: str,
+    *,
+    source_report_date: str,
+    target_report_date: str,
+) -> None:
+    """Copy materialized rows to a second date so invalidation can prove scope."""
+
+    conn = duckdb.connect(duckdb_path, read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into fact_formal_bond_analytics_daily
+            select ? as report_date, * exclude (report_date)
+            from fact_formal_bond_analytics_daily
+            where report_date = ?
+            """,
+            [target_report_date, source_report_date],
+        )
+        conn.execute(
+            """
+            insert into fact_formal_risk_tensor_daily
+            select ? as report_date, * exclude (report_date)
+            from fact_formal_risk_tensor_daily
+            where report_date = ?
+            """,
+            [target_report_date, source_report_date],
+        )
+    finally:
+        conn.close()
+
+
 def _seed_formal_zqtz_balance_for_cb001(
     duckdb_path: str,
     *,
@@ -188,6 +276,8 @@ def _seed_formal_zqtz_balance_for_cb001(
     face_value_amount: Decimal | None = None,
     amortized_cost_amount: Decimal | None = None,
     accrued_interest_amount: Decimal | None = None,
+    invest_type_std: str = "A",
+    accounting_basis: str = "FVOCI",
 ) -> None:
     conn = duckdb.connect(duckdb_path, read_only=False)
     try:
@@ -241,7 +331,7 @@ def _seed_formal_zqtz_balance_for_cb001(
             select
               cast(report_date as varchar), instrument_code, instrument_name, portfolio_name, cost_center,
               account_category, asset_class, bond_type, coalesce(sub_type, ''), coalesce(business_type_primary, ''),
-              issuer_name, industry_name, rating, 'A', 'FVOCI',
+              issuer_name, industry_name, rating, ?, ?,
               'asset', 'CNY', currency_code, coalesce(?, face_value_native), ?,
               coalesce(?, amortized_cost_native), coalesce(?, accrued_interest_native),
               coupon_rate, ytm_value, cast(maturity_date as varchar),
@@ -250,6 +340,8 @@ def _seed_formal_zqtz_balance_for_cb001(
             where instrument_code = ?
             """,
             [
+                invest_type_std,
+                accounting_basis,
                 face_value_amount,
                 market_value_amount,
                 amortized_cost_amount,
@@ -262,11 +354,21 @@ def _seed_formal_zqtz_balance_for_cb001(
 
 
 def _seed_duplicate_formal_zqtz_balance_for_cb001(duckdb_path: str) -> None:
-    _seed_formal_zqtz_balance_for_cb001(duckdb_path, market_value_amount=Decimal("1900"))
-    _seed_formal_zqtz_balance_for_cb001(duckdb_path, market_value_amount=Decimal("-1900"))
+    """An offsetting pair that collapses into one snapshot join group.
+
+    The two rows sit in different books, which is how the real offsetting pairs
+    look and what keeps them distinct under the v43 natural key. The snapshot
+    join key carries no accounting basis, so both still land in one group.
+    """
+    _seed_formal_zqtz_balance_for_cb001(
+        duckdb_path, market_value_amount=Decimal("1900"), accounting_basis="FVOCI"
+    )
+    _seed_formal_zqtz_balance_for_cb001(
+        duckdb_path, market_value_amount=Decimal("-1900"), accounting_basis="AC"
+    )
 
 
-BOND_ANALYTICS_TEST_YIELD_ANCHORS = ("2026-03-01", "2026-03-30", "2026-03-31")
+BOND_ANALYTICS_TEST_YIELD_ANCHORS = ("2026-01-20", "2026-03-01", "2026-03-30", "2026-03-31")
 
 
 def seed_yield_curves_for_bond_analytics_tests(duckdb_path: str) -> None:
@@ -305,6 +407,55 @@ def seed_yield_curves_for_bond_analytics_tests(duckdb_path: str) -> None:
             repo.replace_curve_snapshots(trade_date=trade_date, snapshots=snapshots, rule_version=RULE_VERSION)
 
 
+@pytest.fixture(autouse=True)
+def _seed_worker_yield_curve_inputs(tmp_path) -> None:
+    """Keep materialization unit tests local now that curve preparation runs in the worker."""
+    seed_yield_curves_for_bond_analytics_tests(str(tmp_path / "moss.duckdb"))
+
+
+def _expected_curve_recovery_manifest(
+    task_mod,
+    duckdb_path: str,
+    *,
+    snapshot_date_by_anchor: dict[str, str] | None = None,
+) -> list[dict[str, str]]:
+    from backend.app.tasks.yield_curve_materialize import RULE_VERSION as YIELD_CURVE_RULE_VERSION
+
+    snapshots = snapshot_date_by_anchor or {}
+    return [
+        {
+            "anchor_date": anchor_date,
+            "curve_type": curve_type,
+            "snapshot_date": snapshots.get(anchor_date, anchor_date),
+            "source_version": "sv_test_yield",
+            "vendor_name": "test_vendor",
+            "vendor_version": "vv_test_yield",
+            "rule_version": YIELD_CURVE_RULE_VERSION,
+        }
+        for anchor_date in task_mod._yield_curve_anchor_dates_for_materialization(
+            duckdb_path=duckdb_path,
+            report_date=REPORT_DATE,
+        )
+        for curve_type in ("treasury", "cdb", "aaa_credit")
+    ]
+
+
+def _target_bond_fact_rows(duckdb_path: str) -> list[tuple]:
+    conn = duckdb.connect(duckdb_path, read_only=True)
+    try:
+        return conn.execute(
+            """
+            select *
+            from fact_formal_bond_analytics_daily
+            where report_date = ?
+            order by instrument_code, portfolio_name, cost_center
+            """,
+            [REPORT_DATE],
+        ).fetchall()
+    finally:
+        conn.close()
+
+
 def _materialize_sample_facts(tmp_path):
     repo_mod, task_mod = _load_modules()
     duckdb_path = tmp_path / "moss.duckdb"
@@ -317,6 +468,325 @@ def _materialize_sample_facts(tmp_path):
     )
     repo = repo_mod.BondAnalyticsRepository(str(duckdb_path))
     return repo_mod, task_mod, duckdb_path, governance_dir, payload, repo
+
+
+def test_bond_analytics_generic_existing_curves_only_remains_manifest_optional(
+    tmp_path,
+    monkeypatch,
+):
+    _repo_mod, task_mod = _load_modules()
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    _seed_bond_snapshot_rows(str(duckdb_path))
+    monkeypatch.setattr(
+        task_mod,
+        "ensure_yield_curve_inputs_on_or_before",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("generic existing-curves-only called a curve provider")
+        ),
+    )
+
+    payload = task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        use_existing_curves_only=True,
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["row_count"] == 3
+    assert "qualified_curve_dependencies" not in payload
+
+
+def test_bond_analytics_expected_curve_manifest_requires_existing_only_before_provider(
+    tmp_path,
+    monkeypatch,
+):
+    _repo_mod, task_mod = _load_modules()
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    _seed_bond_snapshot_rows(str(duckdb_path))
+    manifest = _expected_curve_recovery_manifest(task_mod, str(duckdb_path))
+    monkeypatch.setattr(
+        task_mod,
+        "ensure_yield_curve_inputs_on_or_before",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("invalid curve recovery contract called a provider")
+        ),
+    )
+
+    with pytest.raises(ValueError, match="requires use_existing_curves_only=True"):
+        task_mod.materialize_bond_analytics_facts.fn(
+            report_date=REPORT_DATE,
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+            expected_curve_snapshots=manifest,
+        )
+
+
+@pytest.mark.parametrize(
+    ("fallback_current_date", "expected_current_snapshot"),
+    [(False, REPORT_DATE), (True, "2026-03-30")],
+)
+def test_bond_analytics_expected_curves_accept_exact_and_prior_day_snapshots(
+    tmp_path,
+    monkeypatch,
+    fallback_current_date,
+    expected_current_snapshot,
+):
+    _repo_mod, task_mod = _load_modules()
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    _seed_bond_snapshot_rows(str(duckdb_path))
+    if fallback_current_date:
+        conn = duckdb.connect(str(duckdb_path), read_only=False)
+        try:
+            conn.execute(
+                "delete from fact_formal_yield_curve_daily where trade_date = ?",
+                [REPORT_DATE],
+            )
+        finally:
+            conn.close()
+    manifest = _expected_curve_recovery_manifest(
+        task_mod,
+        str(duckdb_path),
+        snapshot_date_by_anchor={REPORT_DATE: expected_current_snapshot},
+    )
+    monkeypatch.setattr(
+        task_mod,
+        "ensure_yield_curve_inputs_on_or_before",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("qualified curve recovery called a provider")
+        ),
+    )
+
+    payload = task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        run_id=f"curve-qualified-{expected_current_snapshot}",
+        use_existing_curves_only=True,
+        expected_curve_snapshots=manifest,
+    )
+
+    assert payload["status"] == "completed"
+    dependencies = payload["qualified_curve_dependencies"]
+    assert len(dependencies) == len(
+        task_mod._yield_curve_anchor_dates_for_materialization(
+            duckdb_path=str(duckdb_path),
+            report_date=REPORT_DATE,
+        )
+    ) * 3
+    current_dependencies = [
+        item for item in dependencies if item["anchor_date"] == REPORT_DATE
+    ]
+    assert {item["snapshot_date"] for item in current_dependencies} == {
+        expected_current_snapshot
+    }
+    assert {item["point_count"] for item in dependencies} == {10}
+
+
+@pytest.mark.parametrize(
+    ("invalid_case", "error_match"),
+    [
+        ("missing_manifest_grain", "does not match the bond curve dependency grains"),
+        ("missing_snapshot", "Missing qualified treasury curve snapshot"),
+        ("outside_window", "outside the 40-day recovery window"),
+        ("version_changed", "source_version changed"),
+        ("lineage_empty", "empty vendor_name"),
+        ("dependency_changed", "curve snapshot changed"),
+        ("tenor_invalid", "missing minimum observed tenors"),
+    ],
+)
+def test_bond_analytics_expected_curve_guard_fails_before_replacing_existing_facts(
+    tmp_path,
+    monkeypatch,
+    invalid_case,
+    error_match,
+):
+    _repo_mod, task_mod = _load_modules()
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    _seed_bond_snapshot_rows(str(duckdb_path))
+    task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        use_existing_curves_only=True,
+    )
+    facts_before = _target_bond_fact_rows(str(duckdb_path))
+    assert facts_before
+    manifest = _expected_curve_recovery_manifest(task_mod, str(duckdb_path))
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        if invalid_case == "missing_manifest_grain":
+            manifest.pop()
+        elif invalid_case == "missing_snapshot":
+            conn.execute(
+                "delete from fact_formal_yield_curve_daily where curve_type = 'treasury'"
+            )
+        elif invalid_case == "outside_window":
+            conn.execute(
+                """
+                delete from fact_formal_yield_curve_daily
+                where curve_type = 'cdb' and trade_date > '2026-01-20'
+                """
+            )
+            for item in manifest:
+                if item["curve_type"] == "cdb":
+                    item["snapshot_date"] = "2026-01-20"
+        elif invalid_case == "version_changed":
+            conn.execute(
+                """
+                update fact_formal_yield_curve_daily
+                set source_version = 'sv_changed'
+                where trade_date = ? and curve_type = 'cdb'
+                """,
+                [REPORT_DATE],
+            )
+        elif invalid_case == "lineage_empty":
+            conn.execute(
+                """
+                update fact_formal_yield_curve_daily
+                set vendor_name = ''
+                where trade_date = ? and curve_type = 'cdb'
+                """,
+                [REPORT_DATE],
+            )
+        elif invalid_case == "dependency_changed":
+            conn.execute(
+                """
+                delete from fact_formal_yield_curve_daily
+                where trade_date = ? and curve_type = 'treasury'
+                """,
+                [REPORT_DATE],
+            )
+        elif invalid_case == "tenor_invalid":
+            conn.execute(
+                """
+                delete from fact_formal_yield_curve_daily
+                where trade_date = ? and curve_type = 'aaa_credit' and tenor = '10Y'
+                """,
+                [REPORT_DATE],
+            )
+        else:
+            raise AssertionError(f"Unknown invalid_case={invalid_case}")
+    finally:
+        conn.close()
+
+    monkeypatch.setattr(
+        task_mod,
+        "ensure_yield_curve_inputs_on_or_before",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("unqualified curve recovery called a provider")
+        ),
+    )
+    with pytest.raises(ValueError, match=error_match):
+        task_mod.materialize_bond_analytics_facts.fn(
+            report_date=REPORT_DATE,
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+            run_id=f"curve-guard-{invalid_case}",
+            use_existing_curves_only=True,
+            expected_curve_snapshots=manifest,
+        )
+
+    assert _target_bond_fact_rows(str(duckdb_path)) == facts_before
+
+
+def test_bond_analytics_new_run_executes_after_failed_and_orphan_curve_recovery_runs(
+    tmp_path,
+):
+    _repo_mod, task_mod = _load_modules()
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    _seed_bond_snapshot_rows(str(duckdb_path))
+    task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        use_existing_curves_only=True,
+    )
+    facts_before = _target_bond_fact_rows(str(duckdb_path))
+    manifest = _expected_curve_recovery_manifest(task_mod, str(duckdb_path))
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_formal_yield_curve_daily
+            set source_version = 'sv_changed'
+            where trade_date = ? and curve_type = 'cdb'
+            """,
+            [REPORT_DATE],
+        )
+    finally:
+        conn.close()
+    with pytest.raises(ValueError, match="source_version changed"):
+        task_mod.materialize_bond_analytics_facts.fn(
+            report_date=REPORT_DATE,
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+            run_id="curve-recovery-failed",
+            use_existing_curves_only=True,
+            expected_curve_snapshots=manifest,
+        )
+    assert _target_bond_fact_rows(str(duckdb_path)) == facts_before
+
+    governance_dir.mkdir(parents=True, exist_ok=True)
+    with (governance_dir / "cache_build_run.jsonl").open("a", encoding="utf-8") as stream:
+        stream.write(
+            json.dumps(
+                {
+                    "status": "running",
+                    "job_name": "bond_analytics_materialize",
+                    "run_id": "curve-recovery-orphan",
+                    "report_date": REPORT_DATE,
+                }
+            )
+            + "\n"
+        )
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_formal_yield_curve_daily
+            set source_version = 'sv_test_yield'
+            where trade_date = ? and curve_type = 'cdb'
+            """,
+            [REPORT_DATE],
+        )
+        conn.execute(
+            """
+            update zqtz_bond_daily_snapshot
+            set market_value_native = 101
+            where report_date = ? and instrument_code = 'TB-001'
+            """,
+            [REPORT_DATE],
+        )
+    finally:
+        conn.close()
+
+    payload = task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        run_id="curve-recovery-new",
+        use_existing_curves_only=True,
+        expected_curve_snapshots=manifest,
+    )
+
+    assert payload["status"] == "completed"
+    assert _target_bond_fact_rows(str(duckdb_path)) != facts_before
+    runs = [
+        json.loads(line)
+        for line in (governance_dir / "cache_build_run.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert any(row.get("run_id") == "curve-recovery-failed" and row.get("status") == "failed" for row in runs)
+    assert any(row.get("run_id") == "curve-recovery-orphan" and row.get("status") == "running" for row in runs)
+    assert any(row.get("run_id") == "curve-recovery-new" and row.get("status") == "completed" for row in runs)
 
 
 def test_bond_analytics_materialize_writes_fact_table_and_governance_records(tmp_path):
@@ -401,7 +871,7 @@ def test_bond_analytics_materialize_writes_fact_table_and_governance_records(tmp
     assert split_total == overview["portfolio_dv01"]
 
     krd = repo.fetch_krd_distribution(report_date=REPORT_DATE)
-    assert [row["tenor_bucket"] for row in krd] == ["10Y", "1Y", "5Y"]
+    assert [row["tenor_bucket"] for row in krd] == ["1Y", "5Y", "10Y"]
 
     credit = repo.fetch_credit_summary(report_date=REPORT_DATE)
     assert credit["credit_bond_count"] == 2
@@ -557,22 +1027,31 @@ def test_bond_analytics_materialize_krd_distribution_has_expected_bucket_shape_a
 
     assert krd == [
         {
-            "tenor_bucket": "10Y",
-            "market_value": Decimal("140.00000000"),
-            "dv01": Decimal("0.12054196"),
-            "krd": Decimal("8.03613072"),
-        },
-        {
             "tenor_bucket": "1Y",
             "market_value": Decimal("99.00000000"),
             "dv01": Decimal("0.00982318"),
+            "avg_modified_duration": Decimal("0.98231827"),
             "krd": Decimal("0.98231827"),
+            "duration_excluded_market_value": Decimal("0"),
+            "duration_excluded_count": 0,
         },
         {
             "tenor_bucket": "5Y",
             "market_value": Decimal("190.00000000"),
             "dv01": Decimal("0.09138735"),
+            "avg_modified_duration": Decimal("4.56936732"),
             "krd": Decimal("4.56936732"),
+            "duration_excluded_market_value": Decimal("0"),
+            "duration_excluded_count": 0,
+        },
+        {
+            "tenor_bucket": "10Y",
+            "market_value": Decimal("140.00000000"),
+            "dv01": Decimal("0.12054196"),
+            "avg_modified_duration": Decimal("8.03613072"),
+            "krd": Decimal("8.03613072"),
+            "duration_excluded_market_value": Decimal("0"),
+            "duration_excluded_count": 0,
         },
     ]
     assert sum((row["market_value"] for row in krd), Decimal("0")) == risk["total_market_value"]
@@ -668,8 +1147,8 @@ def test_bond_analytics_materialize_uses_formal_cny_amounts_for_foreign_bonds(tm
                 Decimal("100"),
                 Decimal("98"),
                 Decimal("1"),
-                Decimal("0.03"),
-                Decimal("0.04"),
+                Decimal("3.0"),
+                Decimal("4.0"),
                 "2031-03-31",
                 None,
                 0,
@@ -712,6 +1191,183 @@ def test_bond_analytics_materialize_uses_formal_cny_amounts_for_foreign_bonds(tm
     assert row["market_value"] == Decimal("720.00000000")
     assert row["amortized_cost"] == Decimal("686.00000000")
     assert row["accrued_interest"] == Decimal("7.00000000")
+    expected_dv01 = (row["face_value"] * row["modified_duration"] / Decimal("10000")).quantize(
+        Decimal("0.00000001")
+    )
+    assert row["dv01"] == expected_dv01
+
+
+@pytest.mark.parametrize(
+    "missing_field",
+    [
+        "face_value_amount",
+        "market_value_amount",
+        "amortized_cost_amount",
+        "accrued_interest_amount",
+    ],
+)
+def test_bond_analytics_materialize_fails_closed_clears_target_facts_and_preserves_other_dates(
+    tmp_path,
+    missing_field: str,
+):
+    repo_mod, task_mod = _load_modules()
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    _seed_bond_snapshot_rows(str(duckdb_path))
+
+    first_payload = task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+    assert first_payload["status"] == "completed"
+
+    risk_task_mod = load_module(
+        "backend.app.tasks.risk_tensor_materialize",
+        "backend/app/tasks/risk_tensor_materialize.py",
+    )
+    risk_payload = risk_task_mod.materialize_risk_tensor_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+    assert risk_payload["status"] == "completed"
+    _clone_fact_rows_for_report_date(
+        str(duckdb_path),
+        source_report_date=REPORT_DATE,
+        target_report_date=OTHER_REPORT_DATE,
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows_before = conn.execute(
+            """
+            select instrument_code, face_value, market_value_native, market_value,
+                   amortized_cost, accrued_interest, dv01, source_version
+            from fact_formal_bond_analytics_daily
+            where report_date = ?
+            order by instrument_code
+            """,
+            [REPORT_DATE],
+        ).fetchall()
+        other_rows_before = conn.execute(
+            """
+            select instrument_code, face_value, market_value_native, market_value,
+                   amortized_cost, accrued_interest, dv01, source_version
+            from fact_formal_bond_analytics_daily
+            where report_date = ?
+            order by instrument_code
+            """,
+            [OTHER_REPORT_DATE],
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert len(rows_before) == 3
+    assert len(other_rows_before) == 3
+
+    _seed_foreign_bond_snapshot_row(str(duckdb_path))
+    _seed_formal_zqtz_balance_for_cb001(
+        str(duckdb_path),
+        instrument_code="USD-CB-CLOSURE",
+        face_value_amount=Decimal("700"),
+        market_value_amount=Decimal("720"),
+        amortized_cost_amount=Decimal("686"),
+        accrued_interest_amount=Decimal("7"),
+    )
+    assert missing_field in {
+        "face_value_amount",
+        "market_value_amount",
+        "amortized_cost_amount",
+        "accrued_interest_amount",
+    }
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            f"""
+            update fact_formal_zqtz_balance_daily
+            set {missing_field} = NULL
+            where report_date = ? and instrument_code = ? and currency_basis = 'CNY'
+            """,
+            [REPORT_DATE, "USD-CB-CLOSURE"],
+        )
+    finally:
+        conn.close()
+
+    repo = repo_mod.BondAnalyticsRepository(str(duckdb_path))
+    loaded_row = next(
+        row
+        for row in repo.load_snapshot_rows(REPORT_DATE)
+        if row["instrument_code"] == "USD-CB-CLOSURE"
+    )
+    loaded_field = {
+        "face_value_amount": "face_value_cny",
+        "market_value_amount": "market_value_cny",
+        "amortized_cost_amount": "amortized_cost_cny",
+        "accrued_interest_amount": "accrued_interest_cny",
+    }[missing_field]
+    assert loaded_row[loaded_field] is None
+
+    # Catch the exception class binding the task actually raises: earlier tests
+    # (e.g. tests/test_formal_compute_runtime_contract.py) may have replaced
+    # backend.app.schemas.formal_compute_runtime in sys.modules via
+    # tests.helpers.load_module, forking a module-level import of
+    # FormalComputeMaterializeFailure in this file away from the class that the
+    # freshly loaded task_mod re-imported and raises.
+    with pytest.raises(
+        task_mod.FormalComputeMaterializeFailure,
+        match=rf"formal CNY closure unavailable:.*instrument_code=USD-CB-CLOSURE.*{loaded_field}",
+    ):
+        task_mod.materialize_bond_analytics_facts.fn(
+            report_date=REPORT_DATE,
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows_after = conn.execute(
+            """
+            select instrument_code, face_value, market_value_native, market_value,
+                   amortized_cost, accrued_interest, dv01, source_version
+            from fact_formal_bond_analytics_daily
+            where report_date = ?
+            order by instrument_code
+            """,
+            [REPORT_DATE],
+        ).fetchall()
+        other_rows_after = conn.execute(
+            """
+            select instrument_code, face_value, market_value_native, market_value,
+                   amortized_cost, accrued_interest, dv01, source_version
+            from fact_formal_bond_analytics_daily
+            where report_date = ?
+            order by instrument_code
+            """,
+            [OTHER_REPORT_DATE],
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows_after == []
+    assert other_rows_after == other_rows_before
+
+    risk_repo_mod = load_module(
+        "backend.app.repositories.risk_tensor_repo",
+        "backend/app/repositories/risk_tensor_repo.py",
+    )
+    risk_repo = risk_repo_mod.RiskTensorRepository(str(duckdb_path))
+    assert risk_repo.fetch_risk_tensor_row(REPORT_DATE) is None
+    assert risk_repo.fetch_risk_tensor_row(OTHER_REPORT_DATE) is not None
+
+    build_runs = [
+        json.loads(line)
+        for line in (governance_dir / "cache_build_run.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert build_runs[-1]["status"] == "failed"
+    assert "formal CNY closure unavailable" in build_runs[-1]["error_message"]
+    assert loaded_field in build_runs[-1]["error_message"]
 
 
 def test_bond_analytics_materialize_does_not_duplicate_snapshot_rows_when_formal_balance_has_duplicate_keys(tmp_path):
@@ -772,3 +1428,41 @@ def test_bond_analytics_materialize_accounting_audit_exposes_rule_trace_by_asset
         "is_divergent": False,
         "is_map_unclassified": False,
     }
+
+
+@pytest.mark.parametrize("diagnostic_failure", [False, True])
+def test_bond_phase_failure_preserves_cause_without_private_diagnostics(monkeypatch, caplog, diagnostic_failure):
+    from types import SimpleNamespace
+    from backend.app.tasks import bond_analytics_materialize as task
+
+    rows = []
+    def append(_stream, record):
+        if diagnostic_failure:
+            raise TypeError("synthetic-bond-diagnostic-private-token")
+        rows.append(record)
+    diagnostics = task._BondRunDiagnostics(
+        governance_repo=SimpleNamespace(append=append), run_id="synthetic-phase-run",
+        report_date="2026-08-31", started_at="2026-09-27T00:00:00+00:00",
+    )
+    token = task._ACTIVE_BOND_RUN.set(diagnostics)
+    original = ValueError("synthetic-bond-primary-private-token")
+    continued = False
+    try:
+        with pytest.raises(ValueError) as caught:
+            with task._bond_phase("compute"):
+                raise original
+            continued = True
+    finally:
+        task._ACTIVE_BOND_RUN.reset(token)
+    assert caught.value is original
+    assert not continued
+    assert "compute" in diagnostics.phase_timings_seconds
+    if not diagnostic_failure:
+        assert [row["phase_status"] for row in rows] == ["running", "failed"]
+        assert rows[-1]["phase"] == "compute"
+        assert rows[-1]["run_id"] == "synthetic-phase-run"
+        assert "ValueError" in rows[-1]["error_message"]
+    assert "synthetic-bond-primary-private-token" not in str(rows)
+    assert "synthetic-bond-primary-private-token" not in caplog.text
+    assert "synthetic-bond-diagnostic-private-token" not in caplog.text
+    assert not any(record.exc_info for record in caplog.records)

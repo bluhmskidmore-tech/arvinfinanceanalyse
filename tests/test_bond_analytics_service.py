@@ -5,8 +5,10 @@ from decimal import Decimal
 from pathlib import Path
 
 import duckdb
+import pytest
 
 from backend.app.governance.settings import get_settings
+from backend.app.schemas.formal_compute_runtime import FormalComputeMaterializeFailure
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     GovernanceRepository,
@@ -15,28 +17,97 @@ from tests.helpers import load_module
 from tests.test_bond_analytics_curve_effects import _seed_curve_rows
 from tests.test_bond_analytics_materialize_flow import (
     REPORT_DATE,
+    _seed_foreign_bond_snapshot_row,
     _seed_bond_snapshot_rows,
     _seed_formal_zqtz_balance_for_cb001,
+    seed_yield_curves_for_bond_analytics_tests,
 )
 
 
-def _configure_and_materialize(tmp_path, monkeypatch):
+def _configure_and_materialize(tmp_path, monkeypatch, *, interest_mode_override: str | None = None):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     get_settings.cache_clear()
     _seed_bond_snapshot_rows(str(duckdb_path))
+    seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        if interest_mode_override is not None:
+            conn.execute(
+                """
+                update zqtz_bond_daily_snapshot
+                set interest_mode = ?
+                where report_date = ?
+                  and is_issuance_like = false
+                """,
+                [interest_mode_override, REPORT_DATE],
+            )
+    finally:
+        conn.close()
     task_mod = load_module(
         "backend.app.tasks.bond_analytics_materialize",
         "backend/app/tasks/bond_analytics_materialize.py",
     )
-    task_mod.materialize_bond_analytics_facts.fn(
-        report_date=REPORT_DATE,
-        duckdb_path=str(duckdb_path),
-        governance_dir=str(governance_dir),
-    )
+    try:
+        task_mod.materialize_bond_analytics_facts.fn(
+            report_date=REPORT_DATE,
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+    finally:
+        _clear_seeded_yield_curve_inputs(str(duckdb_path))
     return duckdb_path, governance_dir, task_mod
+
+
+def _clear_seeded_yield_curve_inputs(duckdb_path: str) -> None:
+    conn = duckdb.connect(duckdb_path, read_only=False)
+    try:
+        conn.execute(
+            """
+            delete from fact_formal_yield_curve_daily
+            where trade_date in ('2026-01-20', '2026-03-01', '2026-03-30', '2026-03-31')
+              and curve_type in ('treasury', 'cdb', 'aaa_credit')
+            """
+        )
+    finally:
+        conn.close()
+
+
+def test_configure_and_materialize_clears_seeded_yield_curve_inputs(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    yield_curve_mod = load_module(
+        "backend.app.tasks.yield_curve_materialize",
+        "backend/app/tasks/yield_curve_materialize.py",
+    )
+
+    def _fail_if_vendor_called(*_args, **_kwargs):
+        raise AssertionError("yield vendor should not be called")
+
+    monkeypatch.setattr(yield_curve_mod.VendorAdapter, "_fetch_akshare_curve", _fail_if_vendor_called)
+    monkeypatch.setattr(yield_curve_mod.VendorAdapter, "_fetch_choice_curve", _fail_if_vendor_called)
+    monkeypatch.setattr(yield_curve_mod.VendorAdapter, "_fetch_chinabond_gkh_curve", _fail_if_vendor_called)
+
+    duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            select trade_date, curve_type, count(*) as row_count
+            from fact_formal_yield_curve_daily
+            where trade_date in ('2026-01-20', '2026-03-01', '2026-03-30', '2026-03-31')
+            group by trade_date, curve_type
+            order by trade_date, curve_type
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == []
 
 
 def _append_completed_bond_analytics_build(
@@ -62,10 +133,272 @@ def _append_completed_bond_analytics_build(
     )
 
 
+def _append_bond_analytics_terminal(
+    governance_dir: Path,
+    service_mod,
+    *,
+    report_date: str,
+    status: str,
+    run_id: str,
+    source_version: str,
+) -> None:
+    GovernanceRepository(base_dir=governance_dir).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": run_id,
+            "job_name": service_mod.JOB_NAME,
+            "status": status,
+            "cache_key": service_mod.CACHE_KEY,
+            "cache_version": service_mod.CACHE_VERSION,
+            "source_version": source_version,
+            "vendor_version": "vv_none",
+            "rule_version": service_mod.RULE_VERSION,
+            "report_date": report_date,
+        },
+    )
+
+
+def test_bond_analytics_lineage_reads_only_its_governance_cache_key(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    _append_bond_analytics_terminal(
+        governance_dir,
+        service_mod,
+        report_date=REPORT_DATE,
+        status="completed",
+        run_id="bond-selected-completed",
+        source_version="sv_selected",
+    )
+    GovernanceRepository(base_dir=governance_dir).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": "unrelated-later-failure",
+            "job_name": service_mod.JOB_NAME,
+            "status": "failed",
+            "cache_key": "another-cache-key",
+            "report_date": REPORT_DATE,
+        },
+    )
+
+    def reject_full_scan(*_args, **_kwargs):
+        raise AssertionError("bond lineage must copy only its latest governance run")
+
+    monkeypatch.setattr(GovernanceRepository, "read_all", reject_full_scan)
+    monkeypatch.setattr(GovernanceRepository, "read_by_cache_keys", reject_full_scan)
+    assert service_mod._require_latest_completed_bond_analytics_run(
+        REPORT_DATE, require_present=True,
+    )["run_id"] == "bond-selected-completed"
+
+    _append_bond_analytics_terminal(
+        governance_dir,
+        service_mod,
+        report_date=REPORT_DATE,
+        status="failed",
+        run_id="bond-selected-failed",
+        source_version="sv_selected",
+    )
+    with pytest.raises(RuntimeError, match="latest status=failed"):
+        service_mod._require_latest_completed_bond_analytics_run(
+            REPORT_DATE, require_present=True,
+        )
+    get_settings.cache_clear()
+
+
+@pytest.mark.parametrize("latest_status", ["failed", "queued", "running", " COMPLETED "])
+def test_bond_analytics_latest_run_keeps_terminal_validation(
+    tmp_path, monkeypatch, latest_status,
+) -> None:
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    _append_bond_analytics_terminal(
+        governance_dir, service_mod, report_date=REPORT_DATE, status="completed",
+        run_id="old-completed", source_version="sv_old",
+    )
+    _append_bond_analytics_terminal(
+        governance_dir, service_mod, report_date=REPORT_DATE, status=latest_status,
+        run_id="latest-run", source_version="sv_latest",
+    )
+    try:
+        if latest_status.strip().lower() == "completed":
+            assert service_mod._require_latest_completed_bond_analytics_run(
+                REPORT_DATE, require_present=True,
+            )["run_id"] == "latest-run"
+        else:
+            with pytest.raises(RuntimeError, match=f"latest status={latest_status}"):
+                service_mod._require_latest_completed_bond_analytics_run(
+                    REPORT_DATE, require_present=True,
+                )
+        # Callers that pass their own snapshot keep the same newest-row rules.
+        with pytest.raises(RuntimeError, match="latest status=queued"):
+            service_mod._require_latest_completed_bond_analytics_run(
+                REPORT_DATE,
+                build_rows=[
+                    {"cache_key": service_mod.CACHE_KEY, "job_name": service_mod.JOB_NAME,
+                     "report_date": REPORT_DATE, "status": "completed", "source_version": "sv_old"},
+                    {"cache_key": service_mod.CACHE_KEY, "job_name": service_mod.JOB_NAME,
+                     "report_date": REPORT_DATE, "status": "queued"},
+                ],
+            )
+    finally:
+        get_settings.cache_clear()
+
+
 def _numeric_raw(value: dict[str, object] | str) -> Decimal:
     if isinstance(value, dict):
         return Decimal(str(value["raw"]))
     return Decimal(str(value))
+
+
+def _return_summary_refresh_fixture(tmp_path, monkeypatch):
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    service = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    _append_bond_analytics_terminal(
+        governance_dir, service, report_date=REPORT_DATE, status="completed",
+        run_id="initial", source_version="sv_initial",
+    )
+    state = {"database": 1, "physical": 1, "scope": 1, "builds": 0, "hook": None}
+    monkeypatch.setattr(service, "_duckdb_cache_version_token", lambda: ("test-db", state["database"]))
+    monkeypatch.setattr(service, "_bond_analytics_rows_cache_version_token", lambda: ("selected-db", state["physical"]))
+    from backend.app.services import runtime_cache
+
+    def identity(key):
+        return ("test-scope", state["scope"], key)
+
+    monkeypatch.setattr(runtime_cache, "system_read_cache_identity", identity)
+    monkeypatch.setattr(service, "system_read_cache_identity", identity, raising=False)
+
+    class EmptyRepo:
+        def fetch_bond_analytics_rows(self, **_kwargs):
+            return []
+
+    monkeypatch.setattr(service, "_repo", EmptyRepo)
+
+    def empty_result(meta, report_date, *_args):
+        state["builds"] += 1
+        result = {"result_meta": meta.model_dump(mode="json"),
+                  "result": {"report_date": report_date.isoformat(), "build": state["builds"]}}
+        if state["hook"]:
+            state["hook"]()
+        return result
+
+    monkeypatch.setattr(service, "_empty_return_response", empty_result)
+    return service, state, governance_dir
+
+
+def test_return_summary_force_refresh_replaces_matching_cache_without_discarding_hit(tmp_path, monkeypatch):
+    service, state, _governance_dir = _return_summary_refresh_fixture(tmp_path, monkeypatch)
+    rd = date.fromisoformat(REPORT_DATE)
+    first = service.get_return_decomposition_summary(rd)
+    assert service.get_return_decomposition_summary(rd) is first
+    assert state["builds"] == 1
+
+    def ordinary_read_during_refresh():
+        assert service.get_return_decomposition_summary(rd) is first
+
+    state["hook"] = ordinary_read_during_refresh
+    refreshed = service.get_return_decomposition_summary(rd, force_refresh=True)
+    assert refreshed["result"]["build"] == 2
+    assert service.get_return_decomposition_summary(rd) is refreshed
+    assert state["builds"] == 2
+    state["hook"] = lambda: (_ for _ in ()).throw(RuntimeError("refresh failed"))
+    with pytest.raises(RuntimeError, match="refresh failed"):
+        service.get_return_decomposition_summary(rd, force_refresh=True)
+    assert service.get_return_decomposition_summary(rd) is refreshed
+    get_settings.cache_clear()
+
+
+def test_return_summary_force_refresh_preserves_computed_envelope(tmp_path, monkeypatch):
+    _configure_and_materialize(tmp_path, monkeypatch)
+    service = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    rd = date.fromisoformat(REPORT_DATE)
+    first = service.get_return_decomposition_summary(rd)
+    refreshed = service.get_return_decomposition_summary(rd, force_refresh=True)
+
+    def stable(value):
+        if isinstance(value, dict):
+            return {key: stable(item) for key, item in value.items()
+                    if key not in {"trace_id", "generated_at", "computed_at"}}
+        if isinstance(value, list):
+            return [stable(item) for item in value]
+        return value
+
+    assert refreshed is not first
+    assert stable(refreshed) == stable(first)
+    assert service.get_return_decomposition_summary(rd) is refreshed
+    get_settings.cache_clear()
+
+
+@pytest.mark.parametrize("change", ["generation", "database", "physical", "scope", "terminal"])
+def test_return_summary_force_refresh_does_not_publish_changed_read_inputs(tmp_path, monkeypatch, change):
+    service, state, governance_dir = _return_summary_refresh_fixture(tmp_path, monkeypatch)
+    rd = date.fromisoformat(REPORT_DATE)
+    first = service.get_return_decomposition_summary(rd)
+    cache = service._return_decomposition_cache
+    original_key = next(iter(cache._store))
+
+    def invalidate():
+        if change == "generation":
+            cache.clear()
+        elif change == "terminal":
+            _append_bond_analytics_terminal(
+                governance_dir, service, report_date=REPORT_DATE, status="completed",
+                run_id="new-terminal", source_version="sv_new",
+            )
+        else:
+            state[change] += 1
+
+    state["hook"] = invalidate
+    refreshed = service.get_return_decomposition_summary(rd, force_refresh=True)
+    assert refreshed["result"]["build"] == 2
+    state["hook"] = None
+    if change == "generation":
+        assert cache._store == {}
+        assert service.get_return_decomposition_summary(rd)["result"]["build"] == 3
+    else:
+        assert cache._store[original_key][1] is first
+        assert all(entry[1] is not refreshed for entry in cache._store.values())
+    if change in {"database", "scope", "terminal"}:
+        assert service.get_return_decomposition_summary(rd)["result"]["build"] == 3
+    get_settings.cache_clear()
+
+
+@pytest.mark.parametrize("status,source", [("failed", "sv_bad"), ("queued", "sv_bad"), ("completed", " ")])
+def test_return_summary_force_refresh_rechecks_latest_terminal_before_store(tmp_path, monkeypatch, status, source):
+    service, state, governance_dir = _return_summary_refresh_fixture(tmp_path, monkeypatch)
+    rd = date.fromisoformat(REPORT_DATE)
+    first = service.get_return_decomposition_summary(rd)
+    original_key = next(iter(service._return_decomposition_cache._store))
+    state["hook"] = lambda: _append_bond_analytics_terminal(
+        governance_dir, service, report_date=REPORT_DATE, status=status,
+        run_id="unavailable-terminal", source_version=source,
+    )
+    with pytest.raises(RuntimeError, match="Bond analytics formal build terminal unavailable"):
+        service.get_return_decomposition_summary(rd, force_refresh=True)
+    assert service._return_decomposition_cache._store[original_key][1] is first
+    with pytest.raises(RuntimeError, match="Bond analytics formal build terminal unavailable"):
+        service.get_return_decomposition_summary(rd)
+    get_settings.cache_clear()
 
 
 def test_bond_analytics_service_returns_empty_warning_without_fact_data(tmp_path, monkeypatch):
@@ -160,13 +493,19 @@ def test_bond_analytics_refresh_status_invalidates_matching_ttl_caches(tmp_path,
     settings = get_settings()
 
     return_key = ("2026-03-31", "MoM", "all", "all")
+    summary_return_key = ("2026-03-31", "MoM", "all", "all", "summary")
     other_return_key = ("2026-04-30", "MoM", "all", "all")
     action_key = ("2026-03-31", "MoM")
     other_action_key = ("2026-04-30", "MoM")
+    row_key = ("2026-03-31", "all", "all", *service_mod._duckdb_cache_version_token())
+    other_row_key = ("2026-04-30", "all", "all", *service_mod._duckdb_cache_version_token())
     service_mod._return_decomposition_cache.set(return_key, {"value": "stale-return"})
+    service_mod._return_decomposition_cache.set(summary_return_key, {"value": "stale-summary-return"})
     service_mod._return_decomposition_cache.set(other_return_key, {"value": "keep-return"})
     service_mod._action_attribution_cache.set(action_key, {"value": "stale-action"})
     service_mod._action_attribution_cache.set(other_action_key, {"value": "keep-action"})
+    service_mod._bond_analytics_rows_cache.set(row_key, [{"value": "stale-row"}])
+    service_mod._bond_analytics_rows_cache.set(other_row_key, [{"value": "keep-row"}])
 
     GovernanceRepository(base_dir=governance_dir).append(
         CACHE_BUILD_RUN_STREAM,
@@ -187,7 +526,9 @@ def test_bond_analytics_refresh_status_invalidates_matching_ttl_caches(tmp_path,
 
     assert payload["status"] == "completed"
     assert service_mod._return_decomposition_cache.get(return_key) == (False, None)
+    assert service_mod._return_decomposition_cache.get(summary_return_key) == (False, None)
     assert service_mod._action_attribution_cache.get(action_key) == (False, None)
+    assert service_mod._bond_analytics_rows_cache.get(row_key) == (False, None)
     assert service_mod._return_decomposition_cache.get(other_return_key) == (
         True,
         {"value": "keep-return"},
@@ -196,6 +537,350 @@ def test_bond_analytics_refresh_status_invalidates_matching_ttl_caches(tmp_path,
         True,
         {"value": "keep-action"},
     )
+    assert service_mod._bond_analytics_rows_cache.get(other_row_key) == (
+        True,
+        [{"value": "keep-row"}],
+    )
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_rows_cache_reuses_matching_fact_reads(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    service_mod._bond_analytics_rows_cache.clear()
+    calls: list[tuple[str, str, str]] = []
+
+    class FakeBondAnalyticsRepository:
+        def fetch_bond_analytics_rows(
+            self,
+            *,
+            report_date: str,
+            asset_class: str = "all",
+            accounting_class: str = "all",
+        ) -> list[dict[str, object]]:
+            calls.append((report_date, asset_class, accounting_class))
+            return [
+                {
+                    "report_date": report_date,
+                    "asset_class": asset_class,
+                    "accounting_class": accounting_class,
+                }
+            ]
+
+    fake_repo = FakeBondAnalyticsRepository()
+    monkeypatch.setattr(service_mod, "_repo", lambda: fake_repo)
+
+    first = service_mod._fetch_bond_analytics_rows_cached(report_date="2026-03-31")
+    second = service_mod._fetch_bond_analytics_rows_cached(report_date="2026-03-31")
+    scoped = service_mod._fetch_bond_analytics_rows_cached(
+        report_date="2026-03-31",
+        accounting_class="AC",
+    )
+
+    assert first == second
+    assert scoped != first
+    assert calls == [
+        ("2026-03-31", "all", "all"),
+        ("2026-03-31", "all", "AC"),
+    ]
+    get_settings.cache_clear()
+
+
+def _supplement_refresh_fixture(tmp_path, monkeypatch):
+    from backend.app.services import runtime_cache
+
+    service = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    state = {"time": 0.0, "database": 1, "physical": 1, "governance": 1,
+             "scope": 1, "rows": 0, "builds": 0, "row_hook": None,
+             "result_hook": None, "pinned": True, "sql": False}
+    monkeypatch.setattr(service, "_duckdb_cache_version_token", lambda: ("db", state["database"]))
+    monkeypatch.setattr(service, "_bond_analytics_rows_cache_version_token", lambda: ("selected", state["physical"], 1))
+    monkeypatch.setattr(service, "resolve_effective_read_path", lambda _path: "selected")
+    monkeypatch.setattr(service, "current_system_read_context", lambda: object() if state["pinned"] else None)
+
+    def result_key(endpoint, report_date, *parts):
+        if state["sql"]:
+            return None
+        return (report_date, endpoint, *parts, state["physical"], state["governance"])
+
+    def identity(key):
+        return ("test-scope", state["scope"], key)
+
+    monkeypatch.setattr(service, "_bond_analytics_result_cache_key", result_key)
+    monkeypatch.setattr(service, "system_read_cache_identity", identity)
+    monkeypatch.setattr(runtime_cache, "system_read_cache_identity", identity)
+    for name, ttl in [("_bond_analytics_rows_cache", 300),
+                      ("_portfolio_headlines_cache", 300), ("_krd_curve_risk_cache", 900)]:
+        monkeypatch.setattr(service, name, runtime_cache.InMemoryTTLCache(
+            ttl_seconds=ttl, clock=lambda: state["time"],
+        ))
+
+    class ProbeRepo:
+        def fetch_bond_analytics_rows(self, **_kwargs):
+            state["rows"] += 1
+            if state["row_hook"]:
+                state["row_hook"]()
+            return []
+
+    monkeypatch.setattr(service, "_repo", ProbeRepo)
+
+    def result(*_args, **_kwargs):
+        state["builds"] += 1
+        value = {"result_meta": {"trace_id": "fixture"},
+                 "result": {"build": state["builds"]}}
+        if state["result_hook"]:
+            state["result_hook"]()
+        return value
+
+    def krd_builder(*_args, **_kwargs):
+        # The original KRD builder reads directly, independently of the rows cache.
+        service._repo().fetch_bond_analytics_rows(report_date=REPORT_DATE)
+        return result()
+
+    monkeypatch.setattr(service, "_get_krd_curve_risk_uncached", krd_builder)
+    monkeypatch.setattr(service, "_build_portfolio_headlines_empty_response", result)
+    return service, state
+
+
+def test_rows_force_refresh_renews_expiry_and_preserves_live_value(tmp_path, monkeypatch):
+    service, state = _supplement_refresh_fixture(tmp_path, monkeypatch)
+    first = service._fetch_bond_analytics_rows_cached(report_date=REPORT_DATE)
+    assert service._fetch_bond_analytics_rows_cached(report_date=REPORT_DATE) is first
+    assert state["rows"] == 1
+    state["time"] = 240.0
+
+    def ordinary_hit():
+        assert service._fetch_bond_analytics_rows_cached(report_date=REPORT_DATE) is first
+
+    state["row_hook"] = ordinary_hit
+    refreshed = service._fetch_bond_analytics_rows_cached(report_date=REPORT_DATE, force_refresh=True)
+    assert refreshed is not first
+    state["row_hook"] = None
+    state["time"] = 301.0
+    assert service._fetch_bond_analytics_rows_cached(report_date=REPORT_DATE) is refreshed
+    assert state["rows"] == 2
+    state["row_hook"] = lambda: (_ for _ in ()).throw(RuntimeError("row refresh failed"))
+    with pytest.raises(RuntimeError, match="row refresh failed"):
+        service._fetch_bond_analytics_rows_cached(report_date=REPORT_DATE, force_refresh=True)
+    state["row_hook"] = None
+    assert service._fetch_bond_analytics_rows_cached(report_date=REPORT_DATE) is refreshed
+
+
+@pytest.mark.parametrize("endpoint,ttl", [("krd", 900), ("headlines", 300)])
+def test_supplement_force_refresh_renews_result_and_rows(tmp_path, monkeypatch, endpoint, ttl):
+    service, state = _supplement_refresh_fixture(tmp_path, monkeypatch)
+    fn = service.get_krd_curve_risk if endpoint == "krd" else service.get_portfolio_headlines
+    rd = date.fromisoformat(REPORT_DATE)
+    first = fn(rd)
+    assert fn(rd)["result"] == first["result"]
+    assert state["builds"] == 1
+    state["time"] = 240.0
+
+    def ordinary_hit():
+        assert fn(rd)["result"] == first["result"]
+
+    state["result_hook"] = ordinary_hit
+    refreshed = fn(rd, force_refresh=True)
+    assert refreshed["result"]["build"] == 2
+    state["result_hook"] = None
+    reads = state["rows"]
+    assert service._fetch_bond_analytics_rows_cached(report_date=REPORT_DATE) == []
+    assert state["rows"] == reads
+    state["time"] = ttl + 1.0
+    assert fn(rd)["result"] == refreshed["result"]
+    assert state["builds"] == 2
+    state["result_hook"] = lambda: (_ for _ in ()).throw(RuntimeError("result refresh failed"))
+    with pytest.raises(RuntimeError, match="result refresh failed"):
+        fn(rd, force_refresh=True)
+    state["result_hook"] = None
+    assert fn(rd)["result"] == refreshed["result"]
+
+
+@pytest.mark.parametrize("endpoint", ["rows", "krd", "headlines"])
+@pytest.mark.parametrize("change", ["generation", "database", "physical", "scope", "governance"])
+def test_supplement_force_refresh_does_not_refill_changed_identity(tmp_path, monkeypatch, endpoint, change):
+    service, state = _supplement_refresh_fixture(tmp_path, monkeypatch)
+    rd = date.fromisoformat(REPORT_DATE)
+
+    def fn(**kwargs):
+        if endpoint == "rows":
+            return service._fetch_bond_analytics_rows_cached(report_date=REPORT_DATE, **kwargs)
+        public = service.get_krd_curve_risk if endpoint == "krd" else service.get_portfolio_headlines
+        return public(rd, **kwargs)
+
+    if endpoint == "rows":
+        cache = service._bond_analytics_rows_cache
+        hook = "row_hook"
+    else:
+        cache = service._krd_curve_risk_cache if endpoint == "krd" else service._portfolio_headlines_cache
+        hook = "result_hook"
+    fn()
+    old_key, old_entry = next(iter(cache._store.items()))
+
+    def invalidate():
+        if change == "generation":
+            cache.clear()
+        else:
+            state[change] += 1
+
+    state[hook] = invalidate
+    fn(force_refresh=True)
+    state[hook] = None
+    if change == "generation":
+        assert cache._store == {}
+        fn()
+        assert cache._store
+    else:
+        assert cache._store == {old_key: old_entry}
+
+
+def test_force_refresh_preserves_unpinned_headlines_and_sql_result_cache_policy(tmp_path, monkeypatch):
+    service, state = _supplement_refresh_fixture(tmp_path, monkeypatch)
+    rd = date.fromisoformat(REPORT_DATE)
+    state["pinned"] = False
+    service.get_portfolio_headlines(rd, force_refresh=True)
+    service.get_portfolio_headlines(rd)
+    assert state["builds"] == 2
+    assert service._portfolio_headlines_cache._store == {}
+    assert state["rows"] == 1
+    state["sql"] = True
+    service.get_krd_curve_risk(rd, force_refresh=True)
+    service.get_krd_curve_risk(rd)
+    assert service._krd_curve_risk_cache._store == {}
+    # SQL authority has always allowed this physical-row cache; force does not change it.
+    assert service._bond_analytics_rows_cache._store
+
+
+def test_krd_curve_risk_envelope_cache_reuses_matching_payload_and_isolates_inputs(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb_path.write_bytes(b"v1")
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    cache = getattr(service_mod, "_krd_curve_risk_cache", None)
+    if cache is not None:
+        cache.clear()
+
+    class FakeBondAnalyticsRepository:
+        def fetch_bond_analytics_rows(self, **_kwargs):
+            return []
+
+    summarize_calls = 0
+
+    def summarize_portfolio_risk(_rows):
+        nonlocal summarize_calls
+        summarize_calls += 1
+        return {
+            "portfolio_duration": service_mod.ZERO,
+            "portfolio_modified_duration": service_mod.ZERO,
+            "portfolio_dv01": service_mod.ZERO,
+            "portfolio_convexity": service_mod.ZERO,
+            "total_market_value": service_mod.ZERO,
+        }
+
+    monkeypatch.setattr(service_mod, "_repo", lambda: FakeBondAnalyticsRepository())
+    monkeypatch.setattr(service_mod, "summarize_portfolio_risk", summarize_portfolio_risk)
+    monkeypatch.setattr(service_mod, "build_krd_distribution", lambda _rows: [])
+    monkeypatch.setattr(service_mod, "build_curve_scenarios", lambda _rows: [])
+    monkeypatch.setattr(service_mod, "build_asset_class_risk_summary", lambda _rows: [])
+
+    first = service_mod.get_krd_curve_risk(date(2026, 3, 31))
+    second = service_mod.get_krd_curve_risk(date(2026, 3, 31))
+    scenario_variant = service_mod.get_krd_curve_risk(date(2026, 3, 31), scenario_set="stress")
+    duckdb_path.write_bytes(b"v2-storage-fingerprint")
+    fingerprint_variant = service_mod.get_krd_curve_risk(date(2026, 3, 31))
+
+    scenario_result = dict(scenario_variant["result"])
+    fingerprint_result = dict(fingerprint_variant["result"])
+    for result in (scenario_result, fingerprint_result):
+        result.pop("computed_at", None)
+    first_without_computed_at = dict(first["result"])
+    first_without_computed_at.pop("computed_at", None)
+    assert first["result"] == second["result"]
+    assert first["result_meta"]["trace_id"] != second["result_meta"]["trace_id"]
+    assert scenario_result == first_without_computed_at
+    assert fingerprint_result == first_without_computed_at
+    assert summarize_calls == 3
+    get_settings.cache_clear()
+
+
+def test_dv01_risk_envelope_cache_reuses_matching_payload_and_isolates_inputs(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb_path.write_bytes(b"v1")
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    cache = getattr(service_mod, "_dv01_risk_cache", None)
+    if cache is not None:
+        cache.clear()
+    service_mod._bond_analytics_rows_cache.clear()
+
+    class FakeBondAnalyticsRepository:
+        def fetch_bond_analytics_rows(self, **_kwargs):
+            return []
+
+    summary_calls = 0
+
+    def dv01_scope_summary(_rows):
+        nonlocal summary_calls
+        summary_calls += 1
+        return {
+            "total_face_value": service_mod.ZERO,
+            "total_market_value": service_mod.ZERO,
+            "face_weighted_modified_duration": service_mod.ZERO,
+            "total_dv01": service_mod.ZERO,
+        }
+
+    monkeypatch.setattr(service_mod, "_repo", lambda: FakeBondAnalyticsRepository())
+    monkeypatch.setattr(service_mod.dv01_core, "dv01_scope_summary", dv01_scope_summary)
+    monkeypatch.setattr(service_mod.dv01_core, "total_abs_dv01", lambda _rows: service_mod.ZERO)
+    monkeypatch.setattr(service_mod.dv01_core, "build_dv01_tenor_bucket_payloads", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(service_mod.dv01_core, "build_dv01_top_bond_payloads", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(service_mod.dv01_core, "build_dv01_top_issuer_payloads", lambda *_args, **_kwargs: [])
+
+    first = service_mod.get_dv01_risk(date(2026, 3, 31), accounting_class="OCI", top_n=20, shock_bps="1,10")
+    second = service_mod.get_dv01_risk(date(2026, 3, 31), accounting_class="OCI", top_n=20, shock_bps="1,10")
+    top_n_variant = service_mod.get_dv01_risk(date(2026, 3, 31), accounting_class="OCI", top_n=10, shock_bps="1,10")
+    duckdb_path.write_bytes(b"v2-storage-fingerprint")
+    fingerprint_variant = service_mod.get_dv01_risk(date(2026, 3, 31), accounting_class="OCI", top_n=20, shock_bps="1,10")
+
+    top_n_result = dict(top_n_variant["result"])
+    fingerprint_result = dict(fingerprint_variant["result"])
+    for result in (top_n_result, fingerprint_result):
+        result.pop("computed_at", None)
+    first_without_computed_at = dict(first["result"])
+    first_without_computed_at.pop("computed_at", None)
+    assert first["result"] == second["result"]
+    assert first["result_meta"]["trace_id"] != second["result_meta"]["trace_id"]
+    assert top_n_result == first_without_computed_at
+    assert fingerprint_result == first_without_computed_at
+    assert summary_calls == 3
     get_settings.cache_clear()
 
 
@@ -223,6 +908,7 @@ def test_action_attribution_success_response_uses_core_payload_builder(tmp_path,
                 "cost_center": "Desk 7",
                 "asset_class_std": "OCI",
                 "accounting_class": "TPL",
+                "currency_code": "CNY",
                 "source_version": "sv_bond_test",
             }
             if report_date == "2026-02-28":
@@ -303,6 +989,19 @@ def test_action_attribution_success_response_uses_core_payload_builder(tmp_path,
     assert payload["result_meta"]["tables_used"] == ["fact_formal_bond_analytics_daily"]
     assert payload["result"]["status"] == "ready"
     assert payload["result"]["warnings"] == ["CORE_WARNING"]
+    get_settings.cache_clear()
+
+
+def test_return_decomposition_explicit_paths_do_not_read_default_database(tmp_path, monkeypatch):
+    duckdb_path, governance_dir, _ = _configure_and_materialize(tmp_path, monkeypatch)
+    service = load_module("backend.app.services.bond_analytics_service", "backend/app/services/bond_analytics_service.py")
+    expected = service.get_return_decomposition(date(2026, 3, 31))["result"]
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "unrelated.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "unrelated-governance"))
+    get_settings.cache_clear()
+    result = service.get_return_decomposition(date(2026, 3, 31), duckdb_path=str(duckdb_path), governance_dir=str(governance_dir))["result"]
+    assert result["carry"] == expected["carry"]
+    assert result["bond_count"] == expected["bond_count"] > 0
     get_settings.cache_clear()
 
 
@@ -412,7 +1111,8 @@ def test_bond_analytics_return_decomposition_aggregates_carry_and_buckets(tmp_pa
     payload = service_mod.get_return_decomposition(date(2026, 3, 31), "MoM", "all", "all")
     result = payload["result"]
 
-    expected_days = Decimal("31")
+    # Exclusive day-count (Mar 1 → Mar 31): 30 days, aligned with campisi/attribution_daily.
+    expected_days = Decimal("30")
     expected_carry = (
         Decimal("0.02") * Decimal("100") * expected_days / Decimal("365")
         + Decimal("0.03") * Decimal("200") * expected_days / Decimal("365")
@@ -420,7 +1120,7 @@ def test_bond_analytics_return_decomposition_aggregates_carry_and_buckets(tmp_pa
     )
 
     assert payload["result_meta"]["source_version"] == "sv_bond_snap_1"
-    assert payload["result_meta"]["rule_version"] == "rv_bond_analytics_formal_materialize_v1"
+    assert payload["result_meta"]["rule_version"] == "rv_bond_analytics_formal_materialize_v6__rv_return_pnl517_calendar_v2"
     assert result["bond_count"] == 3
     assert _numeric_raw(result["total_market_value"]) == Decimal("429")
     assert _numeric_raw(result["carry"]).quantize(Decimal("0.00000001")) == expected_carry.quantize(Decimal("0.00000001"))
@@ -430,6 +1130,121 @@ def test_bond_analytics_return_decomposition_aggregates_carry_and_buckets(tmp_pa
     assert {row["asset_class"] for row in result["by_accounting_class"]} == {"AC", "OCI", "TPL"}
     assert len(result["bond_details"]) == 3
     assert any("Phase 3 placeholder" in warning for warning in result["warnings"])
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_return_decomposition_summary_omits_bond_details(tmp_path, monkeypatch):
+    _configure_and_materialize(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    full_payload = service_mod.get_return_decomposition(date(2026, 3, 31), "MoM", "all", "all")
+    summary_payload = service_mod.get_return_decomposition_summary(date(2026, 3, 31), "MoM", "all", "all")
+
+    full_result = full_payload["result"]
+    summary_result = summary_payload["result"]
+    assert len(full_result["bond_details"]) == 3
+    assert summary_result["bond_details"] == []
+    assert len(full_result["bond_details"]) == 3
+    for key in (
+        "carry",
+        "roll_down",
+        "rate_effect",
+        "spread_effect",
+        "trading",
+        "fx_effect",
+        "convexity_effect",
+        "explained_pnl",
+        "bond_count",
+        "total_market_value",
+    ):
+        assert summary_result[key] == full_result[key]
+    assert summary_result["by_asset_class"] == full_result["by_asset_class"]
+    assert summary_result["by_accounting_class"] == full_result["by_accounting_class"]
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_return_decomposition_summary_skips_bond_detail_payload_models(
+    tmp_path,
+    monkeypatch,
+):
+    _configure_and_materialize(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    service_mod._return_decomposition_cache.clear()
+
+    def fail_bond_detail_payload(_row):
+        raise AssertionError("summary detail path should not build per-bond response models")
+
+    monkeypatch.setattr(service_mod, "_build_bond_level_decomposition", fail_bond_detail_payload)
+
+    summary_payload = service_mod.get_return_decomposition_summary(date(2026, 3, 31), "MoM", "all", "all")
+    summary_result = summary_payload["result"]
+
+    assert summary_result["bond_details"] == []
+    assert {row["asset_class"] for row in summary_result["by_asset_class"]} == {"credit", "rate"}
+    assert {row["asset_class"] for row in summary_result["by_accounting_class"]} == {"AC", "OCI", "TPL"}
+    get_settings.cache_clear()
+
+
+def test_return_decomposition_curve_pairs_use_batch_resolver():
+    get_settings.cache_clear()
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    calls: list[list[tuple[str, str]]] = []
+
+    class FakeCurveRepo:
+        def resolve_curve_snapshots_many(self, requests):
+            calls.append(list(requests))
+            return {
+                key: (
+                    {
+                        "trade_date": key[0],
+                        "curve_type": key[1],
+                        "curve": {"10Y": Decimal("2.00")},
+                        "vendor_name": "choice",
+                        "vendor_version": "vv_curve",
+                        "source_version": "sv_curve",
+                        "rule_version": "rv_curve",
+                    },
+                    None,
+                )
+                for key in requests
+            }
+
+    rows = [
+        {
+            "asset_class_std": "credit",
+            "instrument_name": "Credit bond",
+            "bond_type": "credit",
+            "asset_class_raw": "credit",
+        }
+    ]
+
+    curves = service_mod._fetch_all_curve_pairs(
+        rows,
+        curve_repo=FakeCurveRepo(),
+        report_date="2026-03-31",
+        prior_date="2026-02-28",
+    )
+
+    assert calls == [
+        [
+            ("2026-03-31", "aaa_credit"),
+            ("2026-02-28", "aaa_credit"),
+            ("2026-03-31", "treasury"),
+            ("2026-02-28", "treasury"),
+        ]
+    ]
+    assert curves["treasury_current"]["_prior_snapshot"]["trade_date"] == "2026-02-28"
+    assert curves["aaa_current"]["_prior_snapshot"]["trade_date"] == "2026-02-28"
+    assert curves["cdb_current"] is None
     get_settings.cache_clear()
 
 
@@ -471,7 +1286,14 @@ def test_benchmark_excess_with_curve_data(tmp_path, monkeypatch):
         _numeric_raw(result[field]) != Decimal("0")
         for field in ("duration_effect", "curve_effect", "selection_effect")
     )
-    assert result["warnings"] == []
+    # recon_error is now the unexplained residual; the material-gap warning must
+    # track its magnitude, and no other warnings are expected.
+    expected_warnings = (
+        [service_mod.BENCHMARK_EXCESS_RECON_GAP]
+        if abs(_numeric_raw(result["recon_error"])) > Decimal("0.02")
+        else []
+    )
+    assert result["warnings"] == expected_warnings
     get_settings.cache_clear()
 
 
@@ -491,7 +1313,12 @@ def test_benchmark_excess_with_cdb_curve_data(tmp_path, monkeypatch):
     assert _numeric_raw(result["excess_return"]) != Decimal("0")
     assert payload["result_meta"].get("vendor_status", "ok") == "ok"
     assert "sv_cdb_current" in payload["result_meta"]["source_version"]
-    assert result["warnings"] == []
+    expected_warnings = (
+        [service_mod.BENCHMARK_EXCESS_RECON_GAP]
+        if abs(_numeric_raw(result["recon_error"])) > Decimal("0.02")
+        else []
+    )
+    assert result["warnings"] == expected_warnings
     get_settings.cache_clear()
 
 
@@ -558,7 +1385,12 @@ def test_benchmark_excess_with_aaa_curve_data(tmp_path, monkeypatch):
     assert _numeric_raw(result["spread_effect"]) != Decimal("0")
     assert payload["result_meta"].get("vendor_status", "ok") == "ok"
     assert "sv_aaa_current" in payload["result_meta"]["source_version"]
-    assert result["warnings"] == []
+    expected_warnings = (
+        [service_mod.BENCHMARK_EXCESS_RECON_GAP]
+        if abs(_numeric_raw(result["recon_error"])) > Decimal("0.02")
+        else []
+    )
+    assert result["warnings"] == expected_warnings
     get_settings.cache_clear()
 
 
@@ -630,6 +1462,8 @@ def test_bond_analytics_dv01_risk_defaults_to_oci_scope_and_parallel_shocks(tmp_
 
     assert payload["result_meta"]["result_kind"] == "bond_analytics.dv01_risk"
     assert result["accounting_class"] == "OCI"
+    assert result["dv01_basis"] == "face_value_modified_duration"
+    assert result["scenario_pnl_basis"] == "face_value_dv01_linear"
     assert result["position_count"] == 1
     assert _numeric_raw(result["total_face_value"]) == Decimal("200")
     assert _numeric_raw(result["total_market_value"]) == Decimal("190")
@@ -646,13 +1480,17 @@ def test_bond_analytics_dv01_risk_defaults_to_oci_scope_and_parallel_shocks(tmp_
     get_settings.cache_clear()
 
 
-def test_bond_analytics_service_discloses_cny_amount_basis_and_foreign_fallback_risk(tmp_path, monkeypatch):
+def test_bond_analytics_service_discloses_cny_amount_basis_with_legacy_provenance_warning(
+    tmp_path,
+    monkeypatch,
+):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     get_settings.cache_clear()
     _seed_bond_snapshot_rows(str(duckdb_path))
+    seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
 
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
@@ -715,11 +1553,14 @@ def test_bond_analytics_service_discloses_cny_amount_basis_and_foreign_fallback_
         "backend.app.tasks.bond_analytics_materialize",
         "backend/app/tasks/bond_analytics_materialize.py",
     )
-    task_mod.materialize_bond_analytics_facts.fn(
-        report_date=REPORT_DATE,
-        duckdb_path=str(duckdb_path),
-        governance_dir=str(governance_dir),
-    )
+    try:
+        task_mod.materialize_bond_analytics_facts.fn(
+            report_date=REPORT_DATE,
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+    finally:
+        _clear_seeded_yield_curve_inputs(str(duckdb_path))
     service_mod = load_module(
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
@@ -729,8 +1570,500 @@ def test_bond_analytics_service_discloses_cny_amount_basis_and_foreign_fallback_
 
     assert payload["result_meta"]["amount_currency_basis"] == "CNY"
     assert "CNY/RMB basis" in payload["result_meta"]["amount_currency_basis_note"]
-    assert any("row-level fallback markers" in warning for warning in payload["result"]["warnings"])
-    assert any("USD" in warning for warning in payload["result"]["warnings"])
+    assert "complete formal CNY closure" in payload["result_meta"]["amount_currency_basis_note"]
+    assert any(
+        item["instrument_code"] == "USD-CB-SVC"
+        and _numeric_raw(item["market_value"]) == Decimal("720")
+        for item in payload["result"]["items"]
+    )
+    assert any("legacy facts" in warning.lower() for warning in payload["result"]["warnings"])
+    assert any("row-level closure provenance" in warning.lower() for warning in payload["result"]["warnings"])
+    get_settings.cache_clear()
+
+
+def test_top_holdings_distinguishes_unavailable_fund_duration_from_matured_zero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    rows = [
+        {
+            "instrument_code": "SA-FUND",
+            "bond_type": "其他",
+            "maturity_date": None,
+            "duration_quality_flag": "maturity_unavailable",
+            "modified_duration": Decimal("0"),
+            "market_value": Decimal("100"),
+            "face_value": Decimal("100"),
+        },
+        {
+            "instrument_code": "BOND-MATURED",
+            "bond_type": "国债",
+            "maturity_date": date(2026, 3, 31),
+            "duration_quality_flag": "no_remaining_term",
+            "modified_duration": Decimal("0"),
+            "market_value": Decimal("50"),
+            "face_value": Decimal("50"),
+        },
+        {
+            "instrument_code": "SA-MISSING-COLUMN",
+            "bond_type": "其他",
+            "duration_quality_flag": None,
+            "modified_duration": Decimal("0"),
+            "market_value": Decimal("40"),
+            "face_value": Decimal("40"),
+        },
+        {
+            "instrument_code": "BOND-MISSING-DURATION",
+            "bond_type": "国债",
+            "maturity_date": date(2027, 3, 31),
+            "duration_quality_flag": "observed",
+            "market_value": Decimal("30"),
+            "face_value": Decimal("30"),
+        },
+        {
+            "instrument_code": "BOND-VALID",
+            "bond_type": "国债",
+            "maturity_date": date(2027, 3, 31),
+            "duration_quality_flag": "observed",
+            "modified_duration": Decimal("2.5"),
+            "market_value": Decimal("20"),
+            "face_value": Decimal("20"),
+        },
+    ]
+    monkeypatch.setattr(service_mod, "_fetch_bond_analytics_rows_cached", lambda **kwargs: rows)
+    monkeypatch.setattr(
+        service_mod,
+        "_build_fact_envelope",
+        lambda **kwargs: {"result": kwargs["result_payload"]},
+    )
+
+    result = service_mod.get_top_holdings(date(2026, 3, 31), top_n=10)["result"]
+    fund, matured, missing_column, missing_duration, valid = result["items"]
+    assert fund["maturity_category"] == "fund_no_maturity"
+    assert fund["modified_duration"] is None
+    assert fund["duration_quality_flag"] == "maturity_unavailable"
+    assert matured["maturity_category"] == "<=30d"
+    assert matured["modified_duration"]["raw"] == 0
+    assert matured["duration_quality_flag"] == "no_remaining_term"
+    assert missing_column["maturity_category"] == "unknown"
+    assert missing_column["modified_duration"] is None
+    assert missing_duration["modified_duration"] is None
+    assert valid["modified_duration"]["raw"] == 2.5
+
+
+def test_bond_analytics_service_read_gate_blocks_warmed_facts_after_closure_failure_and_recovers(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path, governance_dir, task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    repo_mod = load_module(
+        "backend.app.repositories.bond_analytics_repo",
+        "backend/app/repositories/bond_analytics_repo.py",
+    )
+    warmed = service_mod.get_top_holdings(date.fromisoformat(REPORT_DATE), top_n=10)
+    warmed_meta = warmed["result_meta"]
+    assert warmed_meta["formal_use_allowed"] is True
+    assert len(warmed["result"]["items"]) == 3
+
+    _seed_foreign_bond_snapshot_row(
+        str(duckdb_path),
+        instrument_code="USD-SVC-GATE-CLOSURE",
+    )
+    _seed_formal_zqtz_balance_for_cb001(
+        str(duckdb_path),
+        instrument_code="USD-SVC-GATE-CLOSURE",
+        face_value_amount=Decimal("700"),
+        market_value_amount=Decimal("720"),
+        amortized_cost_amount=Decimal("686"),
+        accrued_interest_amount=Decimal("7"),
+    )
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_formal_zqtz_balance_daily
+            set market_value_amount = NULL
+            where report_date = ? and instrument_code = ? and currency_basis = 'CNY'
+            """,
+            [REPORT_DATE, "USD-SVC-GATE-CLOSURE"],
+        )
+    finally:
+        conn.close()
+
+    seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
+    with pytest.raises(FormalComputeMaterializeFailure, match="formal CNY closure unavailable"):
+        task_mod.materialize_bond_analytics_facts.fn(
+            report_date=REPORT_DATE,
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+
+    assert repo_mod.BondAnalyticsRepository(str(duckdb_path)).fetch_bond_analytics_rows(
+        report_date=REPORT_DATE,
+    ) == []
+    failed_runs = [
+        row
+        for row in GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+        if row.get("cache_key") == service_mod.CACHE_KEY
+        and row.get("job_name") == service_mod.JOB_NAME
+        and row.get("report_date") == REPORT_DATE
+    ]
+    assert failed_runs[-1]["status"] == "failed"
+
+    try:
+        after_failure = service_mod.get_top_holdings(date.fromisoformat(REPORT_DATE), top_n=10)
+    except RuntimeError as exc:
+        message = str(exc).lower()
+        assert "bond analytics" in message
+        assert any(token in message for token in ("failed", "unavailable", "stale", "pending"))
+    else:
+        failure_meta = after_failure["result_meta"]
+        assert failure_meta["formal_use_allowed"] is False
+        assert failure_meta["quality_flag"] != "ok"
+        assert failure_meta["source_version"] != warmed_meta["source_version"]
+        assert after_failure["result"]["items"] == []
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_formal_zqtz_balance_daily
+            set market_value_amount = ?
+            where report_date = ? and instrument_code = ? and currency_basis = 'CNY'
+            """,
+            [Decimal("720"), REPORT_DATE, "USD-SVC-GATE-CLOSURE"],
+        )
+    finally:
+        conn.close()
+
+    seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
+    recovered_payload = task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+    assert recovered_payload["status"] == "completed"
+    recovered_runs = [
+        row
+        for row in GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+        if row.get("cache_key") == service_mod.CACHE_KEY
+        and row.get("job_name") == service_mod.JOB_NAME
+        and row.get("report_date") == REPORT_DATE
+    ]
+    assert recovered_runs[-1]["status"] == "completed"
+
+    recovered = service_mod.get_top_holdings(date.fromisoformat(REPORT_DATE), top_n=10)
+    assert recovered["result_meta"]["formal_use_allowed"] is True
+    assert recovered["result_meta"]["quality_flag"] == "ok"
+    assert any(
+        item["instrument_code"] == "USD-SVC-GATE-CLOSURE"
+        and _numeric_raw(item["market_value"]) == Decimal("720")
+        for item in recovered["result"]["items"]
+    )
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_public_caches_require_latest_completed_terminal_before_cache_hit(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    repo_mod = load_module(
+        "backend.app.repositories.bond_analytics_repo",
+        "backend/app/repositories/bond_analytics_repo.py",
+    )
+    assert len(repo_mod.BondAnalyticsRepository(str(duckdb_path)).fetch_bond_analytics_rows(
+        report_date=REPORT_DATE,
+    )) == 3
+    completed_rows = [
+        row
+        for row in GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+        if row.get("cache_key") == service_mod.CACHE_KEY
+        and row.get("job_name") == service_mod.JOB_NAME
+        and row.get("report_date") == REPORT_DATE
+    ]
+    assert completed_rows[-1]["status"] == "completed"
+
+    report_date = date.fromisoformat(REPORT_DATE)
+    old_return = service_mod.get_return_decomposition(report_date)
+    old_action = service_mod.get_action_attribution(report_date)
+    old_benchmark = service_mod.get_benchmark_excess(report_date)
+    assert service_mod.get_return_decomposition(report_date) is old_return
+    assert service_mod.get_action_attribution(report_date) is old_action
+    assert service_mod.get_benchmark_excess(report_date) is old_benchmark
+    assert service_mod.get_benchmark_excess_many([report_date])[REPORT_DATE] is old_benchmark
+    db_token_before = service_mod._duckdb_cache_version_token()
+
+    _append_bond_analytics_terminal(
+        governance_dir,
+        service_mod,
+        report_date=REPORT_DATE,
+        status="failed",
+        run_id="bond-cache-bypass-failed",
+        source_version="sv_bond_failed_cache_bypass",
+    )
+    assert service_mod._duckdb_cache_version_token() == db_token_before
+
+    with pytest.raises(RuntimeError, match="Bond analytics formal build terminal unavailable"):
+        service_mod.get_return_decomposition(report_date)
+    with pytest.raises(RuntimeError, match="Bond analytics formal build terminal unavailable"):
+        service_mod.get_action_attribution(report_date)
+    with pytest.raises(RuntimeError, match="Bond analytics formal build terminal unavailable"):
+        service_mod.get_benchmark_excess(report_date)
+
+    with pytest.raises(RuntimeError, match="Bond analytics formal build terminal unavailable"):
+        service_mod.get_benchmark_excess_many([report_date])
+
+    _append_bond_analytics_terminal(
+        governance_dir,
+        service_mod,
+        report_date=REPORT_DATE,
+        status="completed",
+        run_id="bond-cache-bypass-recovered",
+        source_version="sv_bond_snap_1",
+    )
+    refreshed_return = service_mod.get_return_decomposition(report_date)
+    refreshed_action = service_mod.get_action_attribution(report_date)
+    refreshed_benchmark = service_mod.get_benchmark_excess(report_date)
+    refreshed_benchmark_many = service_mod.get_benchmark_excess_many([report_date])
+    assert refreshed_return is not old_return
+    assert refreshed_action is not old_action
+    assert refreshed_benchmark is not old_benchmark
+    assert refreshed_benchmark_many[REPORT_DATE] is refreshed_benchmark
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_public_caches_bypass_older_completed_lineage(
+    tmp_path,
+    monkeypatch,
+):
+    _duckdb_path, governance_dir, _task_mod = _configure_and_materialize(
+        tmp_path,
+        monkeypatch,
+    )
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    report_date = date.fromisoformat(REPORT_DATE)
+
+    warmed_return = service_mod.get_return_decomposition(report_date)
+    warmed_action = service_mod.get_action_attribution(report_date)
+    warmed_benchmark = service_mod.get_benchmark_excess(report_date)
+    assert service_mod.get_return_decomposition(report_date) is warmed_return
+    assert service_mod.get_action_attribution(report_date) is warmed_action
+    assert service_mod.get_benchmark_excess_many([report_date])[REPORT_DATE] is warmed_benchmark
+    assert warmed_return["result_meta"]["source_version"] == "sv_bond_snap_1"
+    assert warmed_action["result_meta"]["source_version"] == "sv_bond_snap_1"
+    assert warmed_benchmark["result_meta"]["source_version"] == "sv_bond_snap_1"
+
+    newer_source_version = "sv_bond_newer_completed_cross_process"
+    _append_bond_analytics_terminal(
+        governance_dir,
+        service_mod,
+        report_date=REPORT_DATE,
+        status="completed",
+        run_id="bond-cache-newer-completed",
+        source_version=newer_source_version,
+    )
+
+    refreshed_benchmark_many = service_mod.get_benchmark_excess_many([report_date])
+    refreshed_return = service_mod.get_return_decomposition(report_date)
+    refreshed_action = service_mod.get_action_attribution(report_date)
+
+    assert (
+        refreshed_benchmark_many[REPORT_DATE]["result_meta"]["source_version"]
+        == newer_source_version
+    )
+    assert refreshed_return["result_meta"]["source_version"] == newer_source_version
+    assert refreshed_action["result_meta"]["source_version"] == newer_source_version
+    assert refreshed_return is not warmed_return
+    assert refreshed_action is not warmed_action
+    assert refreshed_benchmark_many[REPORT_DATE] is not warmed_benchmark
+    assert (
+        service_mod.get_benchmark_excess(report_date)
+        is refreshed_benchmark_many[REPORT_DATE]
+    )
+    assert (
+        service_mod.get_benchmark_excess_many([report_date])[REPORT_DATE]
+        is refreshed_benchmark_many[REPORT_DATE]
+    )
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_public_caches_bypass_older_run_with_same_lineage_versions(
+    tmp_path,
+    monkeypatch,
+):
+    _duckdb_path, governance_dir, _task_mod = _configure_and_materialize(
+        tmp_path,
+        monkeypatch,
+    )
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    report_date = date.fromisoformat(REPORT_DATE)
+
+    warmed_return = service_mod.get_return_decomposition(report_date)
+    warmed_action = service_mod.get_action_attribution(report_date)
+    warmed_benchmark = service_mod.get_benchmark_excess(report_date)
+    assert service_mod.get_return_decomposition(report_date) is warmed_return
+    assert service_mod.get_action_attribution(report_date) is warmed_action
+    assert service_mod.get_benchmark_excess_many([report_date])[REPORT_DATE] is warmed_benchmark
+
+    _append_bond_analytics_terminal(
+        governance_dir,
+        service_mod,
+        report_date=REPORT_DATE,
+        status="completed",
+        run_id="bond-cache-newer-completed-same-lineage",
+        source_version="sv_bond_snap_1",
+    )
+
+    refreshed_return = service_mod.get_return_decomposition(report_date)
+    refreshed_action = service_mod.get_action_attribution(report_date)
+    refreshed_benchmark = service_mod.get_benchmark_excess(report_date)
+    refreshed_benchmark_many = service_mod.get_benchmark_excess_many([report_date])
+
+    assert refreshed_return is not warmed_return
+    assert refreshed_action is not warmed_action
+    assert refreshed_benchmark is not warmed_benchmark
+    assert refreshed_benchmark_many[REPORT_DATE] is refreshed_benchmark
+    get_settings.cache_clear()
+
+
+@pytest.mark.parametrize("governance_mode", ["empty", "no_matching"])
+def test_bond_analytics_public_caches_reject_missing_same_date_lineage(
+    tmp_path,
+    monkeypatch,
+    governance_mode: str,
+):
+    duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    active_governance_dir = tmp_path / f"governance-{governance_mode}"
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(active_governance_dir))
+    get_settings.cache_clear()
+
+    report_date = date.fromisoformat(REPORT_DATE)
+    token = service_mod._duckdb_cache_version_token()
+    service_mod._return_decomposition_cache.set(
+        (REPORT_DATE, "MoM", "all", "all"),
+        {"sentinel": "return-ready"},
+    )
+    service_mod._action_attribution_cache.set(
+        (REPORT_DATE, "MoM"),
+        {"sentinel": "action-ready"},
+    )
+    service_mod._benchmark_excess_cache.set(
+        (REPORT_DATE, "MoM", "CDB_INDEX", *token),
+        {"sentinel": "benchmark-ready"},
+    )
+    if governance_mode == "no_matching":
+        _append_bond_analytics_terminal(
+            active_governance_dir,
+            service_mod,
+            report_date="2026-04-30",
+            status="completed",
+            run_id="bond-cache-missing-date",
+            source_version="sv_other_date",
+        )
+
+    calls = (
+        lambda: service_mod.get_return_decomposition(report_date),
+        lambda: service_mod.get_action_attribution(report_date),
+        lambda: service_mod.get_benchmark_excess(report_date),
+        lambda: service_mod.get_benchmark_excess_many([report_date]),
+    )
+    for call in calls:
+        with pytest.raises(RuntimeError, match="Bond analytics formal build terminal unavailable"):
+            call()
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_public_caches_reject_completed_lineage_without_source_version(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    report_date = date.fromisoformat(REPORT_DATE)
+    token = service_mod._duckdb_cache_version_token()
+    service_mod._return_decomposition_cache.set(
+        (REPORT_DATE, "MoM", "all", "all"),
+        {"sentinel": "return-ready"},
+    )
+    service_mod._action_attribution_cache.set(
+        (REPORT_DATE, "MoM"),
+        {"sentinel": "action-ready"},
+    )
+    service_mod._benchmark_excess_cache.set(
+        (REPORT_DATE, "MoM", "CDB_INDEX", *token),
+        {"sentinel": "benchmark-ready"},
+    )
+    _append_bond_analytics_terminal(
+        governance_dir,
+        service_mod,
+        report_date=REPORT_DATE,
+        status="completed",
+        run_id="bond-cache-missing-source",
+        source_version="",
+    )
+
+    calls = (
+        lambda: service_mod.get_return_decomposition(report_date),
+        lambda: service_mod.get_action_attribution(report_date),
+        lambda: service_mod.get_benchmark_excess(report_date),
+        lambda: service_mod.get_benchmark_excess_many([report_date]),
+    )
+    for call in calls:
+        with pytest.raises(RuntimeError, match="Bond analytics formal build terminal unavailable"):
+            call()
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_cache_miss_without_governance_keeps_empty_endpoint_semantics(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "empty-no-governance.duckdb"
+    governance_dir = tmp_path / "empty-no-governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    payload = service_mod.get_return_decomposition(
+        date(2099, 12, 31),
+        period_type="MoM",
+        asset_class="all",
+        accounting_class="all",
+    )
+
+    assert payload["result"]["bond_count"] == 0
+    assert payload["result"]["bond_details"] == []
+    assert payload["result_meta"]["basis"] == "formal"
+    assert any("not yet populated" in warning for warning in payload["result"]["warnings"])
     get_settings.cache_clear()
 
 
@@ -959,6 +2292,7 @@ def test_bond_analytics_dv01_movement_explains_oci_delta_with_prior_report_date(
                 "rating": "AAA",
                 "tenor_bucket": "3-5Y",
                 "accounting_class": "OCI",
+                "currency_code": "CNY",
                 "face_value": Decimal("1000000"),
                 "market_value": Decimal("1005000"),
                 "modified_duration": Decimal("3"),
@@ -975,6 +2309,7 @@ def test_bond_analytics_dv01_movement_explains_oci_delta_with_prior_report_date(
                 "rating": "AA+",
                 "tenor_bucket": "1-3Y",
                 "accounting_class": "OCI",
+                "currency_code": "CNY",
                 "face_value": Decimal("500000"),
                 "market_value": Decimal("501000"),
                 "modified_duration": Decimal("2"),
@@ -1084,6 +2419,11 @@ def test_bond_analytics_dv01_movement_explains_oci_delta_with_prior_report_date(
         ],
     }
 
+    # Both snapshots describe CNY holdings; retain the full identity on each date.
+    for rows in rows_by_date.values():
+        for row in rows:
+            row.setdefault("currency_code", "CNY")
+
     class FakeRepo:
         def list_report_dates(self):
             return [current_date, previous_date]
@@ -1131,6 +2471,44 @@ def test_bond_analytics_dv01_movement_explains_oci_delta_with_prior_report_date(
     assert _numeric_raw(alpha["estimated_dv01_from_face_duration"]) == Decimal("385.00000")
     assert _numeric_raw(alpha["dv01_estimate_gap"]) == Decimal("5.00000")
     get_settings.cache_clear()
+
+
+def test_bond_analytics_dv01_movement_same_bond_holdings_close_through_schema(tmp_path, monkeypatch):
+    from tests.core_finance.test_bond_analytics_dv01 import _holding
+
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+    service_mod = load_module("backend.app.services.bond_analytics_service",
+                              "backend/app/services/bond_analytics_service.py")
+    rows_by_date = {
+        "2026-02-28": [_holding("one"), _holding("two", duration="3")],
+        "2026-03-31": [_holding("one", face="2000000"), _holding("two", duration="3")],
+    }
+
+    class FakeRepo:
+        def list_report_dates(self):
+            return ["2026-03-31", "2026-02-28"]
+
+        def fetch_bond_analytics_rows(self, *, report_date, accounting_class="all", **_kwargs):
+            return [row for row in rows_by_date[report_date]
+                    if accounting_class == "all" or row["accounting_class"] == accounting_class]
+
+    monkeypatch.setattr(service_mod, "_repo", lambda: FakeRepo())
+    monkeypatch.setattr(service_mod, "_lineage", lambda *_args: {
+        "source_version": "synthetic", "rule_version": "synthetic",
+        "cache_version": "synthetic", "vendor_version": "synthetic",
+    })
+    result = service_mod.get_dv01_movement(date(2026, 3, 31), accounting_class="OCI")["result"]
+    assert _numeric_raw(result["delta_dv01"]) == Decimal("500")
+    assert len(result["anomaly_bonds"]) == len(result["methodology_checks"]) == 1
+    bond = result["anomaly_bonds"][0]
+    assert _numeric_raw(bond["dv01_delta"]) == Decimal("500")
+    assert _numeric_raw(bond["estimated_dv01_from_face_duration"]) == Decimal("1300")
+    assert "_position_movements" not in bond
+    drivers = {row["driver_key"]: row for row in result["attribution"]}
+    assert _numeric_raw(drivers["face_value_change"]["dv01_delta"]) == Decimal("500")
+    assert _numeric_raw(drivers["duration_change"]["dv01_delta"]) == Decimal("0")
+    assert _numeric_raw(drivers["residual"]["dv01_delta"]) == Decimal("0")
 
 
 def test_bond_analytics_dv01_movement_without_prior_returns_warning(tmp_path, monkeypatch):
@@ -1189,6 +2567,7 @@ def test_bond_analytics_dv01_action_plan_flags_risk_and_hedge_size(tmp_path, mon
             "rating": "AAA",
             "tenor_bucket": "7-10Y",
             "accounting_class": "OCI",
+            "currency_code": "CNY",
             "face_value": Decimal("1000000"),
             "market_value": Decimal("1005000"),
             "modified_duration": Decimal("8"),
@@ -1205,6 +2584,7 @@ def test_bond_analytics_dv01_action_plan_flags_risk_and_hedge_size(tmp_path, mon
             "rating": "AA+",
             "tenor_bucket": "7-10Y",
             "accounting_class": "OCI",
+            "currency_code": "CNY",
             "face_value": Decimal("500000"),
             "market_value": Decimal("501000"),
             "modified_duration": Decimal("7"),
@@ -1318,6 +2698,7 @@ def test_bond_analytics_dv01_action_plan_uses_formal_limit_config(tmp_path, monk
             "rating": "AAA",
             "tenor_bucket": "7-10Y",
             "accounting_class": "OCI",
+            "currency_code": "CNY",
             "face_value": Decimal("1000000"),
             "market_value": Decimal("1005000"),
             "modified_duration": Decimal("8"),
@@ -1334,6 +2715,7 @@ def test_bond_analytics_dv01_action_plan_uses_formal_limit_config(tmp_path, monk
             "rating": "AA+",
             "tenor_bucket": "7-10Y",
             "accounting_class": "OCI",
+            "currency_code": "CNY",
             "face_value": Decimal("500000"),
             "market_value": Decimal("501000"),
             "modified_duration": Decimal("7"),
@@ -1682,6 +3064,14 @@ def test_bond_analytics_credit_spread_migration_uses_credit_subset_and_concentra
     assert len(result["spread_scenarios"]) == 4
     assert _numeric_raw(result["oci_credit_exposure"]) == Decimal("190")
     assert result["concentration_by_issuer"]["dimension"] == "issuer"
+    # 展示限额（后端下发，非风控正式限额）：字段存在且数值与过渡口径常量一致。
+    assert result["display_limits"] == {
+        "issuer_single_max": 0.1,
+        "issuer_top5_max": 0.4,
+        "hhi_warning": 0.15,
+        "below_aa_max": 0.2,
+        "credit_weight_max": 0.85,
+    }
     assert any("No aaa_credit curve available" in warning or "No treasury curve available" in warning for warning in result["warnings"])
     assert any("Spread level input unavailable" in warning for warning in result["warnings"])
     get_settings.cache_clear()
@@ -1760,7 +3150,7 @@ def test_overlay_return_decomposition_trading_pnl517_mom_single_report_date(tmp_
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
     )
-    key = "TB-001::组合利率::CC-RATE"
+    key = ("TB-001", "组合利率", "CC-RATE", "AC")
 
     class FakePnl:
         def __init__(self, _path: str) -> None:
@@ -1769,7 +3159,7 @@ def test_overlay_return_decomposition_trading_pnl517_mom_single_report_date(tmp_
         def list_union_report_dates(self) -> list[str]:
             return ["2026-03-31"]
 
-        def merged_capital_gain_517_by_position_for_dates(self, dates: list[str]) -> dict[str, Decimal]:
+        def merged_capital_gain_517_by_position_and_accounting_for_dates(self, dates: list[str]) -> dict:
             assert dates == ["2026-03-31"]
             return {key: Decimal("2.5")}
 
@@ -1797,7 +3187,7 @@ def test_overlay_return_decomposition_trading_pnl517_ytd_sums_multiple_report_da
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
     )
-    key = "TB-001::组合利率::CC-RATE"
+    key = ("TB-001", "组合利率", "CC-RATE", "AC")
 
     class FakePnl:
         def __init__(self, _path: str) -> None:
@@ -1806,7 +3196,7 @@ def test_overlay_return_decomposition_trading_pnl517_ytd_sums_multiple_report_da
         def list_union_report_dates(self) -> list[str]:
             return ["2026-03-31", "2026-02-28", "2026-01-31", "2025-12-31"]
 
-        def merged_capital_gain_517_by_position_for_dates(self, dates: list[str]) -> dict[str, Decimal]:
+        def merged_capital_gain_517_by_position_and_accounting_for_dates(self, dates: list[str]) -> dict:
             assert set(dates) == {"2026-01-31", "2026-02-28", "2026-03-31"}
             return {key: Decimal("9")}
 
@@ -1831,17 +3221,17 @@ def test_overlay_return_decomposition_trading_pnl517_ttm_sums_multiple_report_da
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
     )
-    key = "TB-001::组合利率::CC-RATE"
+    key = ("TB-001", "组合利率", "CC-RATE", "AC")
 
     class FakePnl:
         def __init__(self, _path: str) -> None:
             pass
 
         def list_union_report_dates(self) -> list[str]:
-            return ["2026-03-31", "2025-03-31"]
+            return ["2026-03-31", "2025-04-30", "2025-03-31"]
 
-        def merged_capital_gain_517_by_position_for_dates(self, dates: list[str]) -> dict[str, Decimal]:
-            assert set(dates) == {"2025-03-31", "2026-03-31"}
+        def merged_capital_gain_517_by_position_and_accounting_for_dates(self, dates: list[str]) -> dict:
+            assert set(dates) == {"2025-04-30", "2026-03-31"}
             return {key: Decimal("4")}
 
     monkeypatch.setattr(service_mod, "PnlRepository", FakePnl)
@@ -1872,7 +3262,7 @@ def test_overlay_return_decomposition_trading_pnl517_ytd_degrades_when_no_report
         def list_union_report_dates(self) -> list[str]:
             return ["2025-12-31"]
 
-        def merged_capital_gain_517_by_position_for_dates(self, dates: list[str]) -> dict[str, Decimal]:
+        def merged_capital_gain_517_by_position_and_accounting_for_dates(self, dates: list[str]) -> dict:
             raise AssertionError("merge should not run when date list is empty")
 
     monkeypatch.setattr(service_mod, "PnlRepository", FakePnl)
@@ -1888,3 +3278,166 @@ def test_overlay_return_decomposition_trading_pnl517_ytd_degrades_when_no_report
     assert out["trading_total"] == Decimal("0")
     codes = {d.get("code") for d in wd}
     assert "return_decomposition_trading_pnl517_no_fact_dates_in_period" in codes
+
+
+def test_bond_analytics_dv01_action_plan_without_any_limit_reports_no_limit_configured(tmp_path, monkeypatch):
+    """No governed limit and no caller threshold: disclose exposure, grade nothing.
+
+    Guards the production state where ``bond_dv01_limit_config`` is empty. The
+    previous page fallback graded every accounting class as ``breach`` against a
+    hardcoded 5,000,000 元/bp placeholder and sized hedges off that placeholder.
+    """
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    rows = [
+        {
+            "report_date": "2026-07-31",
+            "instrument_code": "A-001",
+            "instrument_name": "Alpha Bond",
+            "issuer_name": "Issuer A",
+            "rating": "AAA",
+            "tenor_bucket": "7-10Y",
+            "accounting_class": "OCI",
+            "face_value": Decimal("40000000000"),
+            "market_value": Decimal("40500000000"),
+            "modified_duration": Decimal("8"),
+            "dv01": Decimal("31393687"),
+            "source_version": "sv",
+            "rule_version": "rv",
+            "trace_id": "tr_a",
+        },
+    ]
+
+    class FakeRepo:
+        def fetch_bond_analytics_rows(self, *, report_date, accounting_class="all", **_kwargs):
+            return rows
+
+    monkeypatch.setattr(service_mod, "_repo", lambda: FakeRepo())
+    monkeypatch.setattr(
+        service_mod,
+        "_lineage",
+        lambda _report_date, _rows: {
+            "source_version": "sv_test",
+            "rule_version": "rv_test",
+            "cache_version": "cv_test",
+            "vendor_version": "vv_test",
+        },
+    )
+
+    payload = service_mod.get_dv01_action_plan(date(2026, 7, 31), accounting_class="OCI")
+    result = payload["result"]
+
+    assert result["risk_level"] == "no_limit_configured"
+    assert result["policy_basis"] == "no_limit_configured"
+    assert result["limit_source"] == "unconfigured"
+    assert result["limit_rule_version"] == "rv_dv01_no_limit_configured_v1"
+    assert result["breach_count"] == 0
+    assert result["scenario_breaches"] == []
+    # Exposure is still disclosed in full.
+    assert _numeric_raw(result["total_dv01"]) == Decimal("31393687")
+    assert result["position_count"] == 1
+    # Nothing derived from a placeholder limit may carry a number.
+    assert _numeric_raw(result["limit_dv01"]) == Decimal("0")
+    assert _numeric_raw(result["warning_dv01"]) == Decimal("0")
+    assert _numeric_raw(result["limit_usage"]) == Decimal("0")
+    assert _numeric_raw(result["remaining_limit_dv01"]) == Decimal("0")
+    assert _numeric_raw(result["dv01_to_reduce"]) == Decimal("0")
+    assert _numeric_raw(result["suggested_hedge_units"]) == Decimal("0")
+    for section in ("tenor_actions", "issuer_actions", "bond_actions"):
+        assert result[section], f"{section} should still disclose exposure"
+        for row in result[section]:
+            assert _numeric_raw(row["suggested_reduction_dv01"]) == Decimal("0")
+    assert any("未接入正式 DV01 限额" in warning for warning in result["warnings"])
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_dv01_action_plan_keeps_caller_supplied_threshold(tmp_path, monkeypatch):
+    """A caller-stated threshold is still honoured; only the invented default is gone."""
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    rows = [
+        {
+            "report_date": "2026-03-31",
+            "instrument_code": "A-001",
+            "instrument_name": "Alpha Bond",
+            "issuer_name": "Issuer A",
+            "rating": "AAA",
+            "tenor_bucket": "7-10Y",
+            "accounting_class": "OCI",
+            "face_value": Decimal("1000000"),
+            "market_value": Decimal("1005000"),
+            "modified_duration": Decimal("8"),
+            "dv01": Decimal("1150"),
+            "source_version": "sv",
+            "rule_version": "rv",
+            "trace_id": "tr_a",
+        },
+    ]
+
+    class FakeRepo:
+        def fetch_bond_analytics_rows(self, *, report_date, accounting_class="all", **_kwargs):
+            return rows
+
+    monkeypatch.setattr(service_mod, "_repo", lambda: FakeRepo())
+    monkeypatch.setattr(
+        service_mod,
+        "_lineage",
+        lambda _report_date, _rows: {
+            "source_version": "sv_test",
+            "rule_version": "rv_test",
+            "cache_version": "cv_test",
+            "vendor_version": "vv_test",
+        },
+    )
+
+    payload = service_mod.get_dv01_action_plan(
+        date(2026, 3, 31),
+        accounting_class="OCI",
+        limit_dv01="1000",
+    )
+    result = payload["result"]
+
+    assert result["policy_basis"] == "page_threshold_fallback"
+    assert result["risk_level"] == "breach"
+    assert _numeric_raw(result["limit_dv01"]) == Decimal("1000")
+    # warning_dv01 falls back to the stated limit rather than an invented 4,000,000.
+    assert _numeric_raw(result["warning_dv01"]) == Decimal("1000")
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_service_exposes_no_hardcoded_dv01_limit_default():
+    """The 5,000,000 元/bp placeholder must not come back."""
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    assert not hasattr(service_mod, "DEFAULT_DV01_LIMIT")
+    assert not hasattr(service_mod, "DEFAULT_DV01_WARNING")
+    assert not hasattr(service_mod, "DEFAULT_DV01_HEDGE_TARGET")
+
+
+@pytest.mark.parametrize("failure", [
+    RuntimeError("Bond analytics formal build terminal unavailable synthetic-bond-private-token"),
+    TypeError("synthetic-bond-private-token"),
+])
+def test_credit_exposure_governance_failure_is_closed_and_safe(tmp_path, monkeypatch, failure):
+    from backend.app.services import bond_analytics_service as service
+    from unittest.mock import Mock
+
+    monkeypatch.setattr(service.BondAnalyticsRepository, "fetch_bond_analytics_rows", Mock(side_effect=failure))
+    result = service.bond_analytics_credit_exposure_governance_meta(
+        duckdb_path=str(tmp_path / "unused.duckdb"), governance_dir=str(tmp_path / "governance"), report_date="2026-08-31",
+    )
+    assert result["formal_use_allowed"] is False
+    assert result["quality_flag"] == "warning"
+    assert result["requested_report_date"] == "2026-08-31"
+    assert "synthetic-bond-private-token" not in str(result)
+    assert type(failure).__name__ in result["fallback_reason"]

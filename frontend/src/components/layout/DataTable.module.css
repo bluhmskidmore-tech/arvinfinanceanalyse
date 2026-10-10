@@ -1,0 +1,288 @@
+/*
+ * DataTable 密度纪律（DESIGN.md §2.2 深色面板 / §3 Typography / §5 Spacing /
+ * §6 状态与数据可信呈现）。
+ *
+ * 这份样式是本组件存在的意义：密度是组件默认值，页面不再写一行 antd 覆盖。
+ * 因此本文件自己必须守住同样的纪律：
+ * - 零 !important（不与任何人抢特异度；本组件不被 antd cssinjs 注入干扰）
+ * - 零裸 hex / 零 rgba 字面值：颜色只走 --dh-api-* 语义链，中间色用 color-mix
+ * - 禁止 --ib-*：它在路由边界 .theme-dh-api 上就被解析成钢蓝字面值再继承，
+ *   页面 scope 翻不动它
+ * - 圆角只用 var(--dh-api-radius)（骨架条的 2px 属 Shape Lock 允许值）
+ * - 深色页层级靠 panel 递进 + 细边线，不用阴影（§2.2）
+ *
+ * [data-tone] 的四个色值与 src/utils/tone.ts 的 TONE_DH_CSS_VAR 一一对应，
+ * 由 DataTable.test.tsx 做值级互锁，防止两边漂移。
+ */
+
+.root {
+  display: grid;
+  gap: 8px;
+  /* grid/flex 子项默认 min-width:auto，宽表会撑破父栅格；这里断掉传导。 */
+  min-width: 0;
+  max-width: 100%;
+  color: var(--dh-api-ink);
+  font-size: var(--moss-table-font-size, 12px);
+  line-height: var(--moss-table-line-height, 1.35);
+}
+
+/* ---------- 口径注 / 整列缺失原因（全表出现一次，见 §6） ---------- */
+
+.notices {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.noticeItem {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* ---------- 行内状态行（error / stale / partial / loading） ---------- */
+
+.statusRow {
+  margin: 0;
+  padding: 4px 0;
+  border: 0;
+  border-radius: var(--dh-api-radius);
+  background: transparent;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.statusRow[data-tone="positive"] {
+  color: var(--dh-api-green);
+}
+
+.statusRow[data-tone="neutral"] {
+  color: var(--dh-api-muted);
+}
+
+.statusRow[data-tone="warning"] {
+  color: var(--dh-api-amber);
+}
+
+.statusRow[data-tone="negative"] {
+  color: var(--dh-api-red);
+}
+
+/* ---------- 表格本体 ---------- */
+
+/*
+ * antd `scroll={{ x: "max-content" }}` 的等价物：容器内横向滚动，列不被压扁，
+ * 也绝不把页面栅格撑破。
+ */
+.scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  min-width: max-content;
+  border-collapse: collapse;
+  border-spacing: 0;
+  font-size: var(--moss-table-font-size, 12px);
+}
+
+/*
+ * 单元格单行省略（`DataTableColumn.ellipsis`）需要列宽先固定下来才有意义：
+ * auto 布局下浏览器会按不折行文本的内容宽度撑开列，省略永远不会触发。
+ * 只有存在声明 ellipsis 的列时才切到 fixed，其余表格保持 auto，逐字不变。
+ */
+.table[data-layout="fixed"] {
+  table-layout: fixed;
+}
+
+.headCell {
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--moss-table-border, var(--dh-api-line-soft));
+  background: transparent;
+  color: var(--moss-table-header-color, var(--dh-api-soft));
+  /* 表头与表体同为 12px（中文 11px 笔画发虚），层级靠 soft 色与 500 字重区分。 */
+  font-size: var(--moss-table-font-size, 12px);
+  font-weight: var(--moss-table-header-weight, 500);
+  line-height: var(--moss-table-line-height, 1.35);
+  text-align: left;
+  white-space: nowrap;
+  /*
+   * 显式声明（不依赖浏览器默认值），使折行列与不折行列共用一行表头时，
+   * 两种列的文字都贴着表头下边框对齐，不会因为行高被折行列撑高而看起来参差不齐。
+   */
+  vertical-align: bottom;
+  height: var(--moss-table-row-h, 32px);
+}
+
+/*
+ * 列级换行开关（`DataTableColumn.headerWrap`）。默认不挂 data-wrap，
+ * 表头保持既有的永不换行；只有显式声明的列会在这里改成允许折行。
+ */
+.headCell[data-wrap="true"] {
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+.headUnit {
+  margin-left: 2px;
+  color: var(--dh-api-muted);
+  font-weight: 400;
+}
+
+.cell {
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--moss-table-border, var(--dh-api-line-soft));
+  color: var(--moss-table-cell-color, var(--dh-api-ink));
+  font-size: var(--moss-table-font-size, 12px);
+  line-height: var(--moss-table-line-height, 1.35);
+  text-align: left;
+  height: var(--moss-table-row-h, 32px);
+  font-weight: var(--moss-table-cell-weight, 400);
+}
+
+.root[data-density="compact"] .cell {
+  height: var(--moss-table-row-h-compact, 28px);
+}
+
+/* 配合 .table[data-layout="fixed"] 与列宽一起生效；单独出现时列宽仍由内容撑开，不会截断。 */
+.cell[data-ellipsis="true"] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 行 hover 用 accent 比例混色，不引入新色值。 */
+.row:hover .cell {
+  background: color-mix(in srgb, var(--dh-api-blue) 8%, transparent);
+}
+
+/*
+ * DESIGN.md §3：所有对比性数字必须 tabular，保证列对齐与变动可扫。
+ * 列头只右对齐（是文字不是数字），数据格与合计格才上 tabular 数字栈。
+ */
+.headCell[data-align="numeric"] {
+  text-align: right;
+}
+
+.cell[data-align="numeric"],
+.footCell[data-align="numeric"] {
+  font-family: var(--moss-font-tabular);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* 合计行：600 字重与顶部分隔线收口，不增加色块。 */
+.footCell {
+  padding: 4px 12px;
+  border-top: 1px solid var(--dh-api-line);
+  border-bottom: 0;
+  background: transparent;
+  color: var(--dh-api-ink);
+  font-size: var(--moss-table-font-size, 12px);
+  font-weight: 600;
+  line-height: var(--moss-table-line-height, 1.35);
+  text-align: left;
+  height: var(--moss-table-row-h, 32px);
+}
+
+/* ---------- Top N 展开条 ---------- */
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 24px;
+}
+
+.footerNote {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.toggle {
+  padding: 4px 12px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: transparent;
+  color: var(--dh-api-soft);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.35;
+  cursor: pointer;
+  min-height: 36px;
+  font-weight: 500;
+}
+
+.toggle:hover {
+  border-color: color-mix(in srgb, var(--dh-api-blue) 42%, var(--dh-api-line));
+  color: var(--dh-api-ink);
+}
+
+.toggle:focus-visible {
+  outline: 2px solid var(--dh-api-blue);
+  outline-offset: 1px;
+}
+
+/* ---------- 空态 / 错误态：收缩到消息框自身高度（§5） ---------- */
+
+/*
+ * 高度由内容自定：只设 min-height 地板，不设 max-height。封顶会让长错误文案在
+ * overflow: visible + align-items: center 下向上下双向溢出边框，比不封顶更糟；
+ * §5 要求的是「收缩到消息框自身高度」，地板已经达到不占满等高格的目的。
+ */
+.surface {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  margin: 0;
+  padding: 12px 0;
+  border: 0;
+  border-radius: var(--dh-api-radius);
+  background: transparent;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.surface[data-tone="negative"] {
+  color: var(--dh-api-red);
+}
+
+/* ---------- 骨架：带背板 + 接近真实高度，禁止 1px 占位（§6 / §11.10） ---------- */
+
+.skeleton {
+  position: relative;
+  min-height: 132px;
+  overflow: hidden;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+}
+
+.skeletonBar {
+  display: block;
+  height: 8px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--dh-api-soft) 16%, transparent);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}

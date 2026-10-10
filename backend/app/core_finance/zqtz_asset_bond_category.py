@@ -61,15 +61,15 @@ ZQTZ_ASSET_BOND_ROWS: tuple[dict[str, Any], ...] = (
         "row_label": "商业性金融债",
         "sort_order": 70,
         "match_keywords": ("商业性金融债", "次级债券", "商业银行债", "非银行金融债"),
-        "exclude_instrument_codes": ("HK0001155867",),
+        "exclude_instrument_codes": ("HK0001155867", "292680004", "292680008", "HK0001145967"),
         "source_note": "ZQTZSHOW sub_type/bond_type/name keyword in 商业性金融债/次级债券/商业银行债/非银行金融债",
     },
     {
         "row_key": "asset_zqtz_interbank_cd",
         "row_label": "同业存单",
         "sort_order": 72,
-        "match_keywords": ("同业存单", "NCD"),
-        "source_note": "ZQTZSHOW sub_type/bond_type/name keyword in 同业存单/NCD",
+        "match_keywords": ("同业存单", "大额存单", "NCD"),
+        "source_note": "ZQTZSHOW sub_type/bond_type/name keyword in 同业存单/大额存单/NCD",
     },
     {
         "row_key": "asset_zqtz_nonfinancial_enterprise_bond",
@@ -85,6 +85,7 @@ ZQTZ_ASSET_BOND_ROWS: tuple[dict[str, Any], ...] = (
             "信用债券-公用事业",
         ),
         "exclude_instrument_prefixes": ("US",),
+        "exclude_instrument_codes": ("292680026", "292680027", "292680004", "292680008", "HK0001145967"),
         "exclude_name_contains": ("铁道",),
         "include_foreign_currency": True,
         "source_note": "ZQTZSHOW ... 剔除铁道债/外国债券清单",
@@ -100,8 +101,9 @@ ZQTZ_ASSET_BOND_ROWS: tuple[dict[str, Any], ...] = (
         "row_key": "asset_zqtz_foreign_bond",
         "row_label": "外国债券",
         "sort_order": 78,
-        "instrument_prefixes": ("US", "HK0001155867"),
-        "source_note": "ZQTZSHOW 外国债券按披露：US* + HK0001155867*",
+        "instrument_prefixes": ("US", "HK0001155867", "292680026", "292680027"),
+        "additional_instrument_codes": ("292680004", "292680008", "HK0001145967"),
+        "source_note": "ZQTZSHOW 外国债券按披露：US*、HK0001155867*、292680026/292680027（印尼主权债）；2026-09-09业务确认精确纳入292680004、292680008、HK0001145967",
     },
     {
         "row_key": "asset_zqtz_public_fund",
@@ -116,16 +118,16 @@ ZQTZ_ASSET_BOND_ROWS: tuple[dict[str, Any], ...] = (
         "row_label": "非底层投资资产",
         "sort_order": 82,
         "bond_types": _ZQTZ_PREFIX_BUCKET_BOND_TYPES,
-        "instrument_prefixes": ("G0", "J0", "J1", "J4"),
-        "source_note": "ZQTZSHOW bond_type=其他 and instrument_code prefix in G0/J0/J1/J4",
+        "instrument_prefixes": ("G0", "G2", "J0", "J1", "J4"),
+        "source_note": "ZQTZSHOW bond_type=其他 and instrument_code prefix in G0/G2/J0/J1/J4",
     },
     {
         "row_key": "asset_zqtz_detail_trust_plan",
         "row_label": "信托计划",
         "sort_order": 83,
         "bond_types": _ZQTZ_PREFIX_BUCKET_BOND_TYPES,
-        "instrument_prefixes": ("G0",),
-        "source_note": "ZQTZSHOW 其中项：instrument_code prefix=G0",
+        "instrument_prefixes": ("G0", "G2"),
+        "source_note": "ZQTZSHOW 其中项：instrument_code prefix in G0/G2",
     },
     {
         "row_key": "asset_zqtz_detail_securities_asset_management_plan",
@@ -137,11 +139,11 @@ ZQTZ_ASSET_BOND_ROWS: tuple[dict[str, Any], ...] = (
     },
     {
         "row_key": "asset_zqtz_detail_structured_finance_broker",
-        "row_label": "其中：结构化融资（券商）",
+        "row_label": "结构化融资（券商）",
         "sort_order": 85,
         "bond_types": _ZQTZ_PREFIX_BUCKET_BOND_TYPES,
         "instrument_prefixes": ("J4",),
-        "source_note": "ZQTZSHOW 其中项：instrument_code prefix=J4",
+        "source_note": "ZQTZSHOW 其中项：instrument_code prefix=J4（结构化融资（券商））",
     },
     {
         "row_key": "asset_zqtz_detail_foreign_currency_delegated",
@@ -238,9 +240,14 @@ def _row_matches_definition(row: Mapping[str, Any], row_def: dict[str, Any]) -> 
     code_u = _instrument_code_upper(row)
 
     prefixes = tuple(str(x) for x in row_def.get("instrument_prefixes", ()))
-    if prefixes:
+    # 精确追加清单与前缀并集；下方 instrument_codes 仍为独立的 AND 约束（如 J0 市值法清单）。
+    additional_codes = tuple(str(x) for x in row_def.get("additional_instrument_codes", ()))
+    if prefixes or additional_codes:
         has_selector = True
-        if not code_u or not any(code_u.startswith(p.upper()) for p in prefixes):
+        if not code_u or not (
+            any(code_u.startswith(p.upper()) for p in prefixes)
+            or code_u in {c.upper() for c in additional_codes}
+        ):
             return False
 
     for p in tuple(str(x) for x in row_def.get("exclude_instrument_prefixes", ())):
@@ -306,3 +313,17 @@ def classify_zqtz_asset_bond_label(row: Mapping[str, Any]) -> str:
         if _row_matches_definition(row, row_def):
             return str(row_def["row_label"])
     return "其它"
+
+
+def is_parent_zqtz_business_row(row_key: str, business_type: str, source_note: object) -> bool:
+    """判断某条 ZQTZ 业务种类行是否为父级行（而非"其中"明细行）。
+
+    唯一权威实现：由 pnl-by-business 的 live 路径（``pnl_service``）与
+    precompute 路径（``pnl_by_business_precompute``）共用，避免两路径各自
+    维护一份判定逻辑而产生口径漂移。
+    """
+    if "_detail_" in row_key:
+        return False
+    if business_type.startswith("其中"):
+        return False
+    return "其中项" not in str(source_note or "")

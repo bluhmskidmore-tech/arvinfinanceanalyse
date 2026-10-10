@@ -15,6 +15,8 @@ export type LightIconName =
   | "check-square"
   | "database"
   | "dot-chart"
+  | "clock"
+  | "eye"
   | "file-search"
   | "file-text"
   | "fund"
@@ -144,6 +146,13 @@ function IconPath({ name }: { name: LightIconName }) {
           <path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" />
         </>
       );
+    case "clock":
+      return (
+        <>
+          <circle cx="12" cy="12" r="8" />
+          <path d="M12 7v5l3 2" />
+        </>
+      );
     case "dot-chart":
       return (
         <>
@@ -151,6 +160,13 @@ function IconPath({ name }: { name: LightIconName }) {
           <circle cx="8" cy="15" r="1.5" />
           <circle cx="12" cy="10" r="1.5" />
           <circle cx="17" cy="7" r="1.5" />
+        </>
+      );
+    case "eye":
+      return (
+        <>
+          <path d="M2.8 12s3.3-6 9.2-6 9.2 6 9.2 6-3.3 6-9.2 6-9.2-6-9.2-6Z" />
+          <circle cx="12" cy="12" r="2.5" />
         </>
       );
     case "file-search":

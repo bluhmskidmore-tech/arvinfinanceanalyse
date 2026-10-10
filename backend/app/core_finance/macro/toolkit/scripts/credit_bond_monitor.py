@@ -32,6 +32,12 @@ HIST_250D_NEAR_FLOOR_BP      = 5      # 滚动250日均值-2σ空间 < 5bp → �
 # 城投区域风险（弱省份列表）
 WEAK_PROVINCES = ["贵州", "云南", "天津", "内蒙古", "甘肃", "吉林", "黑龙江"]
 
+# 数据状态标记：以下内置输入均为示例数据，外部源接入前必须显式标注，
+# 防止输出 CSV 被下游（evening_report / dashboard / toolkit 页面产物）当成真实监控结果
+SAMPLE_STATUS_FI_PLUS = "示例数据（第三方固收+申赎数据未接入）"
+SAMPLE_STATUS_PROVINCE = "示例数据（区域城投数据未接入）"
+SAMPLE_STATUS_SPREAD_FLOOR = "利差为系统数据，区间最小值为示例数据"
+
 # ── 固收+申赎数据（示例）───────────────────────────────────────────────────────
 # 实际应从第三方数据源（私募排排网/济安金信/自建）接入
 # 此处用模拟数据演示格式
@@ -102,6 +108,7 @@ def monitor_fixed_income_plus():
         "风险等级": level,
         "建议": advice,
         "操作": action,
+        "数据状态": SAMPLE_STATUS_FI_PLUS,
     }
 
 
@@ -126,6 +133,7 @@ def monitor_province_risk():
             "风险评分": data["风险评分"],
             "资金面状态": funding_status,
             "预警": "⚠️" if data["风险评分"] >= 3 else ("⚠️弱省" if province in WEAK_PROVINCES else ""),
+            "数据状态": SAMPLE_STATUS_PROVINCE,
         })
 
     df = pd.DataFrame(records)
@@ -161,7 +169,7 @@ def monitor_spread_floor(df_credit: pd.DataFrame) -> pd.DataFrame:
     for _, row in spreads.iterrows():
         name = row["品种"].replace("利差_", "")
         latest = row["最新值"]
-        if name in floor_data and latest is not None:
+        if name in floor_data and latest is not None and pd.notna(latest):
             floor = floor_data[name]
             dist = latest - floor
             records.append({
@@ -170,6 +178,7 @@ def monitor_spread_floor(df_credit: pd.DataFrame) -> pd.DataFrame:
                 "区间最小_bp": floor,
                 "距底部空间_bp": round(dist, 1),
                 "状态": "🟢 充裕" if dist > SPREAD_NEAR_FLOOR_BP else ("🟡 偏低" if dist > 3 else "🔴 极低"),
+                "数据状态": SAMPLE_STATUS_SPREAD_FLOOR,
             })
 
     return pd.DataFrame(records)
@@ -187,7 +196,7 @@ def generate_monitor_report():
         credit_df = pd.read_csv(credit_path, encoding="utf-8-sig")
     else:
         credit_df = pd.DataFrame()
-        print("  [WARNING] credit_bond_latest.csv not found, using mock data")
+        print("  [WARNING] credit_bond_latest.csv not found; spread floor monitoring skipped")
 
     # 2. 固收+风险
     fi_plus = monitor_fixed_income_plus()
@@ -223,9 +232,11 @@ def generate_monitor_report():
                 "风险等级": "⚠️ 弱省",
                 "建议": f"{row['省份']}净融资{row['资金面状态']}，关注估值调整风险",
                 "操作": "低配或回避",
+                "数据状态": row["数据状态"],
             })
 
     # 利差极低预警
+    low_spread = pd.DataFrame()
     if not credit_df.empty:
         spread_floor = monitor_spread_floor(credit_df)
         if not spread_floor.empty:
@@ -238,6 +249,7 @@ def generate_monitor_report():
                     "风险等级": row["状态"],
                     "建议": "利差偏低，性价比有限，防守为主",
                     "操作": "维持现有仓位，不追涨",
+                    "数据状态": row["数据状态"],
                 })
 
     # 保存预警
@@ -253,7 +265,8 @@ def generate_monitor_report():
         "固收+风险等级": fi_plus["风险等级"],
         "二永债操作": fi_plus["操作"],
         "高风险省份数": len(weak_provinces),
-        "利差极低品种数": len(low_spread) if not credit_df.empty else 0,
+        "利差极低品种数": len(low_spread),
+        "数据状态": f"包含示例数据：{SAMPLE_STATUS_FI_PLUS}；{SAMPLE_STATUS_PROVINCE}；{SAMPLE_STATUS_SPREAD_FLOOR}",
     }
     snap_df = pd.DataFrame([monitor_snapshot])
     snap_out = paths.OUTPUT_DIR / "credit_monitor.csv"

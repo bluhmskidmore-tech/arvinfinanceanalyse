@@ -1,44 +1,64 @@
-# Requirements: MOSS V3 Audit Remediation
+# Requirements: MOSS V3 v1.1 PnL Historical Cutoff Precompute Coverage
 
-**Defined:** 2026-05-11
+**Defined:** 2026-07-15
 **Core Value:** Business metrics and governed pages can be released with traceable evidence, green gates, and explicit development security boundaries.
 
-## v1.0 Requirements
+## v1.1 Requirements
 
-### Release Gates
+### Cutoff Coverage
 
-- [x] **REQ-AUDIT-001**: Restore backend release gate correctness by making Balance Analysis current-user role behavior consistent with status writes and by trusting header identity only through an explicit dev/test switch.
-- [x] **REQ-AUDIT-002**: Add formal page contracts for live routes `/agent`, `/balance-movement-analysis`, and `/liability-analytics` without downgrading them to temporary exceptions.
-- [x] **REQ-AUDIT-003**: Keep formal finance calculations out of frontend code while allowing only the documented dashboard cockpit DV01 display-only label exception.
-- [x] **REQ-AUDIT-004**: Preserve Dashboard first-screen metric provenance by treating placeholder delta labels as missing and falling back to the read-chain label.
-- [x] **REQ-AUDIT-005**: Harden development-compatible security boundaries for auth header trust, macro refresh authorization, agent run ownership, GitNexus repo roots, and MCP command launch.
-- [x] **REQ-AUDIT-006**: Add CI/release-gate coverage for frontend build, page-contract completeness, frontend finance boundary, and project MCP self-checks.
+- [x] **COV-01**: A user selecting any available 2026 month-end cutoff can receive a precompute partition resolved to that exact cutoff.
+- [x] **COV-02**: A user can see the exact selected cutoff's current/precomputed or governed live-fallback status without inheriting a later cutoff's state.
+- [x] **COV-03**: An authorized operator can request one bounded build that covers every available month-end cutoff in the selected year without creating duplicate partitions.
+
+### Incremental Rebuild
+
+- [ ] **INC-01**: A governed source or approved manual-adjustment change at a cutoff queues rebuilds for that cutoff and all later cumulative cutoffs while leaving earlier current partitions untouched.
+- [ ] **INC-02**: Overlapping automatic refresh requests coalesce so each affected cutoff has at most one queued follow-up behind a running build.
+
+### Exact Parity
+
+- [ ] **PAR-01**: Monthly and analysis payloads produced by the precomputed path match the governed live path exactly for PnL, ADB, current balance, yield, FTP, currency grouping, parent summaries, and reconciliation diagnostics.
+- [ ] **PAR-02**: Validation produces an auditable cutoff coverage/parity matrix with source version, rule version, record count, and measured elapsed time for every tested cutoff.
+
+### Recovery
+
+- [ ] **REC-01**: A failed or stale cutoff build remains visible and independently recoverable while other current cutoff partitions continue serving normally.
+
+## Future Requirements
+
+### Leadership Analysis
+
+- **LEAD-01**: Leadership users receive expanded narrative attribution and anomaly explanations after historical compute coverage is closed.
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Full production JWT or SSO rollout | The remediation target is development-compatible hardening, not an auth platform rebuild. |
-| Database schema changes | The audit blockers are release gates, contracts, frontend semantics, security boundaries, and evidence. |
-| Global frontend state or API client refactor | The current priority is page/workflow closure with minimal reviewable changes. |
-| Historical GSD reconstruction | Only current audit findings and the current fix phase are documented. |
+| Changes to governed PnL, ADB, yield, FTP, VAT, FX, or classification formulas | This milestone changes compute coverage and evidence only. |
+| Database schema changes | The existing `(year, as_of_date)` partition boundary already supports multiple cutoffs. |
+| Shared queue, scheduler, cache, or authentication framework refactors | Page-local orchestration is sufficient and keeps blast radius reviewable. |
+| Precomputing non-month-end dates | The page's management and reporting workflow is month-end based. |
+| Automatic production scheduling policy | First close deterministic build, invalidation, parity, and recovery behavior. |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REQ-AUDIT-001 | Phase 01 | Complete |
-| REQ-AUDIT-002 | Phase 01 | Complete |
-| REQ-AUDIT-003 | Phase 01 | Complete |
-| REQ-AUDIT-004 | Phase 01 | Complete |
-| REQ-AUDIT-005 | Phase 01 | Complete |
-| REQ-AUDIT-006 | Phase 01 | Complete |
+| COV-01 | Phase 02 | Complete |
+| COV-02 | Phase 02 | Complete |
+| COV-03 | Phase 02 | Complete |
+| INC-01 | Phase 03 | Deferred: side-branch implementation exists (`codex/phase-03-incremental-rebuild`), not adopted, not merged |
+| INC-02 | Phase 03 | Deferred: side-branch implementation exists, not adopted, not merged |
+| PAR-01 | Phase 04 | Deferred: parity evidence on side branch only, no standard closure |
+| PAR-02 | Phase 04 | Deferred: parity evidence on side branch only, no standard closure |
+| REC-01 | Phase 03 | Deferred: side-branch implementation exists, not adopted, not merged |
 
 **Coverage:**
-- v1 requirements: 6 total
-- Mapped to phases: 6
+- v1.1 requirements: 8 total
+- Mapped to phases: 8
 - Unmapped: 0
 
 ---
-*Requirements defined: 2026-05-11*
-*Last updated: 2026-05-11 after audit remediation implementation*
+*Requirements defined: 2026-07-15*
+*Last updated: 2026-07-19 after forensic branch reconciliation (`.planning/forensics/report-20260719-055254.md`): Phase 03/04 requirements marked Deferred; checkboxes stay unchecked until a business adoption decision.*

@@ -13,7 +13,7 @@ import type {
   ModuleHomeViewBody,
 } from "../features/workbench/module-home/moduleHomeModel";
 import type { PortfolioReadinessGate } from "../features/workbench/module-home/portfolioReadinessGate";
-import { formatRawAsNumeric } from "../utils/format";
+import { EM_DASH, formatRawAsNumeric } from "../utils/format";
 
 const FALSE_CLOSURE_TERMS = [
   "closure_approved=true",
@@ -168,8 +168,65 @@ function mockView(): ModuleHomeViewBody {
       tone: "ok",
       facts: [],
     },
-    distributionPanels: [],
-    detailPanels: [],
+    distributionPanels: [
+      {
+        key: "asset-type",
+        title: "券种分布",
+        meta: "mock",
+        stateLabel: "已返回",
+        stateDetail: "sample structure",
+        rows: [
+          {
+            key: "policy-bank",
+            label: "policy-bank",
+            marketValue: "10.00 亿元",
+            share: "20.00%",
+            barPct: 20,
+            tone: "ok",
+          },
+        ],
+        tone: "ok",
+        totalDisplay: "10.00 亿",
+      },
+    ],
+    detailPanels: [
+      {
+        key: "portfolio-comparison",
+        title: "子组合对比",
+        meta: "mock",
+        stateLabel: "已返回",
+        stateDetail: "sample comparison",
+        rows: [
+          {
+            key: "portfolio-sample",
+            label: "sample",
+            value: "10.00 亿",
+            tradeDate: "2026-05-31",
+            source: "mock",
+            tone: "ok",
+          },
+        ],
+        tone: "ok",
+      },
+      {
+        key: "risk-indicators-detail",
+        title: "风险指标",
+        meta: "mock",
+        stateLabel: "已返回",
+        stateDetail: "sample risk",
+        rows: [
+          {
+            key: "risk-credit",
+            label: "信用占比",
+            value: "42.00%",
+            tradeDate: "2026-05-31",
+            source: "mock",
+            tone: "ok",
+          },
+        ],
+        tone: "ok",
+      },
+    ],
     dataNote: {
       title: "数据说明",
       lines: ["sample"],
@@ -179,6 +236,19 @@ function mockView(): ModuleHomeViewBody {
 }
 
 describe("portfolio decision model", () => {
+  it.each([
+    ["volume", "利息规模"],
+    ["rate", "利息收益率"],
+    ["interaction", "交叉效应"],
+    ["fair_value", "公允价值变动"],
+    ["capital_gain", "投资收益变动"],
+    ["manual_adjustment", "手工调整变动"],
+    ["unexplained", "未解释差额"],
+  ] as const)("preserves the backend %s primary driver in the decision facts", (driver, label) => {
+    const decision = buildDecision({ pnlSummary: { ...pnlSummary(), primary_driver: driver } });
+    expect(decision.facts.find((fact) => fact.label === "归因摘要")?.value).toBe(label);
+  });
+
   it("returns normal drilldown actions only when decision and risk evidence are closed", () => {
     const decision = buildDecision();
 
@@ -241,6 +311,29 @@ describe("portfolio decision model", () => {
     }
   });
 
+  it("does not present a missing source-date ledger as readable", () => {
+    const decision = buildDecision({
+      readiness: readiness({
+        coreRender: false,
+        decisionReady: false,
+        tone: "watch",
+        blockingReasons: ["债券总览未返回", "风险指标未返回", "资产负债未返回", "损益归因未返回"],
+        sourceDates: EM_DASH,
+      }),
+    });
+
+    expect(decision.facts.find((fact) => fact.label === "源日期")).toMatchObject({
+      value: EM_DASH,
+      tone: "muted",
+    });
+  });
+
+  it("keeps the source-date ledger ok when dates are present and consistent", () => {
+    const decision = buildDecision();
+
+    expect(decision.facts.find((fact) => fact.label === "源日期")?.tone).toBe("ok");
+  });
+
   it("removes mock sample values and decision actions from mock portfolio views", () => {
     const guarded = guardMockPortfolioHomeView(mockView());
 
@@ -252,6 +345,14 @@ describe("portfolio decision model", () => {
     expect(guarded.decision?.detail).not.toContain("42.00%");
     expect(guarded.decision?.actions).toEqual([]);
     expect(guarded.detailPanels?.[0]?.key).toBe("mock-portfolio-guard");
+    expect(guarded.detailPanels?.map((panel) => panel.key)).toEqual([
+      "mock-portfolio-guard",
+      "portfolio-comparison",
+    ]);
+    expect(guarded.detailPanels?.[1]?.stateLabel).toBe("模拟数据");
+    expect(JSON.stringify(guarded.detailPanels)).not.toContain("42.00%");
+    expect(guarded.distributionPanels?.[0]?.stateLabel).toBe("模拟数据");
+    expect(guarded.distributionPanels?.[0]?.rows).toHaveLength(1);
     expect(guarded.dataNote.lines.join(" ")).toContain("不可用于业务决策");
     const text = [
       guarded.stateLabel,

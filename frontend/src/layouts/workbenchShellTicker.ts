@@ -1,22 +1,26 @@
 import type { ChoiceMacroLatestPoint } from "../api/contracts";
-import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../utils/choiceMacroFormat";
+import {
+  formatChoiceMacroDelta,
+  formatChoiceMacroValue,
+  formatChoiceMacroValueParts,
+} from "../utils/choiceMacroFormat";
 
-type ShellTickerTone = "up" | "down";
+type ShellTickerTone = "up" | "down" | "neutral";
 
 export type ShellTickerItem = {
   key: string;
   label: string;
   value: string;
+  tradeDate: string;
   delta: string;
+  /** delta 省略的完整变动串（含文本单位，如 CNY/USD）收进 title，不在正文重复。 */
+  deltaTitle?: string;
   tone: ShellTickerTone;
 };
 
-const fallbackShellTickerItems: ShellTickerItem[] = [
-  { key: "cgb10y", label: "10年国债", value: "1.94%", delta: "+2bp", tone: "up" },
-  { key: "dr007", label: "DR007", value: "1.82%", delta: "-6bp", tone: "down" },
-  { key: "omo7d", label: "7天逆回购", value: "1.75%", delta: "+1bp", tone: "up" },
-  { key: "usd-cny", label: "美元/人民币", value: "7.21", delta: "+0.02", tone: "up" },
-];
+export type ShellTickerModel = {
+  items: ShellTickerItem[];
+};
 
 const shellTickerSeriesSpecs = [
   {
@@ -87,25 +91,57 @@ const shellTickerSeriesIdsByKey: Record<ShellTickerKey, string[]> = {
   "usd-cny": ["CA.USDCNY", "EMM00058124"],
 };
 
+const FLAT_DELTA_DISPLAY = "持平";
+
 function formatShellTickerValue(point: ChoiceMacroLatestPoint) {
   return formatChoiceMacroValue(point, { spaceBeforeUnit: false });
 }
 
-function formatShellTickerDelta(point: ChoiceMacroLatestPoint) {
-  return formatChoiceMacroDelta(point, { spaceBeforeUnit: false });
+function isZeroDeltaDisplay(delta: string) {
+  const numeric = delta.match(/-?\d+(?:\.\d+)?/);
+  return numeric != null && Number.parseFloat(numeric[0]) === 0;
+}
+
+function buildShellTickerDelta(
+  point: ChoiceMacroLatestPoint,
+): Pick<ShellTickerItem, "delta" | "deltaTitle" | "tone"> {
+  if (point.latest_change == null) {
+    // 无变动信息时显示占位符，不再套用涨跌语义色。
+    return { delta: formatChoiceMacroDelta(point, { spaceBeforeUnit: false }), tone: "neutral" };
+  }
+
+  // formatChoiceMacroValueParts 仅对文本单位（非 % / bp）返回非空 unit；
+  // 该单位已完整出现在数值列，变动值不再重复单位串，完整串收进 title。
+  const { unit } = formatChoiceMacroValueParts(point, { spaceBeforeUnit: false });
+  const fullDelta = formatChoiceMacroDelta(point, { spaceBeforeUnit: false });
+  const delta = unit
+    ? formatChoiceMacroDelta({ ...point, unit: "" }, { spaceBeforeUnit: false })
+    : fullDelta;
+
+  if (isZeroDeltaDisplay(delta)) {
+    // 格式化后为 ±0 的变动归中性，显示「持平」而不是 +0/-0。
+    return { delta: FLAT_DELTA_DISPLAY, deltaTitle: fullDelta, tone: "neutral" };
+  }
+
+  return {
+    delta,
+    deltaTitle: unit ? fullDelta : undefined,
+    tone: point.latest_change < 0 ? "down" : "up",
+  };
 }
 
 export function buildShellTickerItems(
   series: ChoiceMacroLatestPoint[],
   keys: ShellTickerKey[] = shellTickerDisplayKeys,
-): ShellTickerItem[] {
+): ShellTickerModel {
   const resolved: ShellTickerItem[] = [];
+  const availableSeries = series.filter((point) => Number.isFinite(point.value_numeric));
 
   for (const spec of shellTickerSeriesSpecs.filter((item) => keys.includes(item.key))) {
     const stableSeriesIds = shellTickerSeriesIdsByKey[spec.key] ?? [];
     const point =
-      series.find((candidate) => stableSeriesIds.includes(candidate.series_id)) ??
-      series.find((candidate) =>
+      availableSeries.find((candidate) => stableSeriesIds.includes(candidate.series_id)) ??
+      availableSeries.find((candidate) =>
         spec.matchers.some((matcher) => candidate.series_name.includes(matcher)),
       );
 
@@ -117,10 +153,10 @@ export function buildShellTickerItems(
       key: spec.key,
       label: spec.label,
       value: formatShellTickerValue(point),
-      delta: formatShellTickerDelta(point),
-      tone: point.latest_change != null && point.latest_change < 0 ? "down" : "up",
+      tradeDate: point.trade_date,
+      ...buildShellTickerDelta(point),
     });
   }
 
-  return resolved.length > 0 ? resolved : fallbackShellTickerItems;
+  return { items: resolved };
 }

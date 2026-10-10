@@ -8,6 +8,7 @@ from typing import Any
 from .helpers import available_dates, build_curve_history, get_curve_rate
 
 _ONE_HUNDRED = Decimal("100")
+_REQUIRED_TENORS = ("1Y", "10Y")
 
 
 def _round(value: Decimal | None) -> float | None:
@@ -23,10 +24,23 @@ def compute_rate_turning_point(
 ) -> dict[str, Any]:
     curves_by_date = build_curve_history(curve_rows, report_date=report_date)
     dates = available_dates(curves_by_date)
-    if not dates:
+    government_dates = [
+        sample_date
+        for sample_date in dates
+        if curves_by_date.get(sample_date, {}).get("CN_GOVT")
+    ]
+    requested_report_date = report_date.isoformat()
+    if not government_dates:
         return {
-            "report_date": report_date.isoformat(),
+            "requested_report_date": requested_report_date,
+            "report_date": requested_report_date,
+            "curve_date": None,
+            "fallback_mode": "none_available",
+            "stale_days": None,
+            "missing_tenors": list(_REQUIRED_TENORS),
             "data_status": "unavailable",
+            "observation_only": True,
+            "formal_use_allowed": False,
             "direction": "unavailable",
             "conviction": "LOW",
             "headline": "暂无市场曲线数据，无法进行利率拐点分析。",
@@ -41,24 +55,42 @@ def compute_rate_turning_point(
             "warnings": ["NO_GOVERNMENT_CURVE_HISTORY"],
         }
 
-    history_10y = [
-        (sample_date, rate)
-        for sample_date in dates
-        if (rate := get_curve_rate(curves_by_date, sample_date, "CN_GOVT", "10Y")) is not None
-    ]
-    history_slope = [
-        (sample_date, (ten_year - one_year) * _ONE_HUNDRED)
-        for sample_date in dates
+    complete_history = [
+        (sample_date, ten_year, (ten_year - one_year) * _ONE_HUNDRED)
+        for sample_date in government_dates
         if (ten_year := get_curve_rate(curves_by_date, sample_date, "CN_GOVT", "10Y")) is not None
         and (one_year := get_curve_rate(curves_by_date, sample_date, "CN_GOVT", "1Y")) is not None
     ]
+    latest_curve_date = government_dates[0]
+    curve_date = complete_history[0][0] if complete_history else latest_curve_date
+    selected_curve = curves_by_date.get(curve_date, {}).get("CN_GOVT", {})
+    missing_tenors = [tenor for tenor in _REQUIRED_TENORS if tenor not in selected_curve]
+    fallback_mode = "none"
+    if not complete_history:
+        fallback_mode = "none_available"
+    elif curve_date != latest_curve_date:
+        fallback_mode = "latest_complete_snapshot"
+    stale_days = (report_date - curve_date).days
+    fallback_warnings = (
+        ["CURVE_DATE_FALLBACK"] if fallback_mode == "latest_complete_snapshot" else []
+    )
 
-    if len(history_10y) < 10 or len(history_slope) < 10:
+    history_10y = [(sample_date, ten_year) for sample_date, ten_year, _ in complete_history]
+    history_slope = [(sample_date, slope) for sample_date, _, slope in complete_history]
+
+    if len(complete_history) < 10:
         current_10y = history_10y[0][1] if history_10y else None
         current_slope = history_slope[0][1] if history_slope else None
         return {
-            "report_date": report_date.isoformat(),
+            "requested_report_date": requested_report_date,
+            "report_date": requested_report_date,
+            "curve_date": curve_date.isoformat(),
+            "fallback_mode": fallback_mode,
+            "stale_days": stale_days,
+            "missing_tenors": missing_tenors,
             "data_status": "unavailable",
+            "observation_only": True,
+            "formal_use_allowed": False,
             "direction": "unavailable",
             "conviction": "LOW",
             "headline": "国债曲线历史不足，无法识别利率拐点。",
@@ -70,7 +102,7 @@ def compute_rate_turning_point(
             "percentile_1y": None,
             "signals": [],
             "interpretation": "至少需要 10 个观测点才能判定拐点类型。",
-            "warnings": ["TURNING_POINT_HISTORY_SHORT"],
+            "warnings": ["TURNING_POINT_HISTORY_SHORT", *fallback_warnings],
         }
 
     current_10y = history_10y[0][1]
@@ -135,9 +167,27 @@ def compute_rate_turning_point(
     elif conviction_score >= 2:
         conviction = "MEDIUM"
 
+    warnings: list[str] = []
+    data_status = "complete"
+    # 中期窗口（20 日动量/斜率变化）不足时，斜率信号腿无法投票，
+    # 必须显式降级而不是让缺失窗口静默等价于"无信号"。
+    if change_20d_bp is None or slope_change_20d_bp is None:
+        data_status = "degraded"
+        warnings.append("TURNING_POINT_MEDIUM_WINDOW_SHORT")
+    if fallback_warnings:
+        data_status = "degraded"
+        warnings.extend(fallback_warnings)
+
     return {
-        "report_date": report_date.isoformat(),
-        "data_status": "complete",
+        "requested_report_date": requested_report_date,
+        "report_date": requested_report_date,
+        "curve_date": curve_date.isoformat(),
+        "fallback_mode": fallback_mode,
+        "stale_days": stale_days,
+        "missing_tenors": missing_tenors,
+        "data_status": data_status,
+        "observation_only": True,
+        "formal_use_allowed": False,
         "direction": direction,
         "conviction": conviction,
         "headline": headline,
@@ -149,5 +199,5 @@ def compute_rate_turning_point(
         "percentile_1y": _round(percentile_1y),
         "signals": signals,
         "interpretation": interpretation,
-        "warnings": [],
+        "warnings": warnings,
     }

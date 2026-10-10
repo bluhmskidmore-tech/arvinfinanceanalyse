@@ -1,8 +1,16 @@
 """
 Orchestrates `zqtz` / `tyw` formal-balance lane: ingest → snapshot materialize → balance formal facts.
 
+Range/backfill runs additionally materialize the downstream daily analytics lane
+(`materialize_bond_analytics_facts` → `materialize_risk_tensor_facts`) for the same dates, because no
+scheduler drives that lane and range mode is the only operational entry point that backfills it.
+The lane is deliberately limited to those two steps: month-end oriented steps (formal PnL, product
+category) must not be looped over a date range, and a whole-chain range loop would hold the global
+refresh lock for the length of the range.
+
 All DuckDB writes happen inside invoked tasks (`ingest_demo_manifest` side effects, `materialize_standard_snapshots`,
-`materialize_balance_analysis_facts`). This module does not open DuckDB connections directly.
+`materialize_balance_analysis_facts`, `materialize_bond_analytics_facts`, `materialize_risk_tensor_facts`).
+This module does not open DuckDB connections directly.
 """
 
 from __future__ import annotations
@@ -12,14 +20,28 @@ import json
 import sys
 from datetime import date
 from pathlib import Path
+from typing import TypedDict
 
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import GovernanceRepository
 from backend.app.repositories.source_manifest_repo import SourceManifestRepository
 from backend.app.tasks.balance_analysis_materialize import materialize_balance_analysis_facts
+from backend.app.tasks.bond_analytics_materialize import materialize_bond_analytics_facts
 from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.ingest import ingest_demo_manifest
+from backend.app.tasks.risk_tensor_materialize import materialize_risk_tensor_facts
 from backend.app.tasks.snapshot_materialize import materialize_standard_snapshots
+
+
+def _normalize_expected_fx_source_version(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise TypeError("expected_fx_source_version must be a string or None.")
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError("expected_fx_source_version must be a non-empty string.")
+    return normalized
 
 
 def _emit_json_payload(payload: dict[str, object]) -> None:
@@ -140,6 +162,7 @@ def _resolve_report_dates(
     report_date: str | None,
     start_date: str | None,
     end_date: str | None,
+    backfill: bool,
 ) -> list[str]:
     settings = get_settings()
     requested_report_date = _normalize_iso_date(report_date, field_name="report_date")
@@ -164,10 +187,28 @@ def _resolve_report_dates(
             base_dir=Path(governance_dir or settings.governance_path)
         ),
     )
-    batch_rows = manifest_repo.select_for_snapshot_materialization(
-        source_families=source_families,
-        ingest_batch_id=ingest_batch_id,
-    )
+    if backfill:
+        candidate_dates = sorted(
+            {
+                str(row.get("report_date") or "").strip()
+                for row in manifest_repo.load_all()
+                if str(row.get("source_family") or "").strip() in source_families
+                and str(row.get("report_date") or "").strip()
+            }
+        )
+        batch_rows = [
+            row
+            for candidate_date in candidate_dates
+            for row in manifest_repo.select_for_snapshot_materialization(
+                source_families=source_families,
+                report_date=candidate_date,
+            )
+        ]
+    else:
+        batch_rows = manifest_repo.select_for_snapshot_materialization(
+            source_families=source_families,
+            ingest_batch_id=ingest_batch_id,
+        )
 
     resolved_dates: list[str] = []
     for raw_date in sorted(
@@ -196,18 +237,58 @@ def _resolve_report_dates(
     return resolved_dates
 
 
+def _resolve_analytics_lane_enabled(
+    *,
+    include_analytics: bool | None,
+    backfill: bool,
+    start_date: str | None,
+    end_date: str | None,
+) -> bool:
+    """Range/backfill runs own the daily analytics lane; single-date runs do not.
+
+    `scripts/run_global_data_refresh.py` already sequences bond_analytics/risk_tensor after the
+    single-date balance lane, so defaulting the lane on there would duplicate two materializations
+    per run. Range mode has no such orchestrator, which is exactly how 2026-06/07 lost 59 dates.
+    """
+    if include_analytics is not None:
+        return include_analytics
+    return bool(
+        backfill
+        or str(start_date or "").strip()
+        or str(end_date or "").strip()
+    )
+
+
 def _run_formal_balance_pipeline(
     *,
     report_date: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
+    backfill: bool = False,
+    include_analytics: bool | None = None,
     data_root: str | None = None,
     duckdb_path: str | None = None,
     governance_dir: str | None = None,
     archive_dir: str | None = None,
     fx_source_path: str | None = None,
+    use_existing_fx_only: bool = False,
+    expected_fx_source_version: str | None = None,
 ) -> dict[str, object]:
+    if type(use_existing_fx_only) is not bool:
+        raise TypeError("use_existing_fx_only must be a bool.")
+    normalized_expected_fx_source_version = _normalize_expected_fx_source_version(
+        expected_fx_source_version
+    )
+    if normalized_expected_fx_source_version is not None and not use_existing_fx_only:
+        raise ValueError("expected_fx_source_version requires use_existing_fx_only=True.")
+
     source_families = ["zqtz", "tyw"]
+    analytics_lane_enabled = _resolve_analytics_lane_enabled(
+        include_analytics=include_analytics,
+        backfill=backfill,
+        start_date=start_date,
+        end_date=end_date,
+    )
     ingest_payload = ingest_demo_manifest.fn(
         data_root=data_root,
         governance_dir=governance_dir,
@@ -224,6 +305,7 @@ def _run_formal_balance_pipeline(
         report_date=report_date,
         start_date=start_date,
         end_date=end_date,
+        backfill=backfill,
     )
 
     per_report_date: list[dict[str, object]] = []
@@ -248,31 +330,56 @@ def _run_formal_balance_pipeline(
             ingest_batch_id=materialization_ingest_batch_id,
             data_root=data_root,
             fx_source_path=fx_source_path,
+            use_existing_fx_only=use_existing_fx_only,
+            **(
+                {}
+                if normalized_expected_fx_source_version is None
+                else {"expected_fx_source_version": normalized_expected_fx_source_version}
+            ),
         )
-        per_report_date.append(
-            {
-                "report_date": current_report_date,
-                "materialization_ingest_batch_id": materialization_ingest_batch_id,
-                "snapshot": snapshot_payload,
-                "balance": balance_payload,
-                "balance_runtime": _normalize_formal_runtime_payload(balance_payload),
-            }
-        )
+        current_entry: dict[str, object] = {
+            "report_date": current_report_date,
+            "materialization_ingest_batch_id": materialization_ingest_batch_id,
+            "snapshot": snapshot_payload,
+            "balance": balance_payload,
+            "balance_runtime": _normalize_formal_runtime_payload(balance_payload),
+        }
+        if analytics_lane_enabled:
+            # use_existing_curves_only=True keeps the range loop read-only against
+            # fact_formal_yield_curve_daily; the alternative path calls
+            # ensure_yield_curve_inputs_on_or_before, which writes new curve snapshots.
+            current_entry["bond_analytics"] = materialize_bond_analytics_facts.fn(
+                report_date=current_report_date,
+                duckdb_path=duckdb_path,
+                governance_dir=governance_dir,
+                use_existing_curves_only=True,
+            )
+            current_entry["risk_tensor"] = materialize_risk_tensor_facts.fn(
+                report_date=current_report_date,
+                duckdb_path=duckdb_path,
+                governance_dir=governance_dir,
+            )
+        per_report_date.append(current_entry)
 
+    steps: dict[str, object] = {
+        "ingest": ingest_payload,
+        "per_report_date": per_report_date,
+    }
     payload: dict[str, object] = {
         "status": "completed",
         "report_dates": report_dates,
         "ingest_batch_id": ingest_batch_id,
-        "steps": {
-            "ingest": ingest_payload,
-            "per_report_date": per_report_date,
-        },
+        "analytics_lane_enabled": analytics_lane_enabled,
+        "steps": steps,
     }
     if len(per_report_date) == 1:
         payload["report_date"] = report_dates[0]
-        payload["steps"]["snapshot"] = per_report_date[0]["snapshot"]
-        payload["steps"]["balance"] = per_report_date[0]["balance"]
-        payload["steps"]["balance_runtime"] = per_report_date[0]["balance_runtime"]
+        steps["snapshot"] = per_report_date[0]["snapshot"]
+        steps["balance"] = per_report_date[0]["balance"]
+        steps["balance_runtime"] = per_report_date[0]["balance_runtime"]
+        if analytics_lane_enabled:
+            steps["bond_analytics"] = per_report_date[0]["bond_analytics"]
+            steps["risk_tensor"] = per_report_date[0]["risk_tensor"]
     return payload
 
 
@@ -282,26 +389,113 @@ run_formal_balance_pipeline = register_actor_once(
 )
 
 
+class _FormalBalanceSyncKwargs(TypedDict, total=False):
+    report_date: str
+    start_date: str
+    end_date: str
+    backfill: bool
+    include_analytics: bool
+    data_root: str
+    duckdb_path: str
+    governance_dir: str
+    archive_dir: str
+    fx_source_path: str
+    use_existing_fx_only: bool
+    expected_fx_source_version: str
+
+
+def _existing_fx_only_sync_kwargs(
+    value: bool,
+    expected_fx_source_version: str | None,
+) -> _FormalBalanceSyncKwargs:
+    if type(value) is not bool:
+        raise TypeError("use_existing_fx_only must be a bool.")
+    normalized_expected_fx_source_version = _normalize_expected_fx_source_version(
+        expected_fx_source_version
+    )
+    if normalized_expected_fx_source_version is not None and not value:
+        raise ValueError("expected_fx_source_version requires use_existing_fx_only=True.")
+    if not value:
+        return {}
+    kwargs: _FormalBalanceSyncKwargs = {"use_existing_fx_only": True}
+    if normalized_expected_fx_source_version is not None:
+        kwargs["expected_fx_source_version"] = normalized_expected_fx_source_version
+    return kwargs
+
+
+def _formal_balance_sync_kwargs(
+    *,
+    report_date: str | None,
+    start_date: str | None,
+    end_date: str | None,
+    backfill: bool,
+    include_analytics: bool | None,
+    data_root: str | None,
+    duckdb_path: str | None,
+    governance_dir: str | None,
+    archive_dir: str | None,
+    fx_source_path: str | None,
+    use_existing_fx_only: bool,
+    expected_fx_source_version: str | None,
+) -> _FormalBalanceSyncKwargs:
+    kwargs: _FormalBalanceSyncKwargs = {}
+    if report_date is not None:
+        kwargs["report_date"] = report_date
+    if start_date is not None:
+        kwargs["start_date"] = start_date
+    if end_date is not None:
+        kwargs["end_date"] = end_date
+    if backfill:
+        kwargs["backfill"] = backfill
+    if include_analytics is not None:
+        kwargs["include_analytics"] = include_analytics
+    if data_root is not None:
+        kwargs["data_root"] = data_root
+    if duckdb_path is not None:
+        kwargs["duckdb_path"] = duckdb_path
+    if governance_dir is not None:
+        kwargs["governance_dir"] = governance_dir
+    if archive_dir is not None:
+        kwargs["archive_dir"] = archive_dir
+    if fx_source_path is not None:
+        kwargs["fx_source_path"] = fx_source_path
+    kwargs.update(_existing_fx_only_sync_kwargs(use_existing_fx_only, expected_fx_source_version))
+    return kwargs
+
+
 def run_formal_balance_pipeline_sync(
     *,
     report_date: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
+    backfill: bool = False,
+    include_analytics: bool | None = None,
     data_root: str | None = None,
     duckdb_path: str | None = None,
     governance_dir: str | None = None,
     archive_dir: str | None = None,
     fx_source_path: str | None = None,
+    use_existing_fx_only: bool = False,
+    expected_fx_source_version: str | None = None,
 ) -> dict[str, object]:
+    # Delegation transparency (tests/test_task_sync_wrapper_contracts.py): forward
+    # only caller-provided kwargs and never inject defaults on the caller's behalf,
+    # so the private implementation stays the single owner of default semantics.
     return _run_formal_balance_pipeline(
-        report_date=report_date,
-        start_date=start_date,
-        end_date=end_date,
-        data_root=data_root,
-        duckdb_path=duckdb_path,
-        governance_dir=governance_dir,
-        archive_dir=archive_dir,
-        fx_source_path=fx_source_path,
+        **_formal_balance_sync_kwargs(
+            report_date=report_date,
+            start_date=start_date,
+            end_date=end_date,
+            backfill=backfill,
+            include_analytics=include_analytics,
+            data_root=data_root,
+            duckdb_path=duckdb_path,
+            governance_dir=governance_dir,
+            archive_dir=archive_dir,
+            fx_source_path=fx_source_path,
+            use_existing_fx_only=use_existing_fx_only,
+            expected_fx_source_version=expected_fx_source_version,
+        ),
     )
 
 
@@ -310,6 +504,17 @@ def main() -> None:
     parser.add_argument("--report-date")
     parser.add_argument("--start-date")
     parser.add_argument("--end-date")
+    parser.add_argument("--backfill", action="store_true")
+    parser.add_argument(
+        "--include-analytics",
+        dest="include_analytics",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Force the bond_analytics + risk_tensor lane on/off. "
+            "Default: on for --backfill/--start-date/--end-date runs, off for a single --report-date."
+        ),
+    )
     parser.add_argument("--data-root")
     parser.add_argument("--duckdb-path")
     parser.add_argument("--governance-dir")
@@ -321,6 +526,8 @@ def main() -> None:
         report_date=args.report_date,
         start_date=args.start_date,
         end_date=args.end_date,
+        backfill=args.backfill,
+        include_analytics=args.include_analytics,
         data_root=args.data_root,
         duckdb_path=args.duckdb_path,
         governance_dir=args.governance_dir,

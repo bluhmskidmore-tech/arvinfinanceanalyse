@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Literal
 
+from backend.app.api.deps import ensure_read_allowed
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.liability_analytics_service import (
     cockpit_warnings_payload,
     contribution_split_payload,
+    liabilities_monthly_detail_payload,
     liabilities_monthly_payload,
+    liabilities_monthly_summary_payload,
     liability_counterparty_payload,
     liability_risk_buckets_payload,
     liability_yield_by_period_payload,
@@ -23,17 +26,15 @@ router = APIRouter(tags=["liability-analytics"])
 
 
 def _ensure_liability_analytics_read_allowed(auth: AuthContext) -> None:
-    try:
-        ensure_user_allowed(
-            auth=auth,
-            settings=get_settings(),
-            resource="liability_analytics",
-            action="read",
-        )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    # allow_dev_fallback 与 balance_analysis / positions 等读路由对齐：仅在 development
+    # 环境且身份为匿名 viewer 回退时放行，显式身份缺 scope 仍 403（契约测试锁定）。
+    ensure_read_allowed(
+        auth,
+        "liability_analytics",
+        settings=get_settings(),
+        allow_dev_fallback=True,
+        authorize=ensure_user_allowed,
+    )
 
 
 def _validate_optional_report_date(report_date: str | None) -> str | None:
@@ -109,12 +110,30 @@ def liability_counterparty(
 def liabilities_monthly(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     year: int | None = Query(None, ge=2000, le=2100),
+    detail_level: Literal["full", "summary"] = Query("full"),
 ) -> dict[str, object]:
     _ensure_liability_analytics_read_allowed(auth)
     resolved_year = year or date.today().year
+    if detail_level == "summary":
+        return liabilities_monthly_summary_payload(
+            duckdb_path=str(get_settings().duckdb_path),
+            year=resolved_year,
+        )
     return liabilities_monthly_payload(
         duckdb_path=str(get_settings().duckdb_path),
         year=resolved_year,
+    )
+
+
+@router.get("/api/liabilities/monthly/detail")
+def liabilities_monthly_detail(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    month: str = Query(..., pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+) -> dict[str, object]:
+    _ensure_liability_analytics_read_allowed(auth)
+    return liabilities_monthly_detail_payload(
+        duckdb_path=str(get_settings().duckdb_path),
+        month=month,
     )
 
 

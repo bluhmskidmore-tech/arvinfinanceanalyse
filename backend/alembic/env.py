@@ -21,6 +21,7 @@ from backend.app.models.governance import (  # noqa: F401
 )
 from backend.app.models.job_state import JobRunState  # noqa: F401
 from backend.app.models.kpi import KpiMetric, KpiMetricValue, KpiOwner  # noqa: F401
+from backend.app.models.release_control import ReleaseAlias, ReleaseEvent, ReleaseManifest  # noqa: F401
 from sqlalchemy import create_engine, pool
 
 from alembic import context

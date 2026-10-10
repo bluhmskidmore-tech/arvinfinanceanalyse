@@ -7,22 +7,26 @@ import json
 import unicodedata
 from dataclasses import dataclass
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 from uuid import uuid4
 
 import xlrd
+from backend.app.governance.ledger_classification import (
+    LEDGER_CLASSIFICATION_RULE_VERSION,
+    classify_ledger_direction,
+)
 from backend.app.repositories.ledger_import_repo import LedgerImportRepository
 from backend.app.schemas.ledger_import import (
     LedgerImportBatchSummary,
     LedgerImportListItem,
 )
-from openpyxl import load_workbook
 from xlrd import xldate_as_datetime
 
-RULE_VERSION = "position_key_contract_v1"
+RULE_VERSION = LEDGER_CLASSIFICATION_RULE_VERSION
 NULL_TEXT = "__NULL__"
 SUPPORTED_SUFFIXES = {".xls", ".xlsx", ".csv"}
+MAX_LEDGER_IMPORT_BYTES = 16 * 1024 * 1024
 LEDGER_SHEET_NAME = "ZQTZSHOW"
 
 
@@ -141,6 +145,7 @@ class LedgerImportService:
             "metadata": _metadata(
                 batch_id=int(summary["batch_id"]),
                 source_version=str(summary["source_version"]),
+                rule_version=str(summary["rule_version"]),
                 no_data=False,
             ),
             "trace": _trace(
@@ -165,6 +170,7 @@ class LedgerImportService:
             "metadata": _metadata(
                 batch_id=int(latest["batch_id"]) if latest else None,
                 source_version=str(latest["source_version"]) if latest else None,
+                rule_version=str(latest["rule_version"]) if latest else RULE_VERSION,
                 no_data=not bool(items),
             ),
             "trace": _trace(
@@ -229,6 +235,7 @@ def _read_xls_rows(content: bytes) -> list[dict[str, object]]:
     if sheet.nrows < 3:
         return []
     headers = [_header_text(sheet.cell_value(1, column)) for column in range(sheet.ncols)]
+    _validate_unique_headers(headers)
     rows: list[dict[str, object]] = []
     for row_index in range(2, sheet.nrows):
         values = [
@@ -242,6 +249,8 @@ def _read_xls_rows(content: bytes) -> list[dict[str, object]]:
 
 
 def _read_xlsx_rows(content: bytes) -> list[dict[str, object]]:
+    from openpyxl import load_workbook
+
     workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
     try:
         if LEDGER_SHEET_NAME not in workbook.sheetnames:
@@ -251,6 +260,7 @@ def _read_xlsx_rows(content: bytes) -> list[dict[str, object]]:
         if header_values is None:
             return []
         headers = [_header_text(value) for value in header_values]
+        _validate_unique_headers(headers)
         rows: list[dict[str, object]] = []
         for values in worksheet.iter_rows(min_row=3, values_only=True):
             row = _raw_row(headers, list(values))
@@ -267,6 +277,7 @@ def _read_csv_rows(content: bytes) -> list[dict[str, object]]:
     if len(reader) < 3:
         return []
     headers = [_header_text(value) for value in reader[1]]
+    _validate_unique_headers(headers)
     rows: list[dict[str, object]] = []
     for values in reader[2:]:
         row = _raw_row(headers, values)
@@ -314,6 +325,18 @@ def _standardize_row(
     return standard
 
 
+def _validate_unique_headers(headers: list[str]) -> None:
+    columns: dict[str, int] = {}
+    for index, header in enumerate(headers, start=1):
+        if not header:
+            continue
+        if header in columns:
+            raise ValueError(
+                f"Duplicate ledger field {header!r} in columns {columns[header]} and {index}"
+            )
+        columns[header] = index
+
+
 def _raw_row(headers: list[str], values: list[object]) -> dict[str, object]:
     row: dict[str, object] = {}
     for index, header in enumerate(headers):
@@ -325,9 +348,10 @@ def _raw_row(headers: list[str], values: list[object]) -> dict[str, object]:
 
 
 def _direction(row: dict[str, object]) -> str:
-    if row.get("account_category_std") == "发行类债券" or row.get("asset_class_std") == "发行类债券":
-        return "LIABILITY"
-    return "ASSET"
+    return classify_ledger_direction(
+        row.get("account_category_std"),
+        row.get("asset_class_std"),
+    )
 
 
 def _position_key(row: dict[str, object]) -> str:
@@ -339,11 +363,12 @@ def _metadata(
     *,
     batch_id: int | None,
     source_version: str | None,
+    rule_version: str,
     no_data: bool,
 ) -> dict[str, object]:
     return {
         "source_version": source_version,
-        "rule_version": RULE_VERSION,
+        "rule_version": rule_version,
         "batch_id": batch_id,
         "stale": False,
         "fallback": False,
@@ -388,7 +413,7 @@ def _cell_text(value: object) -> str:
         return ""
     if isinstance(value, Decimal):
         if value == value.to_integral_value():
-            return str(value.quantize(Decimal("1")))
+            return str(value.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
         return format(value, "f")
     if isinstance(value, float) and value.is_integer():
         return str(int(value))

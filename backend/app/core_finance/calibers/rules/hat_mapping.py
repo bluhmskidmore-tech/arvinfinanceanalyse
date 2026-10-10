@@ -155,11 +155,10 @@ DESCRIPTOR: CaliberRuleDescriptor = CaliberRuleDescriptor(
         "basis under the accounting view. All other (basis, view) cells "
         "must INHERIT_FROM_FORMAL so the same bond never appears as 'H' "
         "in one page and 'T' in another on the same date. Q-PRD-2 selected "
-        "classification_rules.infer_invest_type as canonical (it has the "
-        "is_nonstd branch and does not misclassify liabilities as H, "
-        "unlike field_normalization.derive_invest_type_std_value, which "
-        "will be thinned to a pure normalization helper in a follow-up "
-        "phase)."
+        "classification_rules.infer_invest_type as canonical; it preserves "
+        "the approved legacy label coverage and the is_nonstd branch. "
+        "The superseded field_normalization classifier has been removed; "
+        "infer_invest_type is the single production classifier."
     ),
     source_doc=".omx/specs/deep-interview-global-caliber-unification.md",
 )

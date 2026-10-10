@@ -39,11 +39,14 @@ def test_balance_analysis_outward_repo_queries_read_governed_formal_facts_only()
                         0,
                         0,
                         0,
+                        0,
+                        0,
+                        0,
                         "",
                         "",
                     )
                 ]
-            return [("2025-12-31", "all", "CNY", 0, 0, 0, 0, 0, "", "")]
+            return [("2025-12-31", "all", "CNY", 0, 0, 0, 0, 0, 0, 0, 0, "", "")]
         if "as basis_rows" in normalized:
             return []
         return []

@@ -2,15 +2,23 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Literal
 
 from backend.app.core_finance.bond_analytics.common import resolve_period
 from backend.app.core_finance.calibers.enums import Basis, View
 from backend.app.core_finance.calibers.rules.formal_scenario_gate import assert_basis_view_allowed
+from backend.app.core_finance.config.product_category_contract import (
+    PRODUCT_CATEGORY_RULE_VERSION,
+    product_category_cache_version,
+)
 from backend.app.core_finance.config.product_category_mapping import (
     resolve_product_category_ftp_rate_pct,
 )
-from backend.app.repositories.product_category_pnl_repo import ProductCategoryPnlRepository
+from backend.app.repositories.product_category_pnl_repo import (
+    ProductCategoryPnlRepository,
+    ProductCategoryPnlStorageError,
+)
 from backend.app.schemas.analysis_service import (
     AnalysisQuery,
     AnalysisResultEnvelope,
@@ -41,6 +49,30 @@ class ProductCategoryPnlAnalysisAdapter:
     def __init__(self, duckdb_path: str):
         self._repo = ProductCategoryPnlRepository(duckdb_path)
 
+    def read_formal_rows(self, report_date: str, view: str) -> list[dict[str, object]]:
+        """Read one period under the same rule and report-year FTP policy for every consumer."""
+        rows = self._repo.fetch_rows(report_date, view)
+        if not rows:
+            return []
+        persisted_rule_versions = {
+            str(row.get("rule_version") or "").strip() for row in rows
+        }
+        if persisted_rule_versions != {PRODUCT_CATEGORY_RULE_VERSION}:
+            raise ProductCategoryPnlStorageError(
+                "Product-category read model rule_version mismatch: "
+                f"expected {PRODUCT_CATEGORY_RULE_VERSION!r}, "
+                f"found {sorted(persisted_rule_versions)!r}; refresh is required."
+            )
+
+        from backend.app.core_finance.product_category_pnl import apply_baseline_ftp_rate_to_rows
+
+        persisted_baseline_rate = Decimal(str(rows[0]["baseline_ftp_rate_pct"]))
+        expected_baseline_rate = resolve_product_category_ftp_rate_pct(
+            date.fromisoformat(report_date),
+            persisted_baseline_rate,
+        )
+        return apply_baseline_ftp_rate_to_rows(rows, expected_baseline_rate)
+
     def execute(self, query: AnalysisQuery) -> AnalysisResultEnvelope:
         # Adapter narrows to formal+scenario only; analytical+management is INCLUDE in the
         # caliber matrix but this read-model path does not serve analytical basis yet.
@@ -64,20 +96,11 @@ class ProductCategoryPnlAnalysisAdapter:
             )
         view = query.view or "monthly"
         # Single storage path: formal read model. Scenario basis applies apply_scenario_to_rows on top.
-        rows = self._repo.fetch_rows(query.report_date, view)
+        rows = self.read_formal_rows(query.report_date, view)
         if not rows:
             raise ValueError(
                 f"No product-category read model rows for report_date={query.report_date} view={view}"
             )
-
-        from backend.app.core_finance.product_category_pnl import apply_baseline_ftp_rate_to_rows
-
-        persisted_baseline_rate = Decimal(str(rows[0]["baseline_ftp_rate_pct"]))
-        expected_baseline_rate = resolve_product_category_ftp_rate_pct(
-            date.fromisoformat(query.report_date),
-            persisted_baseline_rate,
-        )
-        rows = apply_baseline_ftp_rate_to_rows(rows, expected_baseline_rate)
         typed_rows = [_to_product_category_row(row) for row in rows]
         if query.basis == Basis.SCENARIO.value and query.scenario_rate_pct is not None:
             from backend.app.core_finance.product_category_pnl import apply_scenario_to_rows
@@ -91,10 +114,16 @@ class ProductCategoryPnlAnalysisAdapter:
             ]
 
         asset_total = next(row for row in typed_rows if row.category_id == "asset_total")
+        interest_earning_assets = next(row for row in typed_rows if row.category_id == "interest_earning_assets")
         liability_total = next(row for row in typed_rows if row.category_id == "liability_total")
         grand_total = next(row for row in typed_rows if row.category_id == "grand_total")
+        credit_linked_notes = next(
+            (row for row in typed_rows if row.category_id == "credit_linked_notes"),
+            None,
+        )
         from backend.app.core_finance.product_category_pnl import (
             calculate_product_category_interest_spread_metrics,
+            calculate_product_category_liability_cost_decomposition,
         )
 
         interest_spread = calculate_product_category_interest_spread_metrics(
@@ -102,6 +131,20 @@ class ProductCategoryPnlAnalysisAdapter:
             view=view,
             asset_row=asset_total.model_dump(mode="python"),
             liability_row=liability_total.model_dump(mode="python"),
+        )
+        interest_earning_spread = calculate_product_category_interest_spread_metrics(
+            report_date=query.report_date,
+            view=view,
+            asset_row=interest_earning_assets.model_dump(mode="python"),
+            liability_row=liability_total.model_dump(mode="python"),
+        )
+        liability_cost_decomposition = calculate_product_category_liability_cost_decomposition(
+            report_date=query.report_date,
+            view=view,
+            liability_row=liability_total.model_dump(mode="python"),
+            credit_linked_notes_row=(
+                None if credit_linked_notes is None else credit_linked_notes.model_dump(mode="python")
+            ),
         )
 
         result_kind = (
@@ -114,8 +157,11 @@ class ProductCategoryPnlAnalysisAdapter:
                 trace_id=f"tr_{query.consumer}_{query.report_date}_{view}",
                 result_kind=result_kind,
                 source_version=str(rows[0]["source_version"]),
-                rule_version=str(rows[0]["rule_version"]),
-                cache_version="cv_product_category_pnl_v1",
+                rule_version=PRODUCT_CATEGORY_RULE_VERSION,
+                cache_version=product_category_cache_version(
+                    Basis.SCENARIO.value,
+                    scenario_rate_pct=query.scenario_rate_pct,
+                ),
                 quality_flag="ok",
             )
             if query.basis == Basis.SCENARIO.value
@@ -123,8 +169,8 @@ class ProductCategoryPnlAnalysisAdapter:
                 trace_id=f"tr_{query.consumer}_{query.report_date}_{view}",
                 result_kind=result_kind,
                 source_version=str(rows[0]["source_version"]),
-                rule_version=str(rows[0]["rule_version"]),
-                cache_version="cv_product_category_pnl_v1",
+                rule_version=PRODUCT_CATEGORY_RULE_VERSION,
+                cache_version=product_category_cache_version(Basis.FORMAL.value),
                 quality_flag="ok",
             )
         )
@@ -142,6 +188,8 @@ class ProductCategoryPnlAnalysisAdapter:
                     "liability_total": liability_total.model_dump(mode="json"),
                     "grand_total": grand_total.model_dump(mode="json"),
                     "interest_spread": asdict(interest_spread),
+                    "interest_earning_spread": asdict(interest_earning_spread),
+                    "liability_cost_decomposition": asdict(liability_cost_decomposition),
                 },
                 rows=[row.model_dump(mode="json") for row in typed_rows],
                 attribution=_build_product_category_attribution(typed_rows, grand_total),
@@ -272,7 +320,7 @@ def _build_product_category_attribution(
         share = Decimal("0")
         if denominator != 0:
             share = (row.business_net_income.copy_abs() / denominator) * Decimal("100")
-        tone = "neutral"
+        tone: Literal["positive", "neutral", "negative"] = "neutral"
         if row.business_net_income > 0:
             tone = "positive"
         elif row.business_net_income < 0:
@@ -283,7 +331,7 @@ def _build_product_category_attribution(
                 label=row.category_name,
                 dimension="product_category",
                 value=str(row.business_net_income),
-                share_pct=f"{share.quantize(Decimal('0.01'))}",
+                share_pct=f"{share.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)}",
                 tone=tone,
                 drill_targets=[
                     DrillTarget(

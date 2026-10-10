@@ -1,0 +1,263 @@
+.page {
+  display: grid;
+  min-width: 0;
+  max-width: 100%;
+  gap: 16px;
+  padding: 12px;
+  overflow-x: clip;
+  color: var(--dh-api-ink);
+  background: var(--dh-api-bg);
+}
+
+.hero {
+  display: grid;
+  gap: 14px;
+}
+
+.statusStrip {
+  gap: 10px;
+}
+
+.statusChip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: var(--dh-api-radius, 8px);
+  border: 1px solid color-mix(in srgb, var(--dh-api-line) 84%, transparent);
+  background: color-mix(in srgb, var(--dh-api-panel) 84%, transparent);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.statusChip[data-tone="positive"] {
+  border-color: color-mix(in srgb, var(--dh-api-green) 42%, transparent);
+  color: var(--dh-api-green);
+}
+
+.statusChip[data-tone="warning"] {
+  border-color: color-mix(in srgb, var(--dh-api-amber) 42%, transparent);
+  color: var(--dh-api-amber);
+}
+
+.statusChip[data-tone="neutral"] {
+  color: var(--dh-api-muted);
+}
+
+.conclusion {
+  margin: 0;
+  color: var(--dh-api-soft);
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.stack {
+  display: grid;
+  gap: 16px;
+}
+
+.columnStack {
+  display: grid;
+  min-width: 0;
+  gap: 16px;
+  align-content: start;
+}
+
+.surface {
+  display: grid;
+  min-width: 0;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid color-mix(in srgb, var(--dh-api-line) 88%, transparent);
+  border-radius: var(--dh-api-radius, 6px);
+  background: var(--dh-api-panel);
+}
+
+.metricList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.metricCard {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: var(--dh-api-radius, 6px);
+  background: color-mix(in srgb, var(--dh-api-bg) 36%, transparent);
+  border: 1px solid color-mix(in srgb, var(--dh-api-line-soft) 92%, transparent);
+}
+
+.metricLabel {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.metricValue {
+  color: var(--dh-api-ink);
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.metricNote {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.tableName {
+  display: grid;
+  gap: 4px;
+}
+
+.tableName strong {
+  color: var(--dh-api-ink);
+  font-weight: 600;
+}
+
+.tableName span {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.issueList,
+.warningList,
+.reasonList,
+.sectorList {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.issueItem,
+.warningItem,
+.reasonItem,
+.sectorItem {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: var(--dh-api-radius, 6px);
+  border: 1px solid color-mix(in srgb, var(--dh-api-line-soft) 92%, transparent);
+  background: color-mix(in srgb, var(--dh-api-bg) 28%, transparent);
+}
+
+.issueSeverity {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: var(--dh-api-radius, 8px);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.issueSeverity[data-severity="blocking"] {
+  background: color-mix(in srgb, var(--dh-api-amber-soft) 84%, transparent);
+  color: var(--dh-api-amber);
+}
+
+.issueSeverity[data-severity="warning"] {
+  background: color-mix(in srgb, var(--dh-api-blue-soft) 70%, transparent);
+  color: var(--dh-api-blue);
+}
+
+.issueMessage {
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.issueMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+}
+
+.reasonText {
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.traceCode {
+  width: fit-content;
+  color: var(--dh-api-muted);
+  font-family:
+    ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.eyebrow {
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.inlineMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+}
+
+.metaChip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: var(--dh-api-radius, 8px);
+  background: color-mix(in srgb, var(--dh-api-panel-2) 88%, transparent);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+}
+
+.retryButton {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius, 6px);
+  color: var(--dh-api-ink);
+  background: var(--dh-api-panel-2);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.retryButton:hover,
+.retryButton:focus-visible {
+  border-color: var(--dh-api-blue);
+  color: var(--dh-api-blue);
+}
+
+.page[data-focus="risk"] [data-testid="stock-analysis-portfolio-risk-column"] {
+  order: -1;
+}
+
+@media (max-width: 980px) {
+  .metricList {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .page {
+    gap: 12px;
+    padding: 8px;
+  }
+}

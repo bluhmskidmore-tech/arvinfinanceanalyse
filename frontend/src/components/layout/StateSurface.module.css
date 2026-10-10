@@ -1,0 +1,204 @@
+/*
+ * StateSurface 五态渲染层。
+ * - backdropBox：loading 骨架以 panel 背景与 line 边线保持占位，显式 minHeight
+ *   继续防止内容到达时重排；无 children 的 error·stale·partial 只保留文字。
+ * - shrinkBox：empty 收缩到消息框自身高度（≤120px 级，DESIGN.md §5），刻意不消费
+ *   --ss-min-height。
+ * - statusLine：error/stale/partial 有 children 时的行内状态行，不遮罩内容。
+ * - .dot：状态圆点，颜色由 data-status 承载语义（禁止装饰性圆点，DESIGN.md §11.8）。
+ */
+
+.ready {
+  min-width: 0;
+}
+
+.dot {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dh-api-muted);
+}
+
+.dot[data-status="loading"] {
+  background: var(--dh-api-muted);
+}
+
+.dot[data-status="error"] {
+  background: var(--dh-api-red);
+}
+
+.dot[data-status="stale"],
+.dot[data-status="partial"] {
+  background: var(--dh-api-amber);
+}
+
+/* ---------- backdrop box (loading skeleton / childless error·stale·partial) ---------- */
+
+.backdropBox {
+  display: grid;
+  gap: 12px;
+  align-content: center;
+  min-width: 0;
+  min-height: var(--ss-min-height, 120px);
+  padding: 16px;
+  border: 0;
+  border-radius: var(--dh-api-radius);
+  background: transparent;
+}
+
+.backdropBox[data-status="loading"] {
+  border: 1px solid var(--dh-api-line);
+  background: var(--dh-api-panel);
+}
+
+.backdropHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.backdropLabel {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.skeletonBlock {
+  display: grid;
+  gap: 8px;
+}
+
+.skeletonLine {
+  display: block;
+  height: 12px;
+  border-radius: var(--dh-api-radius);
+  background: color-mix(in srgb, var(--dh-api-soft) 16%, var(--dh-api-panel-2));
+}
+
+.skeletonLine[data-width="wide"] {
+  width: 88%;
+}
+
+.skeletonLine[data-width="full"] {
+  width: 100%;
+}
+
+.skeletonLine[data-width="short"] {
+  width: 56%;
+}
+
+/* ---------- shrink box (empty) ---------- */
+
+/*
+ * 高度由内容自定（§5「收缩到消息框自身高度」）：只设 min-height 地板，不设
+ * max-height——封顶会让长原因文案在 overflow: visible 下溢出边框，比不封顶更糟。
+ */
+.shrinkBox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 56px;
+  padding: 12px 0;
+  border: 0;
+  border-radius: var(--dh-api-radius);
+  background: transparent;
+  text-align: center;
+}
+
+.shrinkBoxWithActions {
+  flex-wrap: wrap;
+}
+
+.emptyMessage {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* 原因独占次行，不与说明用 `·` 连接：文案自带 `·` 时会突破 §7 单行一个的配额。 */
+.emptyReason {
+  display: block;
+  color: var(--dh-api-soft);
+}
+
+.emptyStatusRegion {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* 空态的出口动作（重试、改筛选）。靠 flex-basis 独占一行而不是把 .shrinkBox
+   改成 column：后者会让「圆点 + 文案」在没有动作时也竖排，改掉既有渲染。 */
+.emptyActions {
+  display: flex;
+  flex-basis: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* ---------- inline status line (error / stale / partial with content) ---------- */
+
+.wrap {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.statusLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 4px 0;
+  border: 0;
+  border-radius: var(--dh-api-radius);
+  background: transparent;
+}
+
+.compactActionsSurface {
+  flex-wrap: wrap;
+}
+
+.compactStatusRegion {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.statusLine[data-status="error"] {
+  color: var(--dh-api-red);
+}
+
+.statusLine[data-status="stale"],
+.statusLine[data-status="partial"] {
+  color: var(--dh-api-amber);
+}
+
+.statusText {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* 同 .emptyReason：原因独占次行，不用 `·` 连接（§7 配额）。 */
+.statusReason {
+  display: block;
+  color: var(--dh-api-muted);
+}
+
+.content {
+  min-width: 0;
+}

@@ -1,3 +1,53 @@
+/*
+ * Nocturne scope 页根重映射（2026-08-13 换肤，risk-tensor / ledger-pnl 先例）：
+ * --ib-* / --moss-color-* 在 ThemedRouteBoundary 上被算成 dh-api 钢蓝字面值
+ * 再继承，页根 scope 翻不动它们；共享组件（KpiCard / FilterBar /
+ * PageAsyncSection / SkeletonBars / FormalResultMetaPanel）仍消费这两族，
+ * 故在 scope 元素上重解析回 --dh-api-*（scope 内解析为 --nct-* 色板）。
+ * 页面自有规则一律直用 --dh-api-*（ledger-pnl 先例），不再经 --ib-* 中转。
+ */
+[data-moss-theme-scope="pnl"] {
+  --ib-paper: var(--dh-api-bg);
+  --ib-surface: var(--dh-api-panel);
+  --ib-surface-muted: var(--dh-api-panel-2);
+  --ib-hairline: var(--dh-api-line-soft);
+  --ib-ink: var(--dh-api-ink);
+  --ib-ink-secondary: var(--dh-api-soft);
+  --ib-ink-muted: var(--dh-api-muted);
+  --ib-accent: var(--dh-api-blue);
+  --ib-accent-surface: var(--dh-api-blue-soft);
+  --ib-radius: var(--dh-api-radius);
+  --ib-shadow: none;
+  --ib-warn: var(--dh-api-amber);
+  --ib-up: var(--dh-api-green);
+  --ib-down: var(--dh-api-red);
+  --moss-color-border-default: var(--dh-api-line);
+  --moss-color-card-bg: var(--dh-api-panel);
+  --moss-color-neutral-200: var(--dh-api-line-soft);
+  --moss-color-neutral-50: var(--dh-api-panel-2);
+  --moss-color-neutral-500: var(--dh-api-muted);
+  --moss-color-neutral-600: var(--dh-api-soft);
+  --moss-color-neutral-900: var(--dh-api-ink);
+  --moss-color-text-muted: var(--dh-api-soft);
+  --moss-color-text-primary: var(--dh-api-ink);
+  --moss-shadow-card: none;
+}
+
+/*
+ * 共享溯源面板（FormalResultMetaPanel）徽章 tone 在本页的 Nocturne 收敛：
+ * 徽章色经组件的 --formal-meta-badge-* 变量出口（回退值为浅色字面量），
+ * 页 scope 内拉回 --dh-api-* 链（ledger-pnl / positions / risk-tensor 先例）。
+ */
+[data-moss-theme-scope="pnl"] .formal-result-meta-panel {
+  --formal-result-meta-border-soft: var(--dh-api-line-soft);
+  --formal-meta-badge-warn-bg: var(--dh-api-amber-soft);
+  --formal-meta-badge-warn-ink: var(--dh-api-amber);
+  --formal-meta-badge-warn-line: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
+  --formal-meta-badge-danger-bg: var(--dh-api-red-soft);
+  --formal-meta-badge-danger-ink: var(--dh-api-red);
+  --formal-meta-badge-danger-line: color-mix(in srgb, var(--dh-api-red) 34%, transparent);
+}
+
 .formal-pnl-v1-page-header {
   display: flex;
   align-items: flex-start;
@@ -6,17 +56,19 @@
   margin-bottom: var(--moss-space-6);
 }
 
+/* 页标题 §3 档位 18-20px（标杆页 20px/700）。 */
 .formal-pnl-v1-title {
   margin: 0;
-  font-size: 32px;
+  font-size: 20px;
   font-weight: 600;
   letter-spacing: 0;
+  color: var(--dh-api-ink);
 }
 
 .formal-pnl-v1-subtitle {
   max-width: 860px;
   margin: 10px 0 0;
-  color: var(--moss-color-neutral-600);
+  color: var(--dh-api-soft);
   font-size: 15px;
   line-height: 1.75;
 }
@@ -32,7 +84,7 @@
   display: inline-flex;
   align-items: center;
   padding: 8px 12px;
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -40,43 +92,75 @@
 }
 
 .formal-pnl-v1-badge--role {
-  border: 1px solid var(--moss-color-neutral-100);
-  background: var(--moss-color-neutral-50);
-  color: var(--moss-color-neutral-900);
+  border: 1px solid var(--dh-api-line-soft);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-ink);
 }
 
 .formal-pnl-v1-badge--real {
-  background: var(--moss-color-success-50);
-  color: var(--moss-color-success-700);
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-green);
 }
 
 .formal-pnl-v1-badge--mock {
-  background: var(--moss-color-primary-50);
-  color: var(--moss-color-primary-700);
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-blue);
 }
 
 .formal-pnl-v1-link {
   display: inline-flex;
   align-items: center;
   padding: 8px 12px;
-  border: 1px solid var(--moss-color-neutral-100);
-  border-radius: 999px;
-  background: #ffffff;
-  color: var(--moss-color-neutral-900);
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius, 8px);
+  background: var(--dh-api-panel);
+  color: var(--dh-api-ink);
   font-size: 12px;
   font-weight: 600;
   text-decoration: none;
 }
 
+/*
+ * 工具条对齐（§5）：「口径」「报告日」两组共用同一 grid 行制度——label 固定
+ * 首行、控件第二行，口径组的行内小注落第三行且不推挤相邻组基线。
+ * 双写类名对齐共享 .moss-filter-bar.moss-filter-bar（0-2-0）的 flex-end 基线。
+ */
 .formal-pnl-v1-filter {
   gap: var(--moss-space-3);
   margin-bottom: var(--moss-space-5);
 }
 
+.moss-filter-bar.formal-pnl-v1-filter {
+  align-items: flex-start;
+}
+
+.formal-pnl-v1-filter > div,
+.formal-pnl-v1-filter > label {
+  display: grid;
+  grid-template-rows: 18px auto;
+  align-content: start;
+  gap: 6px;
+}
+
+.formal-pnl-v1-filter .formal-pnl-v1-tab-bar {
+  margin-bottom: 0;
+}
+
+/* 无 label 的刷新按钮沿控件行对齐（18px label 行 + 6px 行距）。 */
+.formal-pnl-v1-filter > .formal-pnl-v1-refresh-button {
+  margin-top: 24px;
+}
+
 .formal-pnl-v1-filter-label {
   display: block;
   margin-bottom: 6px;
-  color: var(--moss-color-neutral-600);
+  color: var(--dh-api-soft);
+  line-height: 18px;
+}
+
+.formal-pnl-v1-filter > div .formal-pnl-v1-filter-label,
+.formal-pnl-v1-filter > label .formal-pnl-v1-filter-label {
+  margin-bottom: 0;
 }
 
 .formal-pnl-v1-tab-bar {
@@ -88,37 +172,49 @@
 
 .formal-pnl-v1-tab-button {
   padding: 10px 16px;
-  border: 1px solid var(--moss-color-neutral-100);
-  border-radius: var(--moss-radius-md);
-  background: #ffffff;
-  color: var(--moss-color-neutral-900);
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  color: var(--dh-api-ink);
   cursor: pointer;
   font-weight: 600;
 }
 
 .formal-pnl-v1-tab-button--active {
-  border-color: var(--moss-color-primary-600);
-  background: var(--moss-color-primary-50);
-  color: var(--moss-color-primary-600);
+  border-color: var(--dh-api-blue);
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-ink);
+}
+
+.formal-pnl-v1-tab-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.formal-pnl-v1-basis-inline-note {
+  margin: 0 0 var(--moss-space-2);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .formal-pnl-v1-control {
   min-width: 180px;
   padding: 10px 12px;
-  border: 1px solid var(--moss-color-neutral-100);
-  border-radius: var(--moss-radius-md);
-  background: #ffffff;
-  color: var(--moss-color-neutral-900);
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  color: var(--dh-api-ink);
 }
 
 .formal-pnl-v1-refresh-button {
   padding: 10px 14px;
-  border: 1px solid var(--moss-color-neutral-900);
-  border-radius: var(--moss-radius-md);
-  background: var(--moss-color-neutral-900);
-  color: #ffffff;
+  border: 1px solid var(--dh-api-ink);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-ink);
+  color: var(--dh-api-panel);
   cursor: pointer;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .formal-pnl-v1-refresh-button:disabled {
@@ -129,10 +225,10 @@
 .formal-pnl-v1-basis-note {
   margin-bottom: 18px;
   padding: 12px 14px;
-  border: 1px solid var(--moss-color-neutral-100);
-  border-radius: 14px;
-  background: var(--moss-color-neutral-50);
-  color: var(--moss-color-neutral-600);
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
   font-size: 13px;
   line-height: 1.65;
 }
@@ -145,10 +241,32 @@
   margin-top: var(--moss-space-6);
 }
 
+/*
+ * 骨架占位防重排（DESIGN.md §6，WP-D）：loading 占位贴近默认视图的最终高度，
+ * 避免 /api/pnl/overview（7 张 KPI 卡，实测 320px）与 /api/pnl/v1-data（默认
+ * 「固收」页签 grid-shell 480px + 18px 上边距）到达时整块下移。数值取自
+ * 1440×900、生产构建下的两次 getBoundingClientRect 实测（loading vs loaded），
+ * 与 cross-asset-drivers 同类占位防重排先例一致的写法（页 scope 覆写共享
+ * PageAsyncSection 的 loading surface，不改共享组件本身）。
+ */
+.formal-pnl-v1-overview-section .moss-page-v2-state-surface[data-state-variant="loading"] {
+  min-height: 320px;
+}
+
+.formal-pnl-v1-data-section .moss-page-v2-state-surface[data-state-variant="loading"] {
+  min-height: 498px;
+}
+
 .formal-pnl-v1-summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: var(--moss-space-4);
+}
+
+/* KPI 技术小注的 title 载体：本身不产生视觉盒，内部卡片撑满格位。 */
+.formal-pnl-v1-kpi-cell {
+  display: grid;
+  min-width: 0;
 }
 
 .formal-pnl-v1-grid-shell {
@@ -156,12 +274,28 @@
   height: 480px;
   margin-top: 18px;
   overflow: hidden;
-  border: 1px solid var(--moss-color-neutral-100);
-  border-radius: 16px;
-  --ag-header-background-color: var(--moss-color-neutral-100);
-  --ag-header-foreground-color: var(--moss-color-text-secondary);
-  --ag-row-hover-color: var(--moss-color-neutral-100);
-  --ag-border-color: var(--moss-color-neutral-100);
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  --ag-header-background-color: var(--dh-api-panel-2);
+  --ag-header-foreground-color: var(--dh-api-soft);
+  --ag-row-hover-color: var(--dh-api-panel-2);
+  --ag-border-color: var(--dh-api-line-soft);
+  /* alpine 内建 --ag-secondary-* 未被共享 theme-dh-api 块覆盖，页内补齐
+     （balance-analysis 先例）。 */
+  --ag-secondary-border-color: var(--dh-api-line-soft);
+  --ag-row-border-color: var(--dh-api-line-soft);
+  --ag-secondary-foreground-color: var(--dh-api-soft);
   --ag-font-family: "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", sans-serif;
   --ag-font-size: 13px;
+}
+
+/*
+ * 共享溯源面板长值（source_version 哈希串等）钳制 3 行，完整值经组件自身
+ * textContent 保留（ledger-pnl / positions 先例；§6 溯源标识分层）。
+ */
+[data-moss-theme-scope="pnl"] .formal-result-meta-panel__value {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
 }

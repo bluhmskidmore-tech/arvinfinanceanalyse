@@ -15,7 +15,9 @@ create table if not exists fact_formal_pnl_fi (
   source_version varchar,
   rule_version varchar,
   ingest_batch_id varchar,
-  trace_id varchar
+  trace_id varchar,
+  instrument_name varchar,
+  asset_class varchar
 )
 -- MOSS:STMT
 create table if not exists fact_nonstd_pnl_bridge (

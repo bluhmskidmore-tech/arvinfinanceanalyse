@@ -1,13 +1,14 @@
 """PnL attribution workbench API — read-only DuckDB access; delegates finance to `core_finance.pnl_attribution`."""
 from __future__ import annotations
 
+import re
 import uuid
+from copy import deepcopy
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation, localcontext
 from pathlib import Path
 from typing import Any, Literal
 
-import duckdb
 from backend.app.core_finance.campisi import (
     campisi_attribution as _core_campisi,
 )
@@ -15,8 +16,11 @@ from backend.app.core_finance.campisi import (
     classify_primary_driver,
 )
 from backend.app.core_finance.pnl_attribution import workbench as pa_wb
+from backend.app.governance.formal_compute_lineage import resolve_formal_manifest_lineage_with_completed_build
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
+from backend.app.repositories.choice_macro_series_repo import ChoiceMacroSeriesRepository
+from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
 from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.repositories.yield_curve_repo import YieldCurveRepository
 from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_from_raw
@@ -50,9 +54,11 @@ from backend.app.services.campisi_attribution_service import (
     merge_positions,
 )
 from backend.app.services.formal_result_runtime import build_formal_result_envelope, build_formal_result_meta
+from backend.app.services.pnl_v1_cache_support import _pnl_v1_data_governance_streams_identity
+from backend.app.services.runtime_cache import get_runtime_cache
 
-RULE_VERSION = "rv_pnl_attribution_workbench_v1"
-CACHE_VERSION = "cv_pnl_attribution_workbench_v1"
+RULE_VERSION = "rv_pnl_attribution_workbench_v4"
+CACHE_VERSION = "cv_pnl_attribution_workbench_v4"
 SOURCE_VERSION = "sv_pnl_attribution_formal_fi_v1"
 SOURCE_VERSION_BUSINESS_BALANCE = "sv_pnl_attribution_business_balance_v1"
 SOURCE_VERSION_MARKET = "sv_pnl_attribution_formal_market_v1"
@@ -60,6 +66,8 @@ SOURCE_EMPTY = "sv_pnl_attribution_empty_v1"
 WARN = pa_wb.DATA_FALLBACK_MSG
 QUALITY_WARN = "正式 FI / 债券分析口径存在数据质量预警；该结果非空，请查看来源元信息和明细 warnings。"
 TPL_MARKET_DATA_WARN = "TPL 市场相关性存在 10Y / DR007 市场数据缺口；缺失月份显示为空，不补 0。"
+TPL_NON_FINITE_PNL_WARN = "TPL 市场相关性存在非有限损益值；污染月份不参与相关性，总计显示为空。"
+TPL_WINDOW_WARN = "TPL 观察窗口缺少月份、国债月初基准或月末点位；相应累计值显示为空，相关系数仅使用可核验的同月配对。"
 
 TABLES_BUSINESS_BALANCE = [
     "fact_formal_pnl_fi",
@@ -81,6 +89,74 @@ RAW_INVEST_TYPE_CODES = {"A", "H", "T"}
 
 CompareType = Literal["mom", "yoy"]
 
+_PNL_ATTRIBUTION_CACHE_TTL_SECONDS = 300.0
+_PNL_ATTRIBUTION_CACHE = get_runtime_cache(
+    "pnl_attribution.read_models",
+    ttl_seconds=_PNL_ATTRIBUTION_CACHE_TTL_SECONDS,
+)
+_PnlAttributionCacheKey = tuple[object, ...]
+
+
+def _duckdb_storage_identity(duckdb_path: str) -> tuple[str, int, int] | None:
+    path = Path(resolve_effective_read_path(duckdb_path))
+    if not path.exists():
+        return None
+    try:
+        stat = path.stat()
+        return (str(path.resolve()), stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        return None
+
+
+def _pnl_attribution_runtime_cache_enabled() -> bool:
+    try:
+        return (
+            isinstance(_pnl_repo(), PnlRepository)
+            and isinstance(_bond_repo(), BondAnalyticsRepository)
+            and isinstance(_curve_repo(), YieldCurveRepository)
+        )
+    except (OSError, TypeError, ValueError):
+        return False
+
+
+def _pnl_attribution_cache_key(endpoint: str, *parts: object) -> _PnlAttributionCacheKey | None:
+    if not _pnl_attribution_runtime_cache_enabled():
+        return None
+    settings = get_settings()
+    governance_identity: tuple[tuple[object, ...], ...] = ()
+    if endpoint in {"summary", "volume_rate"}:
+        # SQL authority has no file identity; resolve its evidence on each read.
+        if settings.governance_backend != "jsonl":
+            return None
+        governance_identity = _pnl_v1_data_governance_streams_identity(str(settings.governance_path))
+    duckdb_path = str(settings.duckdb_path)
+    storage = _duckdb_storage_identity(duckdb_path)
+    if storage is None:
+        return None
+    resolved_path, mtime_ns, size = storage
+    return (
+        endpoint,
+        resolved_path,
+        mtime_ns,
+        size,
+        RULE_VERSION,
+        CACHE_VERSION,
+        governance_identity,
+        *parts,
+    )
+
+
+def _with_fresh_trace(envelope: dict[str, object]) -> dict[str, object]:
+    response = deepcopy(envelope)
+    meta = response.get("result_meta")
+    if isinstance(meta, dict):
+        meta["trace_id"] = _trace_id()
+    return response
+
+
+def invalidate_pnl_attribution_read_cache() -> None:
+    _PNL_ATTRIBUTION_CACHE.clear()
+
 
 def _trace_id() -> str:
     return f"tr_{uuid.uuid4().hex[:12]}"
@@ -94,6 +170,8 @@ def _meta_ok(
     tables_used: list[str] | None = None,
     evidence_rows: int | None = None,
     as_of_date: str | None = None,
+    requested_report_date: str | None = None,
+    resolved_report_date: str | None = None,
 ):
     return build_formal_result_meta(
         trace_id=_trace_id(),
@@ -105,6 +183,8 @@ def _meta_ok(
         tables_used=tables_used,
         evidence_rows=evidence_rows,
         as_of_date=as_of_date,
+        requested_report_date=requested_report_date,
+        resolved_report_date=resolved_report_date,
         source_surface="formal_attribution",
     )
 
@@ -117,6 +197,11 @@ def _meta_warn(
     tables_used: list[str] | None = None,
     evidence_rows: int | None = None,
     as_of_date: str | None = None,
+    requested_report_date: str | None = None,
+    resolved_report_date: str | None = None,
+    quality_flag: Literal["warning", "stale", "error"] = "warning",
+    fallback_mode: Literal["none", "latest_snapshot"] = "none",
+    fallback_date: str | None = None,
 ):
     return build_formal_result_meta(
         trace_id=_trace_id(),
@@ -124,11 +209,15 @@ def _meta_warn(
         source_version=source_version,
         rule_version=RULE_VERSION,
         cache_version=CACHE_VERSION,
-        quality_flag="warning",
+        quality_flag=quality_flag,
+        fallback_mode=fallback_mode,
+        fallback_date=fallback_date,
         filters_applied=filters_applied,
         tables_used=tables_used,
         evidence_rows=evidence_rows,
         as_of_date=as_of_date,
+        requested_report_date=requested_report_date,
+        resolved_report_date=resolved_report_date,
         source_surface="formal_attribution",
     )
 
@@ -158,6 +247,11 @@ def _bond_repo() -> BondAnalyticsRepository:
 
 def _curve_repo() -> YieldCurveRepository:
     return YieldCurveRepository(str(get_settings().duckdb_path))
+
+
+def _choice_macro_repo(duckdb_path: str | None = None) -> ChoiceMacroSeriesRepository:
+    path = duckdb_path or str(get_settings().duckdb_path)
+    return ChoiceMacroSeriesRepository(path)
 
 
 def _prev_month_ym(ym: str) -> str:
@@ -250,15 +344,6 @@ def _pnl_by_business_snapshot(report_date: str) -> dict[str, Any]:
     }
 
 
-def _prior_bond_date(report_date: str, dates: list[str]) -> str | None:
-    if report_date not in dates:
-        return None
-    idx = dates.index(report_date)
-    if idx + 1 >= len(dates):
-        return None
-    return dates[idx + 1]
-
-
 def _treasury_10y(curve: dict[str, Decimal]) -> float | None:
     for k in ("10Y", "10y", "10"):
         if k in curve:
@@ -306,143 +391,6 @@ def _treasury_10y_on_or_before_many(
     }
 
 
-def _relation_exists(conn: duckdb.DuckDBPyConnection, relation_name: str) -> bool:
-    try:
-        row = conn.execute(
-            """
-            select count(*)
-            from information_schema.tables
-            where table_name = ?
-            """,
-            [relation_name],
-        ).fetchone()
-    except duckdb.Error:
-        return False
-    return bool(row and row[0])
-
-
-def _choice_macro_value_on_or_before(
-    *,
-    conn: duckdb.DuckDBPyConnection,
-    relation_name: str,
-    series_id: str,
-    trade_date: str,
-) -> tuple[float | None, str | None]:
-    if not _relation_exists(conn, relation_name):
-        return None, None
-    try:
-        row = conn.execute(
-            f"""
-            select value_numeric, cast(trade_date as varchar)
-            from {relation_name}
-            where series_id = ?
-              and cast(trade_date as varchar) <= ?
-              and value_numeric is not null
-            order by cast(trade_date as varchar) desc
-            limit 1
-            """,
-            [series_id, trade_date],
-        ).fetchone()
-    except duckdb.Error:
-        return None, None
-    if row is None:
-        return None, None
-    return float(row[0]), str(row[1])
-
-
-def _dr007_on_or_before(duckdb_path: str, trade_date: str) -> tuple[float | None, str | None]:
-    try:
-        conn = duckdb.connect(duckdb_path, read_only=True)
-    except duckdb.Error:
-        return None, None
-    try:
-        for relation_name in ("fact_choice_macro_daily", "choice_market_snapshot"):
-            value, resolved_date = _choice_macro_value_on_or_before(
-                conn=conn,
-                relation_name=relation_name,
-                series_id="CA.DR007",
-                trade_date=trade_date,
-            )
-            if value is not None:
-                return value, resolved_date
-    finally:
-        conn.close()
-    return None, None
-
-
-def _choice_macro_values_on_or_before_many(
-    *,
-    conn: duckdb.DuckDBPyConnection,
-    relation_name: str,
-    series_id: str,
-    trade_dates: list[str],
-) -> dict[str, tuple[float | None, str | None]]:
-    requested = [str(trade_date) for trade_date in dict.fromkeys(trade_dates) if str(trade_date or "")]
-    if not requested or not _relation_exists(conn, relation_name):
-        return {}
-    requested_sql = " union all ".join("select ? as requested_trade_date" for _ in requested)
-    try:
-        rows = conn.execute(
-            f"""
-            with requested as (
-              {requested_sql}
-            ), ranked as (
-              select
-                r.requested_trade_date,
-                m.value_numeric,
-                cast(m.trade_date as varchar) as resolved_trade_date,
-                row_number() over (
-                  partition by r.requested_trade_date
-                  order by cast(m.trade_date as varchar) desc
-                ) as row_num
-              from requested r
-              left join {relation_name} m
-                on m.series_id = ?
-               and cast(m.trade_date as varchar) <= r.requested_trade_date
-               and m.value_numeric is not null
-            )
-            select requested_trade_date, value_numeric, resolved_trade_date
-            from ranked
-            where row_num = 1
-            """,
-            [*requested, series_id],
-        ).fetchall()
-    except duckdb.Error:
-        return {}
-    return {
-        str(requested_trade_date): (
-            float(value) if value is not None else None,
-            str(resolved_date) if resolved_date not in (None, "") else None,
-        )
-        for requested_trade_date, value, resolved_date in rows
-    }
-
-
-def _dr007_on_or_before_many(duckdb_path: str, trade_dates: list[str]) -> dict[str, tuple[float | None, str | None]]:
-    requested = [str(trade_date) for trade_date in dict.fromkeys(trade_dates) if str(trade_date or "")]
-    if not requested:
-        return {}
-    out = {trade_date: (None, None) for trade_date in requested}
-    try:
-        conn = duckdb.connect(duckdb_path, read_only=True)
-    except duckdb.Error:
-        return out
-    try:
-        for relation_name in ("fact_choice_macro_daily", "choice_market_snapshot"):
-            values = _choice_macro_values_on_or_before_many(
-                conn=conn,
-                relation_name=relation_name,
-                series_id="CA.DR007",
-                trade_dates=[trade_date for trade_date, value in out.items() if value[0] is None],
-            )
-            for trade_date, value in values.items():
-                if value[0] is not None:
-                    out[trade_date] = value
-    finally:
-        conn.close()
-    return out
-
-
 def _anchor_on_or_before(dates: list[str], day: str) -> str | None:
     eligible = [d for d in dates if d <= day]
     return max(eligible) if eligible else None
@@ -453,9 +401,9 @@ def _resolve_formal_report_date(dates: list[str], report_date: str | None) -> st
     return _anchor_on_or_before(dates, requested) or dates[0]
 
 
-def _resolve_bond_report_date(dates: list[str], report_date: str | None) -> str:
+def _resolve_bond_report_date(dates: list[str], report_date: str | None) -> str | None:
     requested = report_date or _latest_formal_report_date() or dates[0]
-    return _anchor_on_or_before(dates, requested) or dates[0]
+    return _anchor_on_or_before(dates, requested)
 
 
 def _mv_tpl_scale(
@@ -469,6 +417,134 @@ def _mv_tpl_scale(
             continue
         s += mv_by.get(pa_wb.position_key(r), 0.0)
     return s
+
+
+def _decimal_or_none(value: Any) -> Decimal | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, Decimal):
+        return value if value.is_finite() else None
+    try:
+        parsed = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    return parsed if parsed.is_finite() else None
+
+
+def _exact_decimal_or_none(value: Any) -> Decimal | None:
+    if isinstance(value, Decimal):
+        return value if value.is_finite() else None
+    if isinstance(value, str):
+        return _decimal_or_none(value)
+    return None
+
+
+def _sum_tpl_accounting_amount(rows: list[dict[str, Any]], field_name: str) -> float:
+    return sum(
+        float(row.get(field_name) or 0)
+        for row in rows
+        if pa_wb.is_tpl_accounting(str(row.get("accounting_basis") or ""))
+    )
+
+
+def _decimal_digit_shape(value: Decimal) -> tuple[int, int]:
+    _sign, digits, exponent = value.as_tuple()
+    # Callers only pass finite amounts; non-finite Decimal exponents are strings.
+    if not isinstance(exponent, int):
+        raise ValueError("Decimal digit shape requires a finite amount.")
+    digit_count = len(digits) if digits else 1
+    fractional_digits = max(-exponent, 0)
+    integer_digits = digit_count + exponent if exponent >= 0 else digit_count - fractional_digits
+    return max(integer_digits, 1), fractional_digits
+
+
+def _sum_exact_decimal_texts(values: list[Decimal]) -> str | None:
+    if not values:
+        return None
+    max_integer_digits = 1
+    max_fractional_digits = 0
+    for value in values:
+        integer_digits, fractional_digits = _decimal_digit_shape(value)
+        max_integer_digits = max(max_integer_digits, integer_digits)
+        max_fractional_digits = max(max_fractional_digits, fractional_digits)
+    carry_digits = len(str(len(values)))
+    with localcontext() as ctx:
+        ctx.prec = max_integer_digits + max_fractional_digits + carry_digits + 2
+        return format(sum(values, Decimal("0")), "f")
+
+
+def _sum_tpl_accounting_exact_amount_text(
+    rows: list[dict[str, Any]],
+    field_name: str,
+) -> str | None:
+    exact_values: list[Decimal] = []
+    for row in rows:
+        if not pa_wb.is_tpl_accounting(str(row.get("accounting_basis") or "")):
+            continue
+        raw_value = row.get(field_name)
+        if raw_value is None or raw_value == "" or isinstance(raw_value, bool):
+            return None
+        if isinstance(raw_value, Decimal):
+            if not raw_value.is_finite():
+                return None
+            exact_values.append(raw_value)
+            continue
+        if isinstance(raw_value, str):
+            if not re.fullmatch(r"-?\d+(?:\.\d+)?", raw_value):
+                return None
+            exact_amount = _exact_decimal_or_none(raw_value)
+            if exact_amount is None:
+                return None
+            exact_values.append(exact_amount)
+            continue
+        if isinstance(raw_value, (int, float)):
+            return None
+        return None
+    return _sum_exact_decimal_texts(exact_values)
+
+
+def _with_numeric_raw_text(numeric_value: Any, raw_text: str | None) -> Any:
+    if raw_text is None:
+        return numeric_value
+    if not isinstance(numeric_value, dict) or not (_NUMERIC_JSON_KEYS <= set(numeric_value.keys())):
+        return numeric_value
+    out = dict(numeric_value)
+    out["raw_text"] = raw_text
+    return out
+
+
+def _attach_tpl_market_exact_amounts(
+    payload: dict[str, Any],
+    *,
+    total_tpl_fv_change_raw_text: str | None = None,
+    point_amount_raw_texts: list[dict[str, str | None]] | None = None,
+) -> dict[str, Any]:
+    out = dict(payload)
+    out["total_tpl_fv_change"] = _with_numeric_raw_text(
+        out.get("total_tpl_fv_change"),
+        total_tpl_fv_change_raw_text,
+    )
+    points = out.get("data_points")
+    if not isinstance(points, list):
+        return out
+    exact_points: list[dict[str, Any] | Any] = []
+    for idx, point in enumerate(points):
+        if not isinstance(point, dict):
+            exact_points.append(point)
+            continue
+        row = dict(point)
+        sidecar = point_amount_raw_texts[idx] if point_amount_raw_texts and idx < len(point_amount_raw_texts) else {}
+        row["tpl_fair_value_change"] = _with_numeric_raw_text(
+            row.get("tpl_fair_value_change"),
+            sidecar.get("tpl_fair_value_change"),
+        )
+        row["tpl_total_pnl"] = _with_numeric_raw_text(
+            row.get("tpl_total_pnl"),
+            sidecar.get("tpl_total_pnl"),
+        )
+        exact_points.append(row)
+    out["data_points"] = exact_points
+    return out
 
 
 def _warning_message_for_evidence(evidence_rows: int | None) -> str:
@@ -490,6 +566,13 @@ def _with_optional_warnings(
         out["warnings"] = w
         return out
     return payload
+
+
+def _has_maturity_risk_exclusions(payload: dict[str, Any]) -> bool:
+    coverage = payload.get("risk_coverage")
+    if not isinstance(coverage, dict):
+        return False
+    return int(coverage.get("excluded_row_count") or 0) > 0
 
 
 _NUMERIC_JSON_KEYS = frozenset({"raw", "unit", "display", "precision", "sign_aware"})
@@ -532,10 +615,33 @@ def _numeric_dict(raw: float | None, unit: NumericUnit, sign_aware: bool) -> dic
     ).model_dump(mode="json")
 
 
+def _ratio_pct_numeric(ratio: float, *, sign_aware: bool = True) -> dict[str, Any]:
+    """Numeric dict for a share already expressed as a decimal ratio (0.4 == 40%).
+
+    Unlike ``_numeric_dict`` (which expects percent points), the input here is
+    the ratio itself; raw stays a ratio and never passes through the
+    ``_normalize_numeric_raw`` abs>1 percent-point heuristic. Rounding happens
+    at percent-point granularity (4 decimals) to keep raw/display bit-identical
+    with the legacy percent-point pipeline.
+    """
+    percent_points = round(ratio * 100.0, 4)
+    return Numeric(
+        raw=percent_points / 100.0,
+        unit="pct",
+        display=_signed_number(percent_points, precision=2, sign_aware=sign_aware, suffix="%"),
+        precision=2,
+        sign_aware=sign_aware,
+    ).model_dump(mode="json")
+
+
 def _promote_flat(payload: dict[str, Any], NumericClass: type) -> dict[str, Any]:
-    field_map: dict[str, tuple[NumericUnit, bool]] = getattr(NumericClass, "_NUMERIC_FIELDS", {}) or {}
+    # _NUMERIC_FIELDS entry: (unit, sign_aware) or (unit, sign_aware, raw_scale).
+    # Legacy 2-tuples keep this service's percent-point semantics for pct fields
+    # (_numeric_dict divides by 100); a 3-tuple "ratio" declaration routes through
+    # _ratio_pct_numeric so decimal-ratio producers are never re-divided.
+    field_map: dict[str, tuple[Any, ...]] = getattr(NumericClass, "_NUMERIC_FIELDS", {}) or {}
     out = dict(payload)
-    for name, (unit, sign_aware) in field_map.items():
+    for name, spec in field_map.items():
         if name not in out:
             continue
         v = out[name]
@@ -544,7 +650,12 @@ def _promote_flat(payload: dict[str, Any], NumericClass: type) -> dict[str, Any]
         if isinstance(v, dict) and _NUMERIC_JSON_KEYS <= set(v.keys()):
             continue
         if isinstance(v, (int, float)):
-            out[name] = _numeric_dict(float(v), unit, sign_aware)
+            unit, sign_aware = spec[0], spec[1]
+            raw_scale = spec[2] if len(spec) == 3 else "auto"
+            if unit == "pct" and raw_scale == "ratio":
+                out[name] = _ratio_pct_numeric(float(v), sign_aware=sign_aware)
+            else:
+                out[name] = _numeric_dict(float(v), unit, sign_aware)
     return out
 
 
@@ -602,6 +713,45 @@ def _volume_rate_summary_components(
     cur_snap = _max_date_in_month(dates, ym) or rd
     prev_snap = _max_date_in_month(dates, prev_ym)
     snaps = [snap for snap in (cur_snap, prev_snap) if snap]
+    # The summary also consumes the TPL window. Its prior-year facts need the
+    # same formal rule gate as the current/prior volume-rate observations.
+    _, market_snapshots, _ = _tpl_market_window(dates, 12, cur_snap)
+    evidence_dates = list(dict.fromkeys([*snaps, *market_snapshots.values()]))
+    for year in sorted({int(snap[:4]) for snap in evidence_dates}):
+        repo.require_current_formal_pnl_rule_version(
+            year=year,
+            as_of_date=max(snap for snap in evidence_dates if int(snap[:4]) == year),
+        )
+    untraced_by_date = repo.count_untraced_formal_fi_rows_for_dates(evidence_dates)
+    upstream_sources = []
+    for snap in evidence_dates:
+        lineage = resolve_formal_manifest_lineage_with_completed_build(
+            governance_dir=str(get_settings().governance_path),
+            cache_key=pnl_service.PNL_CACHE_KEY,
+            job_name=pnl_service.PNL_JOB_NAME,
+            report_date=snap,
+        )
+        quality = str(lineage.get("quality_flag") or "ok")
+        fallback = lineage.get("_lineage_fallback_mode") == "latest_snapshot"
+        if fallback and quality != "error":
+            quality = "stale"
+        elif untraced_by_date.get(snap, 0) and quality == "ok":
+            quality = "warning"
+        upstream_sources.append({
+            "report_date": snap,
+            "source_version": str(lineage["source_version"]),
+            "rule_version": str(lineage["rule_version"]),
+            "quality_flag": quality,
+            "fallback_mode": "latest_snapshot" if fallback else "none",
+            "fallback_date": lineage.get("_lineage_fallback_date") if fallback else None,
+        })
+    source_quality = next(
+        (flag for flag in ("error", "stale", "warning") if any(
+            source["quality_flag"] == flag for source in upstream_sources
+        )),
+        "ok",
+    )
+    fallback_sources = [source for source in upstream_sources if source["fallback_mode"] != "none"]
     fetch_business_many = getattr(repo, "fetch_by_business_summary_rows_by_report_date", None)
     rows_by_date = (
         fetch_business_many(snaps)
@@ -619,14 +769,54 @@ def _volume_rate_summary_components(
         group_field="invest_type_std",
         pnl_field="total_pnl",
         scale_field="scale_amount",
+        interest_field="interest_income_514",
     )
     meta = {
-        "source_versions": [SOURCE_VERSION_BUSINESS_BALANCE],
+        "source_versions": list(dict.fromkeys(source["source_version"] for source in upstream_sources)),
+        "upstream_sources": upstream_sources,
+        "untraced_pnl_rows_by_report_date": untraced_by_date,
+        "quality_flag": source_quality,
+        "fallback_mode": "latest_snapshot" if fallback_sources else "none",
+        "fallback_date": fallback_sources[0]["fallback_date"] if fallback_sources else None,
         "tables_used": TABLES_BUSINESS_BALANCE,
         "evidence_rows": _business_evidence_rows(cur_rows) + _business_evidence_rows(prev_rows),
-        "warning": not cur_rows or not prev_snap or not prev_rows,
+        "warning": source_quality != "ok" or not cur_rows or not prev_snap or not prev_rows or not payload["has_complete_inputs"],
     }
     return payload, meta, cur_snap, prev_snap
+
+
+def _tpl_market_window(
+    dates: list[str], months: int, report_date: str
+) -> tuple[list[str], dict[str, str], dict[str, str]]:
+    """Keep the requested calendar window and resolve each month's own baseline."""
+    series: list[str] = []
+    period = report_date[:7]
+    for _ in range(months):
+        series.append(period)
+        period = _prev_month_ym(period)
+    series.reverse()
+    eligible_dates = [day for day in dates if day <= report_date]
+    snapshots = {
+        period: snapshot
+        for period in series
+        if (snapshot := _max_date_in_month(eligible_dates, period)) is not None
+    }
+    prior_snapshots = {
+        period: _max_date_in_month(eligible_dates, _prev_month_ym(period))
+        or (date.fromisoformat(f"{period}-01") - timedelta(days=1)).isoformat()
+        for period in snapshots
+    }
+    return series, snapshots, prior_snapshots
+
+
+def _tpl_market_curve_value(
+    observation: tuple[float | None, str | None], requested_date: str
+) -> float | None:
+    value, resolved_date = observation
+    if not resolved_date or resolved_date[:7] != requested_date[:7] or resolved_date > requested_date:
+        return None
+    parsed = _decimal_or_none(value)
+    return float(parsed) if parsed is not None else None
 
 
 def _tpl_market_summary_components(
@@ -637,41 +827,30 @@ def _tpl_market_summary_components(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     curve = _curve_repo()
     repo = _pnl_repo()
-    series = _month_series_descending_until(dates, months, report_date)
-    series = list(reversed(series))
-    snapshots = [snap for ym in series if (snap := _max_date_in_month(dates, ym))]
+    series, snapshots_by_period, prior_snapshots = _tpl_market_window(dates, months, report_date)
+    snapshots = list(snapshots_by_period.values())
     fetch_tpl_many = getattr(repo, "fetch_tpl_pnl_summary_by_report_date", None)
     tpl_summaries = (
         fetch_tpl_many(snapshots)
         if fetch_tpl_many is not None
         else {snap: repo.fetch_tpl_pnl_summary(snap) for snap in snapshots}
     )
-    treasury_dates = list(snapshots)
+    treasury_dates = list(dict.fromkeys([*snapshots, *prior_snapshots.values()]))
     points: list[dict[str, Any]] = []
-    prev_tsy: float | None = None
-    if series:
-        prior_ym = _prev_month_ym(series[0])
-        prior_snap = _max_date_in_month(dates, prior_ym)
-        if prior_snap:
-            treasury_dates.insert(0, prior_snap)
     treasury_values = _treasury_10y_on_or_before_many(curve, treasury_dates)
-    if series:
-        prior_ym = _prev_month_ym(series[0])
-        prior_snap = _max_date_in_month(dates, prior_ym)
-        if prior_snap:
-            prev_tsy = treasury_values.get(prior_snap, (None, None))[0]
     curve_path = str(getattr(curve, "path", "") or "")
-    dr007_values = _dr007_on_or_before_many(curve_path, snapshots) if curve_path else {}
+    dr007_values = _choice_macro_repo(curve_path).dr007_on_or_before_many(snapshots) if curve_path else {}
     for ym in series:
-        snap = _max_date_in_month(dates, ym)
+        snap = snapshots_by_period.get(ym)
         if not snap:
             continue
         tpl_summary = tpl_summaries.get(snap) or {}
         tpl_fv = float(tpl_summary.get("tpl_fair_value_change") or 0)
         tpl_tot = float(tpl_summary.get("tpl_total_pnl") or 0)
-        tsy, _tsy_date = treasury_values.get(snap, (None, None))
-        dtsy = ((tsy - prev_tsy) * 100.0) if tsy is not None and prev_tsy is not None else None
-        prev_tsy = tsy if tsy is not None else prev_tsy
+        tsy = _tpl_market_curve_value(treasury_values.get(snap, (None, None)), snap)
+        prior_snap = prior_snapshots[ym]
+        prev_tsy = _tpl_market_curve_value(treasury_values.get(prior_snap, (None, None)), prior_snap)
+        dtsy = pa_wb.tpl_monthly_treasury_change_bp(tsy, prev_tsy)
         dr007, _dr007_date = dr007_values.get(snap, (None, None))
         points.append(
             {
@@ -694,6 +873,8 @@ def _tpl_market_summary_components(
         "tables_used": TABLES_FORMAL_MARKET,
         "evidence_rows": len(points),
         "warning": len(points) < 2
+        or payload.get("total_tpl_fv_change") is None
+        or payload.get("treasury_10y_total_change_bp") is None
         or any(point.get("treasury_10y") is None or point.get("dr007") is None for point in points),
     }
     return payload, meta
@@ -703,6 +884,42 @@ def volume_rate_attribution_envelope(
     *,
     report_date: str | None,
     compare_type: CompareType = "mom",
+    force_refresh: bool = False,
+) -> dict[str, object]:
+    cache_key = _pnl_attribution_cache_key(
+        "volume_rate",
+        report_date,
+        compare_type,
+    )
+    if cache_key is not None:
+        if force_refresh:
+            generation = _PNL_ATTRIBUTION_CACHE.generation()
+            envelope = _volume_rate_attribution_envelope_uncached(
+                report_date=report_date,
+                compare_type=compare_type,
+            )
+            if cache_key == _pnl_attribution_cache_key("volume_rate", report_date, compare_type):
+                _PNL_ATTRIBUTION_CACHE.set(cache_key, envelope, generation=generation)
+            return _with_fresh_trace(envelope)
+        return _with_fresh_trace(
+            _PNL_ATTRIBUTION_CACHE.get_or_set(
+                cache_key,
+                lambda: _volume_rate_attribution_envelope_uncached(
+                    report_date=report_date,
+                    compare_type=compare_type,
+                ),
+            )
+        )
+    return _volume_rate_attribution_envelope_uncached(
+        report_date=report_date,
+        compare_type=compare_type,
+    )
+
+
+def _volume_rate_attribution_envelope_uncached(
+    *,
+    report_date: str | None,
+    compare_type: CompareType,
 ) -> dict[str, object]:
     repo = _pnl_repo()
     dates = _formal_fi_report_dates_for_workbench(repo)
@@ -719,7 +936,7 @@ def volume_rate_attribution_envelope(
         promoted = _promote_payload_numerics(payload, VolumeRateAttributionPayload)
         p = VolumeRateAttributionPayload.model_validate(promoted).model_dump(mode="json")
         return build_formal_result_envelope(
-            result_meta=_meta_warn("pnl_attribution.volume_rate"),
+            result_meta=_meta_warn("pnl_attribution.volume_rate", requested_report_date=report_date),
             result_payload=_with_optional_warnings(p, warn=True),
         )
 
@@ -745,6 +962,7 @@ def volume_rate_attribution_envelope(
         group_field="invest_type_std",
         pnl_field="total_pnl",
         scale_field="scale_amount",
+        interest_field="interest_income_514",
     )
     warn = (
         not cur_rows
@@ -752,16 +970,27 @@ def volume_rate_attribution_envelope(
         or not prev_rows
         or cur_business["quality_flag"] != "ok"
         or (prev_business is not None and prev_business["quality_flag"] != "ok")
+        or not payload["has_complete_inputs"]
     )
-    filters = {
+    filters: dict[str, object] = {
         "requested_report_date": report_date,
         "resolved_report_date": cur_snap,
         "previous_report_date": prev_snap,
         "compare_type": compare_type,
     }
     evidence_rows = int(cur_business["evidence_rows"]) + int(prev_business["evidence_rows"] if prev_business else 0)
-    source_version = str(cur_business["source_version"])
-    tables_used = list(cur_business["tables_used"])
+    business_sources = [source for source in (cur_business, prev_business) if source is not None]
+    source_version = "__".join(dict.fromkeys(str(source["source_version"]) for source in business_sources))
+    tables_used = list(dict.fromkeys(table for source in business_sources for table in source["tables_used"]))
+    source_quality: Literal["warning", "stale", "error"] = "warning"
+    if any(source["quality_flag"] == "error" for source in business_sources):
+        source_quality = "error"
+    elif any(source["quality_flag"] == "stale" for source in business_sources):
+        source_quality = "stale"
+    fallback_sources = [
+        source.get("meta", {}) for source in business_sources
+        if source.get("meta", {}).get("fallback_mode") == "latest_snapshot"
+    ]
     promoted = _promote_payload_numerics(payload, VolumeRateAttributionPayload)
     p = VolumeRateAttributionPayload.model_validate(promoted).model_dump(mode="json")
     return build_formal_result_envelope(
@@ -773,6 +1002,11 @@ def volume_rate_attribution_envelope(
                 tables_used=tables_used,
                 evidence_rows=evidence_rows,
                 as_of_date=cur_snap,
+                requested_report_date=report_date,
+                resolved_report_date=cur_snap,
+                quality_flag=source_quality,
+                fallback_mode="latest_snapshot" if fallback_sources else "none",
+                fallback_date=fallback_sources[0].get("fallback_date") if fallback_sources else None,
             )
             if warn
             else _meta_ok(
@@ -782,6 +1016,8 @@ def volume_rate_attribution_envelope(
                 tables_used=tables_used,
                 evidence_rows=evidence_rows,
                 as_of_date=cur_snap,
+                requested_report_date=report_date,
+                resolved_report_date=cur_snap,
             )
         ),
         result_payload=_with_optional_warnings(
@@ -793,6 +1029,32 @@ def volume_rate_attribution_envelope(
 
 
 def tpl_market_correlation_envelope(*, months: int = 12, report_date: str | None = None) -> dict[str, object]:
+    cache_key = _pnl_attribution_cache_key(
+        "tpl_market",
+        report_date,
+        months,
+    )
+    if cache_key is not None:
+        return _with_fresh_trace(
+            _PNL_ATTRIBUTION_CACHE.get_or_set(
+                cache_key,
+                lambda: _tpl_market_correlation_envelope_uncached(
+                    months=months,
+                    report_date=report_date,
+                ),
+            )
+        )
+    return _tpl_market_correlation_envelope_uncached(
+        months=months,
+        report_date=report_date,
+    )
+
+
+def _tpl_market_correlation_envelope_uncached(
+    *,
+    months: int,
+    report_date: str | None,
+) -> dict[str, object]:
     repo = _pnl_repo()
     curve = _curve_repo()
     bond = _bond_repo()
@@ -803,6 +1065,7 @@ def tpl_market_correlation_envelope(*, months: int = 12, report_date: str | None
             start_period="",
             end_period="",
         )
+        payload["total_tpl_fv_change"] = _numeric_dict(None, "yuan", True)
         promoted = _promote_payload_numerics(payload, TPLMarketCorrelationPayload)
         p = TPLMarketCorrelationPayload.model_validate(promoted).model_dump(mode="json")
         return build_formal_result_envelope(
@@ -812,38 +1075,33 @@ def tpl_market_correlation_envelope(*, months: int = 12, report_date: str | None
 
     requested = report_date or pnl_dates[0]
     rd = _anchor_on_or_before(pnl_dates, requested) or pnl_dates[0]
-    series = _month_series_descending_until(pnl_dates, months, rd)
-    series = list(reversed(series))
+    series, snapshots_by_period, prior_snapshots = _tpl_market_window(pnl_dates, months, rd)
     bdates = set(bond.list_report_dates())
     points: list[dict[str, Any]] = []
-    prev_tsy: float | None = None
-    if series:
-        prior_ym = _prev_month_ym(series[0])
-        prior_snap = _max_date_in_month(pnl_dates, prior_ym)
-        if prior_snap:
-            prev_tsy, _ = _treasury_10y_on_or_before(curve, prior_snap)
+    point_amount_raw_texts: list[dict[str, str | None]] = []
+    treasury_dates = list(dict.fromkeys([*snapshots_by_period.values(), *prior_snapshots.values()]))
+    treasury_values = _treasury_10y_on_or_before_many(curve, treasury_dates)
     for ym in series:
-        snap = _max_date_in_month(pnl_dates, ym)
+        snap = snapshots_by_period.get(ym)
         if not snap:
             continue
         rows = repo.fetch_formal_fi_rows(snap)
-        tpl_fv = sum(
-            float(r.get("fair_value_change_516") or 0)
-            for r in rows
-            if pa_wb.is_tpl_accounting(str(r.get("accounting_basis") or ""))
-        )
-        tpl_tot = sum(
-            float(r.get("total_pnl") or 0)
-            for r in rows
-            if pa_wb.is_tpl_accounting(str(r.get("accounting_basis") or ""))
+        tpl_fv = _sum_tpl_accounting_amount(rows, "fair_value_change_516")
+        tpl_tot = _sum_tpl_accounting_amount(rows, "total_pnl")
+        point_amount_raw_texts.append(
+            {
+                "tpl_fair_value_change": _sum_tpl_accounting_exact_amount_text(rows, "fair_value_change_516"),
+                "tpl_total_pnl": _sum_tpl_accounting_exact_amount_text(rows, "total_pnl"),
+            }
         )
         br = bond.fetch_bond_analytics_rows(report_date=snap) if snap in bdates else []
         tpl_scale = _mv_tpl_scale(rows, br)
-        tsy, _tsy_date = _treasury_10y_on_or_before(curve, snap)
-        dtsy = ((tsy - prev_tsy) * 100.0) if tsy is not None and prev_tsy is not None else None
-        prev_tsy = tsy if tsy is not None else prev_tsy
+        tsy = _tpl_market_curve_value(treasury_values.get(snap, (None, None)), snap)
+        prior_snap = prior_snapshots[ym]
+        prev_tsy = _tpl_market_curve_value(treasury_values.get(prior_snap, (None, None)), prior_snap)
+        dtsy = pa_wb.tpl_monthly_treasury_change_bp(tsy, prev_tsy)
         curve_path = str(getattr(curve, "path", "") or "")
-        dr007, _dr007_date = _dr007_on_or_before(curve_path, snap) if curve_path else (None, None)
+        dr007, _dr007_date = _choice_macro_repo(curve_path).dr007_on_or_before(snap) if curve_path else (None, None)
         points.append(
             {
                 "period": ym,
@@ -864,18 +1122,57 @@ def tpl_market_correlation_envelope(*, months: int = 12, report_date: str | None
         start_period=start_p,
         end_period=end_p,
     )
-    warn = len(points) < 2 or any(
-        point.get("treasury_10y") is None or point.get("dr007") is None
+    non_finite_tpl_amount = any(_decimal_or_none(point.get("tpl_fair_value_change")) is None for point in points)
+    window_warn = len(points) != len(series) or payload.get("treasury_10y_total_change_bp") is None
+    market_warn = len(points) < 2 or any(
+        point.get("treasury_10y") is None
+        or point.get("treasury_10y_change") is None
+        or point.get("dr007") is None
         for point in points
     )
+    warn = non_finite_tpl_amount or market_warn or window_warn
+    total_tpl_complete = payload.get("total_tpl_fv_change") is not None
+    if not total_tpl_complete:
+        payload["total_tpl_fv_change"] = _numeric_dict(None, "yuan", True)
     promoted = _promote_payload_numerics(payload, TPLMarketCorrelationPayload)
+    total_tpl_fv_change_raw_text = None
+    if total_tpl_complete and point_amount_raw_texts and all(
+        sidecar.get("tpl_fair_value_change") is not None for sidecar in point_amount_raw_texts
+    ):
+        total_tpl_fv_change_raw_text = _sum_exact_decimal_texts(
+            [
+                Decimal(raw_text)
+                for sidecar in point_amount_raw_texts
+                if (raw_text := sidecar.get("tpl_fair_value_change")) is not None
+            ]
+        )
+    promoted = _attach_tpl_market_exact_amounts(
+        promoted,
+        total_tpl_fv_change_raw_text=total_tpl_fv_change_raw_text,
+        point_amount_raw_texts=point_amount_raw_texts,
+    )
     p = TPLMarketCorrelationPayload.model_validate(promoted).model_dump(mode="json")
-    filters = {
+    filters: dict[str, object] = {
         "requested_report_date": report_date,
         "resolved_report_date": rd,
         "months": months,
     }
     evidence_rows = len(points)
+    result_payload = _with_optional_warnings(
+        p,
+        warn=market_warn,
+        warning_message=TPL_MARKET_DATA_WARN if evidence_rows else _warning_message_for_evidence(evidence_rows),
+    )
+    result_payload = _with_optional_warnings(
+        result_payload,
+        warn=non_finite_tpl_amount,
+        warning_message=TPL_NON_FINITE_PNL_WARN,
+    )
+    result_payload = _with_optional_warnings(
+        result_payload,
+        warn=window_warn,
+        warning_message=TPL_WINDOW_WARN,
+    )
     return build_formal_result_envelope(
         result_meta=(
             _meta_warn(
@@ -896,11 +1193,7 @@ def tpl_market_correlation_envelope(*, months: int = 12, report_date: str | None
                 as_of_date=rd,
             )
         ),
-        result_payload=_with_optional_warnings(
-            p,
-            warn=warn,
-            warning_message=TPL_MARKET_DATA_WARN if evidence_rows else _warning_message_for_evidence(evidence_rows),
-        ),
+        result_payload=result_payload,
     )
 
 
@@ -909,6 +1202,36 @@ def pnl_composition_envelope(
     report_date: str | None,
     include_trend: bool = True,
     trend_months: int = 6,
+) -> dict[str, object]:
+    cache_key = _pnl_attribution_cache_key(
+        "composition",
+        report_date,
+        include_trend,
+        trend_months,
+    )
+    if cache_key is not None:
+        return _with_fresh_trace(
+            _PNL_ATTRIBUTION_CACHE.get_or_set(
+                cache_key,
+                lambda: _pnl_composition_envelope_uncached(
+                    report_date=report_date,
+                    include_trend=include_trend,
+                    trend_months=trend_months,
+                ),
+            )
+        )
+    return _pnl_composition_envelope_uncached(
+        report_date=report_date,
+        include_trend=include_trend,
+        trend_months=trend_months,
+    )
+
+
+def _pnl_composition_envelope_uncached(
+    *,
+    report_date: str | None,
+    include_trend: bool,
+    trend_months: int,
 ) -> dict[str, object]:
     repo = _pnl_repo()
     dates = _formal_fi_report_dates_for_workbench(repo)
@@ -964,7 +1287,7 @@ def pnl_composition_envelope(
         trend_rows=trend,
     )
     warn = not business_rows or business_snapshot["quality_flag"] != "ok"
-    filters = {
+    filters: dict[str, object] = {
         "requested_report_date": report_date,
         "resolved_report_date": rd,
         "include_trend": include_trend,
@@ -1003,7 +1326,27 @@ def pnl_composition_envelope(
     )
 
 
-def attribution_analysis_summary_envelope(*, report_date: str | None) -> dict[str, object]:
+def attribution_analysis_summary_envelope(
+    *, report_date: str | None, force_refresh: bool = False,
+) -> dict[str, object]:
+    cache_key = _pnl_attribution_cache_key("summary", report_date)
+    if cache_key is not None:
+        if force_refresh:
+            generation = _PNL_ATTRIBUTION_CACHE.generation()
+            envelope = _attribution_analysis_summary_envelope_uncached(report_date=report_date)
+            if cache_key == _pnl_attribution_cache_key("summary", report_date):
+                _PNL_ATTRIBUTION_CACHE.set(cache_key, envelope, generation=generation)
+            return _with_fresh_trace(envelope)
+        return _with_fresh_trace(
+            _PNL_ATTRIBUTION_CACHE.get_or_set(
+                cache_key,
+                lambda: _attribution_analysis_summary_envelope_uncached(report_date=report_date),
+            )
+        )
+    return _attribution_analysis_summary_envelope_uncached(report_date=report_date)
+
+
+def _attribution_analysis_summary_envelope_uncached(*, report_date: str | None) -> dict[str, object]:
     """Summarizes only the formal FI / bond-analysis attribution lens."""
     repo_dates = _formal_fi_report_dates_for_workbench()
     rd = report_date or (repo_dates[0] if repo_dates else "")
@@ -1014,11 +1357,13 @@ def attribution_analysis_summary_envelope(*, report_date: str | None) -> dict[st
             rate_effect=None,
             correlation_tpl_treasury=None,
         )
+        summary["primary_driver_pct"] = _numeric_dict(summary["primary_driver_pct"], "pct", True)
         promoted = _promote_payload_numerics(summary, PnlAttributionAnalysisSummary)
         p = PnlAttributionAnalysisSummary.model_validate(promoted).model_dump(mode="json")
         return build_formal_result_envelope(
             result_meta=_meta_warn(
                 "pnl_attribution.summary",
+                requested_report_date=report_date,
                 filters_applied={
                     "requested_report_date": report_date,
                     "resolved_report_date": None,
@@ -1037,8 +1382,15 @@ def attribution_analysis_summary_envelope(*, report_date: str | None) -> dict[st
         volume_effect=vol.get("total_volume_effect"),
         rate_effect=vol.get("total_rate_effect"),
         correlation_tpl_treasury=corr_f,
+        interaction_effect=vol.get("total_interaction_effect"),
+        fair_value_effect=vol.get("total_fair_value_effect"),
+        capital_gain_effect=vol.get("total_capital_gain_effect"),
+        manual_adjustment_effect=vol.get("total_manual_adjustment_effect"),
+        unexplained_effect=vol.get("total_recon_error"),
+        attribution_basis=vol.get("attribution_basis"),
     )
     warn = bool(vol_meta.get("warning")) or bool(tpl_meta.get("warning"))
+    summary["primary_driver_pct"] = _numeric_dict(summary["primary_driver_pct"], "pct", True)
     promoted = _promote_payload_numerics(summary, PnlAttributionAnalysisSummary)
     p = PnlAttributionAnalysisSummary.model_validate(promoted).model_dump(mode="json")
     tables_used = list(
@@ -1059,13 +1411,20 @@ def attribution_analysis_summary_envelope(*, report_date: str | None) -> dict[st
         int(meta.get("evidence_rows") or 0)
         for meta in (vol_meta, tpl_meta)
     )
-    filters = {
+    filters: dict[str, object] = {
         "requested_report_date": report_date,
         "resolved_report_date": resolved_rd or None,
         "previous_report_date": previous_rd,
         "components": ["volume_rate_fast", "tpl_market_fast"],
+        "upstream_sources": vol_meta.get("upstream_sources") or [],
+        "untraced_pnl_rows_by_report_date": vol_meta.get("untraced_pnl_rows_by_report_date") or {},
     }
     source_version = "__".join(dict.fromkeys(source_versions)) if evidence_rows else SOURCE_EMPTY
+    source_quality: Literal["warning", "stale", "error"] = "warning"
+    if vol_meta.get("quality_flag") == "error":
+        source_quality = "error"
+    elif vol_meta.get("quality_flag") == "stale":
+        source_quality = "stale"
     return build_formal_result_envelope(
         result_meta=(
             _meta_warn(
@@ -1074,7 +1433,12 @@ def attribution_analysis_summary_envelope(*, report_date: str | None) -> dict[st
                 filters_applied=filters,
                 tables_used=tables_used,
                 evidence_rows=evidence_rows,
-                as_of_date=rd or None,
+                as_of_date=resolved_rd or None,
+                requested_report_date=report_date,
+                resolved_report_date=resolved_rd or None,
+                quality_flag=source_quality,
+                fallback_mode=vol_meta.get("fallback_mode", "none"),
+                fallback_date=vol_meta.get("fallback_date"),
             )
             if warn
             else _meta_ok(
@@ -1083,7 +1447,9 @@ def attribution_analysis_summary_envelope(*, report_date: str | None) -> dict[st
                 filters_applied=filters,
                 tables_used=tables_used,
                 evidence_rows=evidence_rows,
-                as_of_date=rd or None,
+                as_of_date=resolved_rd or None,
+                requested_report_date=report_date,
+                resolved_report_date=resolved_rd or None,
             )
         ),
         result_payload=_with_optional_warnings(
@@ -1095,36 +1461,72 @@ def attribution_analysis_summary_envelope(*, report_date: str | None) -> dict[st
 
 
 def carry_roll_down_envelope(*, report_date: str | None) -> dict[str, object]:
+    ftp_rate_pct = float(get_settings().ftp_rate_pct)
+    cache_key = _pnl_attribution_cache_key("carry_rolldown", report_date, ftp_rate_pct)
+    if cache_key is not None:
+        return _with_fresh_trace(
+            _PNL_ATTRIBUTION_CACHE.get_or_set(
+                cache_key,
+                lambda: _carry_roll_down_envelope_uncached(
+                    report_date=report_date,
+                    ftp_rate_pct=ftp_rate_pct,
+                ),
+            )
+        )
+    return _carry_roll_down_envelope_uncached(
+        report_date=report_date,
+        ftp_rate_pct=ftp_rate_pct,
+    )
+
+
+def _carry_roll_down_envelope_uncached(
+    *,
+    report_date: str | None,
+    ftp_rate_pct: float,
+) -> dict[str, object]:
     bond = _bond_repo()
     dates = bond.list_report_dates()
-    ftp = float(get_settings().ftp_rate_pct)
-    if not dates:
-        payload = pa_wb.build_carry_roll_down(report_date="", bond_rows=[], ftp_rate_pct=ftp, curve_slope_bp=None)
+    rd = _resolve_bond_report_date(dates, report_date) if dates else None
+    if rd is None:
+        payload = pa_wb.build_carry_roll_down(
+            report_date=report_date or "", bond_rows=[], ftp_rate_pct=ftp_rate_pct, curve_slope_bp=None,
+        )
         promoted = _promote_payload_numerics(payload, CarryRollDownPayload)
         p = CarryRollDownPayload.model_validate(promoted).model_dump(mode="json")
         return build_formal_result_envelope(
-            result_meta=_meta_warn("pnl_attribution.carry_rolldown"),
+            result_meta=_meta_warn(
+                "pnl_attribution.carry_rolldown", requested_report_date=report_date,
+            ).model_copy(update={"formal_use_allowed": False}),
             result_payload=_with_optional_warnings(p, warn=True),
         )
 
-    rd = _resolve_bond_report_date(dates, report_date)
     rows = bond.fetch_bond_analytics_rows(report_date=rd) if rd in dates else []
     cur_repo = _curve_repo()
     c_end = cur_repo.fetch_curve(rd, "treasury")
     payload = pa_wb.build_carry_roll_down(
         report_date=rd,
         bond_rows=rows,
-        ftp_rate_pct=ftp,
+        ftp_rate_pct=ftp_rate_pct,
         curve_slope_bp=None,
         treasury_curve=c_end,
     )
-    warn = not rows
+    warn = not rows or any(
+        payload.get(field) is None
+        for field in ("portfolio_carry", "portfolio_rolldown", "portfolio_static_return")
+    )
     evidence_rows = len(rows)
-    filters = {
+    filters: dict[str, object] = {
         "requested_report_date": report_date,
         "resolved_report_date": rd,
     }
     promoted = _promote_payload_numerics(payload, CarryRollDownPayload)
+    for value, field_map in [
+        (promoted, CarryRollDownPayload._NUMERIC_FIELDS),
+        *[(item, CarryRollDownItem._NUMERIC_FIELDS) for item in promoted["items"]],
+    ]:
+        for field, (unit, sign_aware) in field_map.items():
+            if field in value and value[field] is None:
+                value[field] = _numeric_dict(None, unit, sign_aware)
     p = CarryRollDownPayload.model_validate(promoted).model_dump(mode="json")
     return build_formal_result_envelope(
         result_meta=(
@@ -1154,13 +1556,69 @@ def carry_roll_down_envelope(*, report_date: str | None) -> dict[str, object]:
     )
 
 
+def _spread_curve_on_or_before(
+    curve_repo: YieldCurveRepository,
+    trade_date: str,
+) -> tuple[dict[str, Decimal], str | None]:
+    curve = curve_repo.fetch_curve(trade_date, "treasury")
+    if curve:
+        return curve, trade_date
+    fetch_latest = getattr(curve_repo, "fetch_latest_trade_date_on_or_before", None)
+    resolved_date = fetch_latest("treasury", trade_date) if fetch_latest else None
+    if not resolved_date or resolved_date >= trade_date:
+        return {}, None
+    curve = curve_repo.fetch_curve(resolved_date, "treasury")
+    return curve, resolved_date if curve else None
+
+
+def _promote_spread_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    promoted = _promote_payload_numerics(payload, SpreadAttributionPayload)
+    # Required Numeric fields keep a stable object shape even when no pair can be priced.
+    for field in ("total_treasury_effect", "total_spread_effect", "total_price_change"):
+        if promoted.get(field) is None:
+            promoted[field] = _numeric_dict(None, "yuan", True)
+    item_units: tuple[tuple[str, NumericUnit], ...] = (
+        ("treasury_effect", "yuan"), ("spread_effect", "yuan"),
+        ("total_price_effect", "yuan"), ("treasury_contribution_pct", "pct"),
+        ("spread_contribution_pct", "pct"),
+    )
+    for item in promoted.get("items", []):
+        for field, unit in item_units:
+            if item.get(field) is None:
+                item[field] = _numeric_dict(None, unit, True)
+    return promoted
+
+
 def spread_attribution_envelope(*, report_date: str | None, lookback_days: int = 30) -> dict[str, object]:
+    cache_key = _pnl_attribution_cache_key("spread_matched_positions_v2", report_date, lookback_days)
+    if cache_key is not None:
+        return _with_fresh_trace(
+            _PNL_ATTRIBUTION_CACHE.get_or_set(
+                cache_key,
+                lambda: _spread_attribution_envelope_uncached(
+                    report_date=report_date,
+                    lookback_days=lookback_days,
+                ),
+            )
+        )
+    return _spread_attribution_envelope_uncached(
+        report_date=report_date,
+        lookback_days=lookback_days,
+    )
+
+
+def _spread_attribution_envelope_uncached(
+    *,
+    report_date: str | None,
+    lookback_days: int,
+) -> dict[str, object]:
     bond = _bond_repo()
     curve = _curve_repo()
     dates = bond.list_report_dates()
-    if not dates:
+    rd = _resolve_bond_report_date(dates, report_date) if dates else None
+    if rd is None:
         payload = pa_wb.build_spread_attribution(
-            report_date="",
+            report_date=report_date or "",
             start_date="",
             end_date="",
             bond_rows_end=[],
@@ -1168,40 +1626,65 @@ def spread_attribution_envelope(*, report_date: str | None, lookback_days: int =
             treasury_10y_start_pct=None,
             treasury_10y_end_pct=None,
         )
-        promoted = _promote_payload_numerics(payload, SpreadAttributionPayload)
+        promoted = _promote_spread_payload(payload)
         p = SpreadAttributionPayload.model_validate(promoted).model_dump(mode="json")
         return build_formal_result_envelope(
-            result_meta=_meta_warn("pnl_attribution.spread"),
+            result_meta=_meta_warn(
+                "pnl_attribution.spread", requested_report_date=report_date,
+            ).model_copy(update={
+                "rule_version": "rv_pnl_attribution_spread_matched_v2",
+                "cache_version": "cv_pnl_attribution_spread_matched_v2",
+                "formal_use_allowed": False,
+            }),
             result_payload=_with_optional_warnings(p, warn=True),
         )
 
-    rd = _resolve_bond_report_date(dates, report_date)
     end_d = date.fromisoformat(rd)
     start_d = end_d - timedelta(days=max(1, lookback_days))
     start_iso = start_d.isoformat()
     rows_e = bond.fetch_bond_analytics_rows(report_date=rd) if rd in dates else []
     anchor = _anchor_on_or_before(dates, start_iso)
     rows_s = bond.fetch_bond_analytics_rows(report_date=anchor) if anchor else []
-    t_end = _treasury_10y(curve.fetch_curve(rd, "treasury"))
-    t_start = _treasury_10y(curve.fetch_curve(anchor, "treasury")) if anchor else None
+    curve_end, end_curve_date = _spread_curve_on_or_before(curve, rd)
+    curve_start, start_curve_date = (
+        _spread_curve_on_or_before(curve, anchor) if anchor else ({}, None)
+    )
+    fallback_date = (
+        start_curve_date
+        if start_curve_date is not None and start_curve_date != anchor
+        else end_curve_date if end_curve_date is not None and end_curve_date != rd else None
+    )
+    curve_fallback = fallback_date is not None
+    curve_missing = not curve_end or not curve_start
     payload = pa_wb.build_spread_attribution(
         report_date=rd,
         start_date=anchor or start_iso,
         end_date=rd,
         bond_rows_end=rows_e,
         bond_rows_start=rows_s,
-        treasury_10y_start_pct=t_start,
-        treasury_10y_end_pct=t_end,
+        treasury_10y_start_pct=_treasury_10y(curve_start),
+        treasury_10y_end_pct=_treasury_10y(curve_end),
+        treasury_curve_start=curve_start,
+        treasury_curve_end=curve_end,
     )
-    warn = not rows_e or not rows_s
+    warn = (
+        not rows_e
+        or not rows_s
+        or curve_fallback
+        or curve_missing
+        or _has_maturity_risk_exclusions(payload)
+        or payload["calculation_status"] != "complete"
+    )
     evidence_rows = len(rows_e) + len(rows_s)
-    filters = {
+    filters: dict[str, object] = {
         "requested_report_date": report_date,
         "resolved_report_date": rd,
         "start_date": anchor or start_iso,
+        "treasury_curve_start_date": start_curve_date,
+        "treasury_curve_end_date": end_curve_date,
         "lookback_days": lookback_days,
     }
-    promoted = _promote_payload_numerics(payload, SpreadAttributionPayload)
+    promoted = _promote_spread_payload(payload)
     p = SpreadAttributionPayload.model_validate(promoted).model_dump(mode="json")
     return build_formal_result_envelope(
         result_meta=(
@@ -1212,6 +1695,8 @@ def spread_attribution_envelope(*, report_date: str | None, lookback_days: int =
                 tables_used=TABLES_BOND_ANALYTICS,
                 evidence_rows=evidence_rows,
                 as_of_date=rd,
+                fallback_mode="latest_snapshot" if curve_fallback else "none",
+                fallback_date=fallback_date,
             )
             if warn
             else _meta_ok(
@@ -1222,7 +1707,10 @@ def spread_attribution_envelope(*, report_date: str | None, lookback_days: int =
                 evidence_rows=evidence_rows,
                 as_of_date=rd,
             )
-        ),
+        ).model_copy(update={
+            "rule_version": "rv_pnl_attribution_spread_matched_v2",
+            "cache_version": "cv_pnl_attribution_spread_matched_v2",
+        }),
         result_payload=_with_optional_warnings(
             p,
             warn=warn,
@@ -1231,35 +1719,83 @@ def spread_attribution_envelope(*, report_date: str | None, lookback_days: int =
     )
 
 
+def _serialize_krd_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Keep missing curve effects as explicit Numeric nulls at the API boundary."""
+    payload = dict(payload)
+    for key in ("total_duration_effect", "max_contribution_value"):
+        if payload.get(key) is None:
+            payload[key] = _numeric_dict(None, "yuan", True)
+    payload["buckets"] = [dict(bucket) for bucket in payload.get("buckets", [])]
+    for bucket in payload["buckets"]:
+        for key in ("duration_contribution", "contribution_pct"):
+            if bucket.get(key) is None:
+                unit, sign_aware = KRDAttributionBucket._NUMERIC_FIELDS[key]
+                bucket[key] = _numeric_dict(None, unit, sign_aware)
+    promoted = _promote_payload_numerics(payload, KRDAttributionPayload)
+    return KRDAttributionPayload.model_validate(promoted).model_dump(mode="json")
+
+
 def krd_attribution_envelope(*, report_date: str | None, lookback_days: int = 30) -> dict[str, object]:
+    cache_key = _pnl_attribution_cache_key("krd", report_date, lookback_days)
+    if cache_key is not None:
+        return _with_fresh_trace(
+            _PNL_ATTRIBUTION_CACHE.get_or_set(
+                cache_key,
+                lambda: _krd_attribution_envelope_uncached(
+                    report_date=report_date,
+                    lookback_days=lookback_days,
+                ),
+            )
+        )
+    return _krd_attribution_envelope_uncached(
+        report_date=report_date,
+        lookback_days=lookback_days,
+    )
+
+
+def _krd_attribution_envelope_uncached(
+    *,
+    report_date: str | None,
+    lookback_days: int,
+) -> dict[str, object]:
     bond = _bond_repo()
     curve = _curve_repo()
     dates = bond.list_report_dates()
-    if not dates:
+    rd = _resolve_bond_report_date(dates, report_date) if dates else None
+    if rd is None:
         payload = pa_wb.build_krd_attribution(
-            report_date="",
+            report_date=report_date or "",
             start_date="",
             end_date="",
             bond_rows_end=[],
             bond_rows_start=[],
             treasury_shift_bp=None,
         )
-        promoted = _promote_payload_numerics(payload, KRDAttributionPayload)
-        p = KRDAttributionPayload.model_validate(promoted).model_dump(mode="json")
+        p = _serialize_krd_payload(payload)
         return build_formal_result_envelope(
-            result_meta=_meta_warn("pnl_attribution.krd"),
+            result_meta=_meta_warn(
+                "pnl_attribution.krd", requested_report_date=report_date,
+            ).model_copy(update={"formal_use_allowed": False}),
             result_payload=_with_optional_warnings(p, warn=True),
         )
 
-    rd = _resolve_bond_report_date(dates, report_date)
     end_d = date.fromisoformat(rd)
     start_d = end_d - timedelta(days=max(1, lookback_days))
     anchor = _anchor_on_or_before(dates, start_d.isoformat())
     rows_e = bond.fetch_bond_analytics_rows(report_date=rd) if rd in dates else []
     rows_s = bond.fetch_bond_analytics_rows(report_date=anchor) if anchor else []
-    t_end = _treasury_10y(curve.fetch_curve(rd, "treasury"))
-    t_start = _treasury_10y(curve.fetch_curve(anchor, "treasury")) if anchor else None
+    t_end, end_curve_date = _treasury_10y_on_or_before(curve, rd)
+    t_start, start_curve_date = (
+        _treasury_10y_on_or_before(curve, anchor) if anchor else (None, None)
+    )
     shift_bp = ((t_end - t_start) * 100.0) if t_end is not None and t_start is not None else None
+    fallback_date = (
+        start_curve_date
+        if start_curve_date is not None and start_curve_date != anchor
+        else end_curve_date if end_curve_date is not None and end_curve_date != rd else None
+    )
+    curve_fallback = fallback_date is not None
+    curve_missing = t_end is None or t_start is None
     payload = pa_wb.build_krd_attribution(
         report_date=rd,
         start_date=anchor or start_d.isoformat(),
@@ -1268,16 +1804,32 @@ def krd_attribution_envelope(*, report_date: str | None, lookback_days: int = 30
         bond_rows_start=rows_s,
         treasury_shift_bp=shift_bp,
     )
-    warn = not rows_e or not rows_s
+    warn = (
+        not rows_e
+        or not rows_s
+        or curve_fallback
+        or curve_missing
+        or _has_maturity_risk_exclusions(payload)
+    )
     evidence_rows = len(rows_e) + len(rows_s)
-    filters = {
+    filters: dict[str, object] = {
         "requested_report_date": report_date,
         "resolved_report_date": rd,
         "start_date": anchor or start_d.isoformat(),
+        "treasury_curve_start_date": start_curve_date,
+        "treasury_curve_end_date": end_curve_date,
         "lookback_days": lookback_days,
     }
-    promoted = _promote_payload_numerics(payload, KRDAttributionPayload)
-    p = KRDAttributionPayload.model_validate(promoted).model_dump(mode="json")
+    if curve_missing:
+        missing_sides = []
+        if t_start is None:
+            missing_sides.append(f"期初（{anchor or start_d.isoformat()}）")
+        if t_end is None:
+            missing_sides.append(f"期末（{rd}）")
+        payload["warnings"] = [
+            f"缺少{'、'.join(missing_sides)}可用的 10Y 国债收益率；久期效应及贡献占比不可用，不能解读为零贡献。"
+        ]
+    p = _serialize_krd_payload(payload)
     return build_formal_result_envelope(
         result_meta=(
             _meta_warn(
@@ -1287,6 +1839,8 @@ def krd_attribution_envelope(*, report_date: str | None, lookback_days: int = 30
                 tables_used=TABLES_BOND_ANALYTICS,
                 evidence_rows=evidence_rows,
                 as_of_date=rd,
+                fallback_mode="latest_snapshot" if curve_fallback else "none",
+                fallback_date=fallback_date,
             )
             if warn
             else _meta_ok(
@@ -1297,7 +1851,7 @@ def krd_attribution_envelope(*, report_date: str | None, lookback_days: int = 30
                 evidence_rows=evidence_rows,
                 as_of_date=rd,
             )
-        ),
+        ).model_copy(update={"formal_use_allowed": payload["calculation_status"] != "unavailable"}),
         result_payload=_with_optional_warnings(
             p,
             warn=warn,
@@ -1307,6 +1861,18 @@ def krd_attribution_envelope(*, report_date: str | None, lookback_days: int = 30
 
 
 def advanced_attribution_summary_envelope(*, report_date: str | None) -> dict[str, object]:
+    cache_key = _pnl_attribution_cache_key("advanced_summary", report_date)
+    if cache_key is not None:
+        return _with_fresh_trace(
+            _PNL_ATTRIBUTION_CACHE.get_or_set(
+                cache_key,
+                lambda: _advanced_attribution_summary_envelope_uncached(report_date=report_date),
+            )
+        )
+    return _advanced_attribution_summary_envelope_uncached(report_date=report_date)
+
+
+def _advanced_attribution_summary_envelope_uncached(*, report_date: str | None) -> dict[str, object]:
     c = carry_roll_down_envelope(report_date=report_date)
     s = spread_attribution_envelope(report_date=report_date, lookback_days=30)
     k = krd_attribution_envelope(report_date=report_date, lookback_days=30)
@@ -1324,6 +1890,9 @@ def advanced_attribution_summary_envelope(*, report_date: str | None) -> dict[st
     payload["report_date"] = str(rd or payload["report_date"])
     warn = any(bool(dict(x.get("result") or {}).get("warnings")) for x in (c, s, k))
     promoted = _promote_payload_numerics(payload, AdvancedAttributionSummary)
+    for field, (unit, sign_aware) in AdvancedAttributionSummary._NUMERIC_FIELDS.items():
+        if promoted.get(field) is None:
+            promoted[field] = _numeric_dict(None, unit, sign_aware)
     p = AdvancedAttributionSummary.model_validate(promoted).model_dump(mode="json")
     tables_used = list(
         dict.fromkeys(
@@ -1341,7 +1910,7 @@ def advanced_attribution_summary_envelope(*, report_date: str | None) -> dict[st
         if version and str(version) != SOURCE_EMPTY
     ]
     evidence_rows = sum(int(meta.get("evidence_rows") or 0) for meta in child_metas)
-    filters = {
+    filters: dict[str, object] = {
         "requested_report_date": report_date,
         "resolved_report_date": rd or None,
         "components": ["carry_rolldown", "spread", "krd"],
@@ -1420,9 +1989,10 @@ def _core_campisi_result_to_path_a_payload(
     _share_eps = max(abs(total_mv), abs(tot_inc), abs(tot_t), abs(tot_s), abs(tot_sel)) * 1e-6
 
     def _share(part: float) -> float:
+        """Share of total_return as a decimal ratio (0.4 == 40%), never percent points."""
         if abs(total_return) <= _share_eps:
             return 0.0
-        return part / total_return * 100.0
+        return part / total_return
 
     items: list[dict[str, Any]] = []
     for b in result.by_asset_class or []:
@@ -1466,16 +2036,27 @@ def _core_campisi_result_to_path_a_payload(
         "total_treasury_effect": round(tot_t, 4),
         "total_spread_effect": round(tot_s, 4),
         "total_selection_effect": round(tot_sel, 4),
-        "income_contribution_pct": round(_share(tot_inc), 4),
-        "treasury_contribution_pct": round(_share(tot_t), 4),
-        "spread_contribution_pct": round(_share(tot_s), 4),
-        "selection_contribution_pct": round(_share(tot_sel), 4),
+        "income_contribution_pct": _ratio_pct_numeric(_share(tot_inc)),
+        "treasury_contribution_pct": _ratio_pct_numeric(_share(tot_t)),
+        "spread_contribution_pct": _ratio_pct_numeric(_share(tot_s)),
+        "selection_contribution_pct": _ratio_pct_numeric(_share(tot_sel)),
         "primary_driver": classify_primary_driver(tot_inc, tot_t, tot_s, tot_sel),
         "interpretation": "Campisi 四效应（单券级，AC 类仅票息）：收入、国债平移、信用利差、选券残差。",
         "items": items,
     }
     if result.diagnostics:
         payload["warnings"] = list(result.diagnostics)
+    availability = dict(getattr(result, "effect_availability", {}) or {})
+    if availability:
+        payload["effect_availability"] = availability
+    position_change = availability.get("position_change") or {}
+    if position_change.get("status") in {"partial", "unavailable"}:
+        payload["interpretation"] += " 持仓变动或本金缺失部分已排除，金额仅为可归因持仓小计。"
+    if position_change.get("status") == "unavailable":
+        for key, (unit, sign_aware) in CampisiAttributionPayload._NUMERIC_FIELDS.items():
+            if key != "total_market_value":
+                payload[key] = _numeric_dict(None, unit, sign_aware)
+        payload["primary_driver"] = "unknown"
     return payload
 
 
@@ -1485,19 +2066,51 @@ def campisi_attribution_envelope(
     end_date: str | None,
     lookback_days: int = 30,
 ) -> dict[str, object]:
+    cache_key = _pnl_attribution_cache_key(
+        "campisi",
+        start_date,
+        end_date,
+        lookback_days,
+    )
+    if cache_key is not None:
+        return _with_fresh_trace(
+            _PNL_ATTRIBUTION_CACHE.get_or_set(
+                cache_key,
+                lambda: _campisi_attribution_envelope_uncached(
+                    start_date=start_date,
+                    end_date=end_date,
+                    lookback_days=lookback_days,
+                ),
+            )
+        )
+    return _campisi_attribution_envelope_uncached(
+        start_date=start_date,
+        end_date=end_date,
+        lookback_days=lookback_days,
+    )
+
+
+def _campisi_attribution_envelope_uncached(
+    *,
+    start_date: str | None,
+    end_date: str | None,
+    lookback_days: int,
+) -> dict[str, object]:
     bond = _bond_repo()
     curve = _curve_repo()
     dates = bond.list_report_dates()
-    if not dates:
-        payload = _empty_path_a_payload("", "")
+    rd_end = _resolve_bond_report_date(dates, end_date) if dates else None
+    if rd_end is None:
+        payload = _empty_path_a_payload(start_date or "", end_date or "")
         promoted = _promote_payload_numerics(payload, CampisiAttributionPayload)
         p = CampisiAttributionPayload.model_validate(promoted).model_dump(mode="json")
         return build_formal_result_envelope(
-            result_meta=_meta_warn("pnl_attribution.campisi"),
+            result_meta=_meta_warn(
+                "pnl_attribution.campisi", requested_report_date=end_date,
+            ).model_copy(update={"formal_use_allowed": False}),
             result_payload=_with_optional_warnings(p, warn=True),
         )
 
-    rd_end = _resolve_bond_report_date(dates, end_date)
     if start_date:
         rd_start = start_date
     else:
@@ -1519,7 +2132,7 @@ def campisi_attribution_envelope(
     rows_end = bond.fetch_bond_analytics_rows(report_date=anchor_end)
     positions = merge_positions(rows_start, rows_end)
     evidence_rows = len(rows_start) + len(rows_end)
-    filters = {
+    filters: dict[str, object] = {
         "requested_start_date": start_date,
         "requested_end_date": end_date,
         "resolved_start_date": anchor_start,
@@ -1609,6 +2222,7 @@ def campisi_attribution_envelope(
     p = CampisiAttributionPayload.model_validate(promoted).model_dump(mode="json")
     if diagnostics:
         p["warnings"] = diagnostics
+    position_change = (getattr(result, "effect_availability", {}) or {}).get("position_change") or {}
     return build_formal_result_envelope(
         result_meta=(
             _meta_warn(
@@ -1628,7 +2242,9 @@ def campisi_attribution_envelope(
                 evidence_rows=evidence_rows,
                 as_of_date=anchor_end,
             )
-        ),
+        ).model_copy(update={
+            "formal_use_allowed": position_change.get("status") not in {"partial", "unavailable"}
+        }),
         result_payload=_with_optional_warnings(
             p,
             warn=warn,

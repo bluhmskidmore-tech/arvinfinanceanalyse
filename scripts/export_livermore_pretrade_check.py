@@ -3,16 +3,37 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import logging
+import shutil
 import sys
+import tempfile
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import SupportsFloat, SupportsIndex, SupportsInt
+
+import duckdb
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import duckdb
+from backend.app.core_finance.field_normalization import (  # noqa: E402
+    is_tradestatus_halted,
+)
+from backend.app.core_finance.livermore_stock_candidates import (  # noqa: E402
+    EXP3B_STOCK_CANDIDATE_POLICY,
+)
+from backend.app.repositories.choice_stock_units import (  # noqa: E402
+    amount_rmb_sql,
+    scale_unknown_sql,
+)
+from backend.app.repositories.duckdb_repo import read_only_connection  # noqa: E402
+from backend.app.services.pretrade_qualification import (  # noqa: E402
+    canonical_pretrade_export_projection_sha256,
+    qualify_pretrade_read_view,
+)
+
+logger = logging.getLogger(__name__)
 
 
 TABLE_HIST = "livermore_candidate_history"
@@ -27,7 +48,7 @@ DEFAULT_TOP_N = 10
 DEFAULT_MIN_AMOUNT = 0.0
 DEFAULT_MAX_SECTOR_WEIGHT = 0.30
 DEFAULT_STALE_CALENDAR_DAYS = 5
-_NORMAL_TRADE_STATUSES = {"1", "normal", "trade", "trading", "\u4ea4\u6613"}
+RULE_VERSION = "rv_livermore_pretrade_export_v1"
 _FALSE_FLAGS = {"", "0", "false", "n", "no", "\u5426"}
 _TRUE_FLAGS = {"1", "true", "y", "yes", "\u662f", "\u6da8\u505c", "\u8dcc\u505c"}
 
@@ -44,6 +65,7 @@ def export_livermore_pretrade_check(
     rerun_selection: bool = False,
     stock_candidate_policy: str | None = None,
     today: str | None = None,
+    qualification_evidence: object = None,
 ) -> dict[str, object]:
     resolved_path = _resolve_duckdb_path(duckdb_path)
     normalized_top_n = max(1, int(top_n))
@@ -59,33 +81,88 @@ def export_livermore_pretrade_check(
             stock_candidate_policy=stock_candidate_policy,
         )
 
-    conn = duckdb.connect(str(resolved_path), read_only=True)
-    try:
-        tables = _table_names(conn)
-        if TABLE_HIST not in tables:
-            raise ValueError(f"{TABLE_HIST} table not found.")
+    with read_only_connection(str(resolved_path)) as conn:
         resolved_as_of = _resolve_as_of_date(conn, as_of_date=as_of_date)
-        candidates = _load_candidates(conn, as_of_date=resolved_as_of)
-        if not candidates:
-            raise ValueError(f"No {SIGNAL_KIND} candidates found for {resolved_as_of}.")
-        top_rows = candidates[:normalized_top_n]
-        enriched_rows = _enrich_rows(
+        qualification = qualify_pretrade_read_view(
             conn,
-            tables=tables,
+            evidence=qualification_evidence,
+            target_date=resolved_as_of,
+            stock_candidate_policy=(
+                stock_candidate_policy or EXP3B_STOCK_CANDIDATE_POLICY
+            ),
+        )
+        if qualification["status"] == "unavailable":
+            raise ValueError(
+                "Completed pretrade provenance is unavailable: "
+                f"{qualification.get('reason')}"
+            )
+        payload = _build_livermore_pretrade_payload_from_connection(
+            conn,
             as_of_date=resolved_as_of,
-            rows=top_rows,
+            top_n=normalized_top_n,
             min_amount=float(min_amount),
-        )
-        freshness = _freshness_checks(
-            conn,
-            tables=tables,
-            as_of_date=resolved_as_of,
-            today=today,
+            max_sector_weight=float(max_sector_weight),
             stale_calendar_days=int(stale_calendar_days),
+            today=today,
+            rerun_result=rerun_result,
+            allow_empty=qualification["status"] == "ready_empty",
         )
-    finally:
-        conn.close()
+        payload["duckdb_path"] = str(resolved_path)
+        projection_sha256 = canonical_pretrade_export_projection_sha256(payload)
+        expected_projection_sha256 = _required_dict(qualification, "outputs")[
+            "pretrade_export_sha256"
+        ]
+        if projection_sha256 != expected_projection_sha256:
+            raise ValueError("Pretrade export projection differs from completed provenance")
+        payload["qualification"] = {
+            "status": qualification["status"],
+            "producer_run_id": qualification["producer_run_id"],
+            "evidence_sha256": qualification["evidence_sha256"],
+            "input_snapshot_sha256": _required_dict(qualification, "input_snapshot")["sha256"],
+            "projection_sha256": projection_sha256,
+        }
+    output_paths = _write_outputs(
+        output_dir=Path(output_dir),
+        as_of_date=resolved_as_of,
+        rows=_pretrade_rows(payload),
+        payload=payload,
+    )
+    return {**payload, "output_paths": output_paths}
 
+
+def _build_livermore_pretrade_payload_from_connection(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    as_of_date: str,
+    top_n: int,
+    min_amount: float,
+    max_sector_weight: float,
+    stale_calendar_days: int,
+    today: str | None,
+    rerun_result: dict[str, object] | None = None,
+    allow_empty: bool = False,
+) -> dict[str, object]:
+    tables = _table_names(conn)
+    if TABLE_HIST not in tables:
+        raise ValueError(f"{TABLE_HIST} table not found.")
+    candidates = _load_candidates(conn, as_of_date=as_of_date)
+    if not candidates and not allow_empty:
+        raise ValueError(f"No {SIGNAL_KIND} candidates found for {as_of_date}.")
+    normalized_top_n = max(1, int(top_n))
+    enriched_rows = _enrich_rows(
+        conn,
+        tables=tables,
+        as_of_date=as_of_date,
+        rows=candidates[:normalized_top_n],
+        min_amount=float(min_amount),
+    )
+    freshness = _freshness_checks(
+        conn,
+        tables=tables,
+        as_of_date=as_of_date,
+        today=today,
+        stale_calendar_days=int(stale_calendar_days),
+    )
     sector_distribution = _sector_distribution(enriched_rows)
     portfolio_flags = _portfolio_flags(
         enriched_rows,
@@ -93,38 +170,9 @@ def export_livermore_pretrade_check(
     )
     market_states = _distinct_values(candidates, "market_state")
     data_statuses = _distinct_values(candidates, "data_status")
-    decision = _execution_decision(
-        freshness=freshness,
-        rows=enriched_rows,
-        portfolio_flags=portfolio_flags,
-        market_states=market_states,
-        data_statuses=data_statuses,
-    )
-    output_paths = _write_outputs(
-        output_dir=Path(output_dir),
-        as_of_date=resolved_as_of,
-        rows=enriched_rows,
-        payload={
-            "status": "completed",
-            "duckdb_path": str(resolved_path),
-            "as_of_date": resolved_as_of,
-            "signal_kind": SIGNAL_KIND,
-            "candidate_count": len(candidates),
-            "top_n": normalized_top_n,
-            "market_states": market_states,
-            "data_statuses": data_statuses,
-            "freshness": freshness,
-            "sector_distribution": sector_distribution,
-            "portfolio_flags": portfolio_flags,
-            "decision": decision,
-            "rerun_result": rerun_result,
-            "rows": enriched_rows,
-        },
-    )
     return {
         "status": "completed",
-        "duckdb_path": str(resolved_path),
-        "as_of_date": resolved_as_of,
+        "as_of_date": as_of_date,
         "signal_kind": SIGNAL_KIND,
         "candidate_count": len(candidates),
         "top_n": normalized_top_n,
@@ -133,9 +181,18 @@ def export_livermore_pretrade_check(
         "freshness": freshness,
         "sector_distribution": sector_distribution,
         "portfolio_flags": portfolio_flags,
-        "decision": decision,
+        "decision": (
+            {"action": "no_candidates", "reasons": ["qualified candidate set is empty"]}
+            if not candidates
+            else _execution_decision(
+                freshness=freshness,
+                rows=enriched_rows,
+                portfolio_flags=portfolio_flags,
+                market_states=market_states,
+                data_statuses=data_statuses,
+            )
+        ),
         "rerun_result": rerun_result,
-        "output_paths": output_paths,
         "rows": enriched_rows,
     }
 
@@ -151,6 +208,13 @@ def _resolve_duckdb_path(path_value: str | Path) -> Path:
 
 def _table_names(conn: duckdb.DuckDBPyConnection) -> set[str]:
     return {str(row[0]) for row in conn.execute("show tables").fetchall()}
+
+
+def _table_columns(conn: duckdb.DuckDBPyConnection, table_name: str) -> set[str]:
+    return {
+        str(row[1]).lower()
+        for row in conn.execute(f"pragma table_info('{table_name}')").fetchall()
+    }
 
 
 def _resolve_as_of_date(conn: duckdb.DuckDBPyConnection, *, as_of_date: str | None) -> str:
@@ -280,10 +344,32 @@ def _load_daily_rows(
 ) -> dict[str, dict[str, object]]:
     if TABLE_DAILY not in tables or not codes:
         return {}
+    columns = _table_columns(conn, TABLE_DAILY)
+    has_vendor_version = "vendor_version" in columns
+    if not has_vendor_version:
+        logger.warning(
+            "%s missing vendor_version; pretrade amount cannot be scaled, "
+            "output as NULL (fail-closed); affected rows are liquidity-unknown",
+            TABLE_DAILY,
+        )
     placeholders = ",".join("?" for _ in codes)
+    # docs/data_contracts.md §4.10: --min-amount 与日成交额统一按人民币元比较;
+    # 缺 vendor_version 列时无法定标,fail-closed 输出 NULL(该行流动性判定为 missing_amount,
+    # 不参与 --min-amount 阈值比较,避免千元/元误判)。
+    amount_select = (
+        amount_rmb_sql(alias="amount")
+        if has_vendor_version
+        else "cast(null as double) as amount"
+    )
+    amount_unknown_select = (
+        scale_unknown_sql("amount", alias="_amount_scale_unknown")
+        if has_vendor_version
+        else "false as _amount_scale_unknown"
+    )
     rows = conn.execute(
         f"""
-        select stock_code, close_value, amount, turn, tradestatus, highlimit, lowlimit, pctchange, volume
+        select stock_code, close_value, {amount_select}, turn, tradestatus,
+               highlimit, lowlimit, pctchange, volume, {amount_unknown_select}
         from {TABLE_DAILY}
         where trade_date = ?
           and stock_code in ({placeholders})
@@ -300,8 +386,21 @@ def _load_daily_rows(
         "lowlimit",
         "pctchange",
         "volume",
+        "_amount_scale_unknown",
     ]
-    return {str(row[0]): dict(zip(keys, row)) for row in rows}
+    output: dict[str, dict[str, object]] = {}
+    unknown_amount_count = 0
+    for row in rows:
+        item = dict(zip(keys, row))
+        unknown_amount_count += int(bool(item.pop("_amount_scale_unknown", False)))
+        output[str(row[0])] = item
+    if unknown_amount_count:
+        logger.warning(
+            "%s has %d rows with amount but null vendor_version; normalized amount is null",
+            TABLE_DAILY,
+            unknown_amount_count,
+        )
+    return output
 
 
 def _load_limit_rows(
@@ -356,9 +455,12 @@ def _freshness_checks(
             if status == "missing":
                 blockers.append(f"{table_name} missing")
             continue
-        max_date, row_count = conn.execute(
+        fetched = conn.execute(
             f"select max({date_column}), count(*) from {table_name}"
         ).fetchone()
+        if fetched is None:
+            raise ValueError(f"Freshness query returned no row for {table_name}")
+        max_date, row_count = fetched
         max_text = str(max_date or "").strip()[:10] or None
         status = "ok"
         if table_name in {TABLE_DAILY, TABLE_FACTOR}:
@@ -419,7 +521,7 @@ def _portfolio_flags(rows: list[dict[str, object]], *, max_sector_weight: float)
     blocked_rows = [
         row
         for row in rows
-        if any(str(flag.get("severity") or "") == "block" for flag in row.get("risk_flags", []))
+        if any(str(flag.get("severity") or "") == "block" for flag in _risk_flags(row))
     ]
     if blocked_rows:
         flags.append(
@@ -442,7 +544,7 @@ def _execution_decision(
 ) -> dict[str, object]:
     reasons: list[str] = []
     if freshness.get("status") == "blocked":
-        reasons.extend(str(reason) for reason in freshness.get("blockers", []))
+        reasons.extend(str(reason) for reason in _required_list(freshness, "blockers"))
     if any(str(flag.get("severity") or "") == "block" for flag in portfolio_flags):
         reasons.append("blocked row-level checks present")
     if any(row.get("row_action") == "blocked" for row in rows):
@@ -459,7 +561,7 @@ def _execution_decision(
     if any(str(status or "").lower() == "pending" for status in data_statuses):
         reasons.append("forward return windows are pending")
     if freshness.get("status") == "warning":
-        reasons.extend(str(reason) for reason in freshness.get("warnings", []))
+        reasons.extend(str(reason) for reason in _required_list(freshness, "warnings"))
     if reasons:
         return {"action": "review_only", "reasons": reasons}
     return {"action": "ready_for_review", "reasons": ["pretrade checks passed for review export"]}
@@ -477,6 +579,10 @@ def _write_outputs(
     csv_path = output_dir / f"{base}.csv"
     json_path = output_dir / f"{base}.json"
     md_path = output_dir / f"{base}.md"
+    stage_dir = Path(tempfile.mkdtemp(prefix=f".{base}-", dir=output_dir))
+    stage_csv_path = stage_dir / csv_path.name
+    stage_json_path = stage_dir / json_path.name
+    stage_md_path = stage_dir / md_path.name
     csv_fields = [
         "rank",
         "stock_code",
@@ -494,36 +600,106 @@ def _write_outputs(
         "row_action",
         "risk_flags",
     ]
-    with csv_path.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=csv_fields)
-        writer.writeheader()
-        for row in rows:
-            record = {field: row.get(field) for field in csv_fields}
-            record["risk_flags"] = ";".join(str(flag["kind"]) for flag in row.get("risk_flags", []))
-            writer.writerow(record)
-    json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True, default=str), encoding="utf-8")
-    md_path.write_text(_markdown_summary(payload), encoding="utf-8")
+    destinations = (csv_path, json_path, md_path)
+    staged = (stage_csv_path, stage_json_path, stage_md_path)
+    backups: dict[Path, Path] = {}
+    try:
+        with stage_csv_path.open("w", encoding="utf-8-sig", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=csv_fields)
+            writer.writeheader()
+            for row in rows:
+                record = {field: row.get(field) for field in csv_fields}
+                record["risk_flags"] = ";".join(
+                    str(flag["kind"]) for flag in _risk_flags(row)
+                )
+                writer.writerow(record)
+        stage_json_path.write_text(
+            json.dumps(
+                payload,
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+                default=str,
+            ),
+            encoding="utf-8",
+        )
+        stage_md_path.write_text(_markdown_summary(payload), encoding="utf-8")
+        for destination in destinations:
+            if destination.exists():
+                backup = stage_dir / f"backup-{destination.name}"
+                destination.replace(backup)
+                backups[destination] = backup
+        try:
+            for staged_path, destination in zip(staged, destinations, strict=True):
+                staged_path.replace(destination)
+        except OSError:
+            for destination in destinations:
+                if destination.exists() and destination not in backups:
+                    destination.unlink()
+            for destination, backup in backups.items():
+                if destination.exists():
+                    destination.unlink()
+                backup.replace(destination)
+            raise
+    finally:
+        shutil.rmtree(stage_dir, ignore_errors=True)
     return {"csv": str(csv_path), "json": str(json_path), "summary": str(md_path)}
 
 
+def _required_dict(payload: dict[str, object], key: str) -> dict[str, object]:
+    value = payload.get(key)
+    if not isinstance(value, dict):
+        raise ValueError(f"pretrade {key} is missing or malformed")
+    return value
+
+
+def _required_list(payload: dict[str, object], key: str) -> list[object]:
+    value = payload.get(key)
+    if not isinstance(value, list):
+        raise ValueError(f"pretrade {key} is missing or malformed")
+    return value
+
+
+def _pretrade_rows(payload: dict[str, object]) -> list[dict[str, object]]:
+    rows = _required_list(payload, "rows")
+    if any(not isinstance(row, dict) for row in rows):
+        raise ValueError("pretrade rows are malformed")
+    return [row for row in rows if isinstance(row, dict)]
+
+
+def _risk_flags(row: dict[str, object]) -> list[dict[str, object]]:
+    flags = row.get("risk_flags", [])
+    if not isinstance(flags, list) or any(not isinstance(flag, dict) for flag in flags):
+        raise ValueError("pretrade risk flags are malformed")
+    return [flag for flag in flags if isinstance(flag, dict)]
+
+
+def _string_items(payload: dict[str, object], key: str) -> list[str]:
+    values = _required_list(payload, key)
+    if any(not isinstance(value, str) for value in values):
+        raise ValueError(f"pretrade {key} contains a non-text value")
+    return [value for value in values if isinstance(value, str)]
+
+
 def _markdown_summary(payload: dict[str, object]) -> str:
+    decision = _required_dict(payload, "decision")
     lines = [
         f"# Livermore pretrade check - {payload['as_of_date']}",
         "",
         f"- Signal kind: {payload['signal_kind']}",
         f"- Candidate count: {payload['candidate_count']}",
         f"- Exported top N: {payload['top_n']}",
-        f"- Market states: {', '.join(payload['market_states'])}",
-        f"- Data statuses: {', '.join(payload['data_statuses'])}",
-        f"- Decision: {payload['decision']['action']}",
+        f"- Market states: {', '.join(_string_items(payload, 'market_states'))}",
+        f"- Data statuses: {', '.join(_string_items(payload, 'data_statuses'))}",
+        f"- Decision: {decision['action']}",
         "",
         "## Decision Reasons",
     ]
-    for reason in payload["decision"].get("reasons", []):
+    for reason in _required_list(decision, "reasons"):
         lines.append(f"- {reason}")
     lines.extend(["", "## Top Candidates", "| Rank | Code | Name | Sector | Action | Flags |", "|---:|---|---|---|---|---|"])
-    for row in payload["rows"]:
-        flags = ", ".join(str(flag["kind"]) for flag in row.get("risk_flags", []))
+    for row in _pretrade_rows(payload):
+        flags = ", ".join(str(flag["kind"]) for flag in _risk_flags(row))
         lines.append(
             f"| {row.get('rank')} | {row.get('stock_code')} | {row.get('stock_name')} | "
             f"{row.get('sector_name') or ''} | {row.get('row_action')} | {flags} |"
@@ -605,17 +781,16 @@ def _truthy_flag(value: object) -> bool:
 
 
 def _is_suspended(trade_status: str) -> bool:
-    text = str(trade_status or "").strip().lower()
-    if not text or text in _NORMAL_TRADE_STATUSES:
-        return False
-    return "\u505c" in text or "suspend" in text or "halt" in text or text == "0"
+    # 共享互补口径：非空非可交易词值（"停牌一天"/"连续停牌"/"未上市"/未知值）
+    # 一律判停牌 block（fail-closed）；空串/正常交易/复牌不 block。
+    return is_tradestatus_halted(trade_status)
 
 
 def _optional_float(value: object) -> float | None:
     if value is None:
         return None
     try:
-        return float(value)
+        return float(value) if isinstance(value, (str, bytes, bytearray, SupportsFloat, SupportsIndex)) else None
     except (TypeError, ValueError):
         return None
 
@@ -624,7 +799,7 @@ def _optional_int(value: object) -> int | None:
     if value is None:
         return None
     try:
-        return int(value)
+        return int(value) if isinstance(value, (str, bytes, bytearray, SupportsInt, SupportsIndex)) else None
     except (TypeError, ValueError):
         return None
 
@@ -654,7 +829,15 @@ def main() -> int:
     parser.add_argument("--as-of-date")
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--top-n", type=int, default=DEFAULT_TOP_N)
-    parser.add_argument("--min-amount", type=float, default=DEFAULT_MIN_AMOUNT)
+    parser.add_argument(
+        "--min-amount",
+        type=float,
+        default=DEFAULT_MIN_AMOUNT,
+        help=(
+            "Minimum daily trading amount in RMB yuan (unit: CNY), compared against "
+            "vendor-normalized amount per docs/data_contracts.md §4.10."
+        ),
+    )
     parser.add_argument("--max-sector-weight", type=float, default=DEFAULT_MAX_SECTOR_WEIGHT)
     parser.add_argument("--stale-calendar-days", type=int, default=DEFAULT_STALE_CALENDAR_DAYS)
     parser.add_argument("--rerun-selection", action="store_true")
@@ -678,7 +861,8 @@ def main() -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
     print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True, default=str))
-    return 1 if result.get("decision", {}).get("action") == "blocked" else 0
+    decision = result.get("decision")
+    return 1 if isinstance(decision, dict) and decision.get("action") == "blocked" else 0
 
 
 if __name__ == "__main__":

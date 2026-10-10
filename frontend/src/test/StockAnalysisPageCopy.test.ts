@@ -52,13 +52,13 @@ describe("stockAnalysisPageCopy", () => {
 
     expect(stockSupplyQualityLabel("warning")).toBe("需复核");
     expect(stockSupplyQualityLabel("vendor_pending")).toBe("质量待确认");
-    expect(stockSupplyVendorLabel("degraded")).toBe("降级");
+    expect(stockSupplyVendorLabel("degraded")).toBe("部分缺失");
     expect(stockSupplyVendorLabel("vendor_unavailable")).toBe("异常");
-    expect(stockSupplyVendorLabel("vendor_stale")).toBe("陈旧");
+    expect(stockSupplyVendorLabel("vendor_stale")).toBe("数据延迟");
     expect(stockSupplyVendorLabel("vendor_pending")).toBe("供数待确认");
-    expect(stockSupplyFallbackLabel("none")).toBe("无回退");
-    expect(stockSupplyFallbackLabel("latest_snapshot")).toBe("回退快照");
-    expect(stockSupplyFallbackLabel("unknown")).toBe("回退待确认");
+    expect(stockSupplyFallbackLabel("none")).toBe("数据正常");
+    expect(stockSupplyFallbackLabel("latest_snapshot")).toBe("数据延迟");
+    expect(stockSupplyFallbackLabel("unknown")).toBe("待确认");
     expect(stockSupplyBasisLabel("analytical")).toBe("分析口径");
     expect(stockSupplyBasisLabel("formal")).toBe("正式口径");
     expect(stockSupplyBasisLabel("vendor_pending")).toBe("口径待确认");
@@ -161,12 +161,12 @@ describe("stockAnalysisPageCopy", () => {
     expect(kpiToneToDelta("negative")).toBe("down");
     expect(kpiToneToDelta("warning")).toBe("flat");
 
-    expect(filterChipClass(true)).toContain("border-primary-500");
-    expect(filterChipClass(false)).toContain("hover:bg-neutral-100");
-    expect(statusIconClass("warning")).toContain("text-warning-700");
-    expect(toneTextClass("negative")).toBe("text-danger-600");
-    expect(tonePillClass("positive")).toContain("bg-success-50");
-    expect(tonePillClass("unknown")).toContain("text-neutral-600");
+    expect(filterChipClass(true)).toContain("stock-analysis-page__filter-chip--active");
+    expect(filterChipClass(false)).toBe("stock-analysis-page__filter-chip");
+    expect(statusIconClass("warning")).toContain("stock-analysis-page__status-icon--warning");
+    expect(toneTextClass("negative")).toContain("stock-analysis-page__tone-text--negative");
+    expect(tonePillClass("positive")).toContain("stock-analysis-page__tone-pill--positive");
+    expect(tonePillClass("unknown")).toBe("stock-analysis-page__tone-pill");
   });
 
   it("localizes risk-exit rail status and blocker reasons without leaking technical source codes", () => {

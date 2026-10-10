@@ -7,6 +7,7 @@ from typing import Any
 
 import duckdb
 from backend.app.core_finance.liability_analytics_compat import to_float
+from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
 
 FORMAL_ZQTZ_YIELD_COLUMNS = {
     "report_date",
@@ -45,9 +46,10 @@ class LiabilityAnalyticsRepository:
     path: str
 
     def _connect(self) -> duckdb.DuckDBPyConnection | None:
-        if not Path(self.path).exists():
+        path = resolve_effective_read_path(self.path)
+        if not Path(path).exists():
             return None
-        return duckdb.connect(self.path, read_only=True)
+        return duckdb.connect(path, read_only=True)
 
     def _table_exists(self, conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
         row = conn.execute(
@@ -102,13 +104,48 @@ class LiabilityAnalyticsRepository:
             f"""
             select report_date, instrument_name, asset_class, bond_type, is_issuance_like,
                    face_value_native, market_value_native, amortized_cost_native,
-                   coupon_rate, ytm_value, source_version, rule_version
+                   coupon_rate, ytm_value, maturity_date, source_version, rule_version
             from zqtz_bond_daily_snapshot
             where report_date in ({placeholders})
             order by report_date desc
             """,
+            list(dates),
+        )
+
+    def _fetch_snapshot_zqtz_rows_for_dates(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        dates: list[str],
+    ) -> list[dict[str, Any]]:
+        if not dates or not self._table_exists(conn, "zqtz_bond_daily_snapshot"):
+            return []
+        placeholders = ", ".join(["?::date"] * len(dates))
+        return self._fetch_dict_rows(
+            conn,
+            f"""
+            select report_date, instrument_code, instrument_name, asset_class, bond_type, is_issuance_like,
+                   face_value_native, market_value_native, amortized_cost_native,
+                   coupon_rate, ytm_value, maturity_date, source_version, rule_version,
+                   cast(NULL as varchar) as asset_type
+            from zqtz_bond_daily_snapshot
+            where report_date in ({placeholders})
+            order by report_date desc, instrument_code
+            """,
             dates,
         )
+
+    def _fetch_zqtz_rows_for_dates_with_connection(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        dates: list[str],
+    ) -> dict[str, list[dict[str, Any]]]:
+        formal_rows = self._fetch_formal_zqtz_cny_yield_rows_for_dates(conn, dates)
+        rows_by_date = self._group_rows_by_report_date(formal_rows)
+        missing_dates = [d for d in dates if d not in rows_by_date]
+        if missing_dates:
+            snapshot_rows = self._fetch_snapshot_zqtz_rows_for_dates(conn, missing_dates)
+            rows_by_date.update(self._group_rows_by_report_date(snapshot_rows))
+        return rows_by_date
 
     def _fetch_formal_zqtz_cny_yield_rows_for_dates(
         self,
@@ -217,25 +254,7 @@ class LiabilityAnalyticsRepository:
             conn.close()
 
     def fetch_zqtz_rows(self, report_date: str) -> list[dict[str, Any]]:
-        conn = self._connect()
-        if conn is None:
-            return []
-        try:
-            if not self._table_exists(conn, "zqtz_bond_daily_snapshot"):
-                return []
-            return self._fetch_dict_rows(
-                conn,
-                """
-                select report_date, instrument_code, instrument_name, asset_class, bond_type, is_issuance_like,
-                       face_value_native, market_value_native, amortized_cost_native,
-                       coupon_rate, ytm_value, maturity_date, source_version, rule_version
-                from zqtz_bond_daily_snapshot
-                where report_date = ?::date
-                """,
-                [report_date],
-            )
-        finally:
-            conn.close()
+        return self.fetch_zqtz_rows_for_dates([report_date]).get(str(report_date).strip(), [])
 
     def fetch_zqtz_rows_for_dates(self, report_dates: list[str]) -> dict[str, list[dict[str, Any]]]:
         dates = [str(d).strip() for d in report_dates if str(d or "").strip()]
@@ -245,24 +264,9 @@ class LiabilityAnalyticsRepository:
         if conn is None:
             return {}
         try:
-            if not self._table_exists(conn, "zqtz_bond_daily_snapshot"):
-                return {}
-            placeholders = ", ".join(["?::date"] * len(dates))
-            rows = self._fetch_dict_rows(
-                conn,
-                f"""
-                select report_date, instrument_code, instrument_name, asset_class, bond_type, is_issuance_like,
-                       face_value_native, market_value_native, amortized_cost_native,
-                       coupon_rate, ytm_value, maturity_date, source_version, rule_version
-                from zqtz_bond_daily_snapshot
-                where report_date in ({placeholders})
-                order by report_date desc, instrument_code
-                """,
-                dates,
-            )
+            return self._fetch_zqtz_rows_for_dates_with_connection(conn, dates)
         finally:
             conn.close()
-        return self._group_rows_by_report_date(rows)
 
     def fetch_zqtz_yield_rows_for_dates(self, report_dates: list[str]) -> dict[str, list[dict[str, Any]]]:
         dates = [str(d).strip() for d in report_dates if str(d or "").strip()]
@@ -473,6 +477,8 @@ class LiabilityAnalyticsRepository:
         return payloads
 
     def fetch_yield_kpis_for_dates(self, report_dates: list[str]) -> dict[str, dict[str, Any]]:
+        # Python str.strip whitespace, including controls absent from SQL's default trim.
+        strip_characters = "\t\n\v\f\r\x1c\x1d\x1e\x1f \x85\xa0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000"
         dates = [str(d).strip() for d in report_dates if str(d or "").strip()]
         if not dates:
             return {}
@@ -532,14 +538,15 @@ class LiabilityAnalyticsRepository:
                            and maturity_date is not null
                            and coalesce(amount, 0) > 0
                            and asset_rate is not null
+                           and trim(coalesce(asset_class, ''), ?) <> ''
                            and instr(coalesce(asset_class, ''), ?) = 0
                            and (
                              invest_type_std in ('H', 'A')
                              or instr(coalesce(asset_class, ''), ?) > 0
                            )
                         then amount * case
-                          when asset_rate > 0.5 and asset_rate <= 100 then asset_rate / 100
-                          else asset_rate
+                          when asset_rate > 100 then asset_rate
+                          else asset_rate * cast(0.01 as decimal(3, 2))
                         end
                       else 0
                     end
@@ -550,6 +557,7 @@ class LiabilityAnalyticsRepository:
                            and maturity_date is not null
                            and coalesce(amount, 0) > 0
                            and asset_rate is not null
+                           and trim(coalesce(asset_class, ''), ?) <> ''
                            and instr(coalesce(asset_class, ''), ?) = 0
                            and (
                              invest_type_std in ('H', 'A')
@@ -565,8 +573,8 @@ class LiabilityAnalyticsRepository:
                            and coalesce(amount, 0) > 0
                            and liability_rate is not null
                         then amount * case
-                          when liability_rate > 0.5 and liability_rate <= 100 then liability_rate / 100
-                          else liability_rate
+                          when liability_rate > 100 then liability_rate
+                          else liability_rate * cast(0.01 as decimal(3, 2))
                         end
                       else 0
                     end
@@ -586,8 +594,8 @@ class LiabilityAnalyticsRepository:
                            and coalesce(ncd_amount, 0) > 0
                            and liability_rate is not null
                         then ncd_amount * case
-                          when liability_rate > 0.5 and liability_rate <= 100 then liability_rate / 100
-                          else liability_rate
+                          when liability_rate > 100 then liability_rate
+                          else liability_rate * cast(0.01 as decimal(3, 2))
                         end
                       else 0
                     end
@@ -691,8 +699,10 @@ class LiabilityAnalyticsRepository:
                     NCD_TEXT,
                     NCD_TEXT,
                     *dates,
+                    strip_characters,
                     TRADING_TEXT,
                     RECEIVABLE_INVESTMENT_TEXT,
+                    strip_characters,
                     TRADING_TEXT,
                     RECEIVABLE_INVESTMENT_TEXT,
                     *dates,
@@ -727,6 +737,124 @@ class LiabilityAnalyticsRepository:
         finally:
             conn.close()
 
+    def fetch_zqtz_liability_daily_totals_for_year(self, year: int) -> list[dict[str, Any]]:
+        """Return comparison-year issuance totals at daily grain.
+
+        MoM/YoY only needs the prior period's daily total and observed dates.  Keeping
+        that year at daily grain avoids materialising every historical instrument row.
+        The amount precedence matches ``zqtz_liability_amount``.
+        """
+        conn = self._connect()
+        if conn is None:
+            return []
+        try:
+            if not self._table_exists(conn, "zqtz_bond_daily_snapshot"):
+                return []
+            return self._fetch_dict_rows(
+                conn,
+                """
+                select
+                    report_date,
+                    sum(
+                        case
+                            when amortized_cost_native is not null then amortized_cost_native
+                            when market_value_native is not null then market_value_native
+                            else coalesce(face_value_native, 0)
+                        end
+                    ) as amortized_cost_native,
+                    string_agg(distinct source_version, '|') as source_version,
+                    string_agg(distinct rule_version, '|') as rule_version
+                from zqtz_bond_daily_snapshot
+                where report_date between ?::date and ?::date
+                  and coalesce(is_issuance_like, false)
+                group by report_date
+                order by report_date
+                """,
+                [f"{year:04d}-01-01", f"{year:04d}-12-31"],
+            )
+        finally:
+            conn.close()
+
+    def fetch_zqtz_liability_daily_summary_for_year(self, year: int) -> list[dict[str, Any]]:
+        """Return daily issuance scale and governed weighted-cost inputs."""
+        conn = self._connect()
+        if conn is None:
+            return []
+        try:
+            if not self._table_exists(conn, "zqtz_bond_daily_snapshot"):
+                return []
+            return self._fetch_dict_rows(
+                conn,
+                """
+                with prepared as (
+                  select
+                    report_date,
+                    case
+                      when amortized_cost_native is not null then amortized_cost_native
+                      when market_value_native is not null then market_value_native
+                      else coalesce(face_value_native, 0)
+                    end as liability_amount,
+                    coupon_rate,
+                    source_version,
+                    rule_version
+                  from zqtz_bond_daily_snapshot
+                  where report_date between ?::date and ?::date
+                    and coalesce(is_issuance_like, false)
+                )
+                select
+                  report_date,
+                  sum(liability_amount) as liability_amount,
+                  sum(
+                    case
+                      when liability_amount > 0 and coupon_rate is not null then
+                        liability_amount * case
+                          when coupon_rate > 100 then coupon_rate
+                          else coupon_rate * cast(0.01 as decimal(3, 2))
+                        end
+                      else 0
+                    end
+                  ) as weighted_cost_num,
+                  sum(
+                    case
+                      when liability_amount > 0 and coupon_rate is not null then liability_amount
+                      else 0
+                    end
+                  ) as weighted_cost_den,
+                  string_agg(distinct source_version, '|') as source_version,
+                  string_agg(distinct rule_version, '|') as rule_version
+                from prepared
+                group by report_date
+                order by report_date
+                """,
+                [f"{year:04d}-01-01", f"{year:04d}-12-31"],
+            )
+        finally:
+            conn.close()
+
+    def fetch_zqtz_liability_rows_for_month(self, month: str) -> list[dict[str, Any]]:
+        conn = self._connect()
+        if conn is None:
+            return []
+        try:
+            if not self._table_exists(conn, "zqtz_bond_daily_snapshot"):
+                return []
+            month_start = f"{month}-01"
+            return self._fetch_dict_rows(
+                conn,
+                """
+                select report_date, instrument_code, instrument_name, asset_class, bond_type,
+                       face_value_native, market_value_native, amortized_cost_native,
+                       coupon_rate, maturity_date, source_version, rule_version
+                from zqtz_bond_daily_snapshot
+                where report_date >= ?::date
+                  and report_date < (?::date + interval '1 month')
+                  and coalesce(is_issuance_like, false)
+                """,
+                [month_start, month_start],
+            )
+        finally:
+            conn.close()
+
     def fetch_tyw_liability_rows_for_year(self, year: int) -> list[dict[str, Any]]:
         conn = self._connect()
         if conn is None:
@@ -745,6 +873,106 @@ class LiabilityAnalyticsRepository:
                   and not ({IB_ASSET_PREDICATE})
                 """,
                 [f"{year:04d}-01-01", f"{year:04d}-12-31"],
+            )
+        finally:
+            conn.close()
+
+    def fetch_tyw_liability_daily_totals_for_year(self, year: int) -> list[dict[str, Any]]:
+        """Return comparison-year interbank-liability totals at daily grain."""
+        conn = self._connect()
+        if conn is None:
+            return []
+        try:
+            if not self._table_exists(conn, "tyw_interbank_daily_snapshot"):
+                return []
+            return self._fetch_dict_rows(
+                conn,
+                f"""
+                select
+                    report_date,
+                    sum(coalesce(principal_native, 0)) as principal_native,
+                    string_agg(distinct source_version, '|') as source_version,
+                    string_agg(distinct rule_version, '|') as rule_version
+                from tyw_interbank_daily_snapshot
+                where report_date between ?::date and ?::date
+                  and not ({IB_ASSET_PREDICATE})
+                group by report_date
+                order by report_date
+                """,
+                [f"{year:04d}-01-01", f"{year:04d}-12-31"],
+            )
+        finally:
+            conn.close()
+
+    def fetch_tyw_liability_daily_summary_for_year(self, year: int) -> list[dict[str, Any]]:
+        """Return daily interbank-liability scale and governed weighted-cost inputs."""
+        conn = self._connect()
+        if conn is None:
+            return []
+        try:
+            if not self._table_exists(conn, "tyw_interbank_daily_snapshot"):
+                return []
+            return self._fetch_dict_rows(
+                conn,
+                f"""
+                with prepared as (
+                  select
+                    report_date,
+                    coalesce(principal_native, 0) as liability_amount,
+                    funding_cost_rate,
+                    source_version,
+                    rule_version
+                  from tyw_interbank_daily_snapshot
+                  where report_date between ?::date and ?::date
+                    and not ({IB_ASSET_PREDICATE})
+                )
+                select
+                  report_date,
+                  sum(liability_amount) as liability_amount,
+                  sum(
+                    case
+                      when liability_amount > 0 and funding_cost_rate is not null then
+                        liability_amount * funding_cost_rate * cast(0.01 as decimal(3, 2))
+                      else 0
+                    end
+                  ) as weighted_cost_num,
+                  sum(
+                    case
+                      when liability_amount > 0 and funding_cost_rate is not null then liability_amount
+                      else 0
+                    end
+                  ) as weighted_cost_den,
+                  string_agg(distinct source_version, '|') as source_version,
+                  string_agg(distinct rule_version, '|') as rule_version
+                from prepared
+                group by report_date
+                order by report_date
+                """,
+                [f"{year:04d}-01-01", f"{year:04d}-12-31"],
+            )
+        finally:
+            conn.close()
+
+    def fetch_tyw_liability_rows_for_month(self, month: str) -> list[dict[str, Any]]:
+        conn = self._connect()
+        if conn is None:
+            return []
+        try:
+            if not self._table_exists(conn, "tyw_interbank_daily_snapshot"):
+                return []
+            month_start = f"{month}-01"
+            return self._fetch_dict_rows(
+                conn,
+                f"""
+                select report_date, position_id, product_type, position_side, counterparty_name,
+                       core_customer_type, principal_native, funding_cost_rate, maturity_date,
+                       source_version, rule_version
+                from tyw_interbank_daily_snapshot
+                where report_date >= ?::date
+                  and report_date < (?::date + interval '1 month')
+                  and not ({IB_ASSET_PREDICATE})
+                """,
+                [month_start, month_start],
             )
         finally:
             conn.close()

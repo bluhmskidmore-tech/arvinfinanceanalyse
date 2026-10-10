@@ -1,4 +1,8 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, it, expect } from "vitest";
+import { designTokens } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 import {
   buildCorrelationMatrix,
   correlationColor,
@@ -10,6 +14,9 @@ import {
   detectVolatilityClustering,
   computeEquityBondERP,
   buildDriverWaterfall,
+  EQUITY_BOND_SPREAD_NARROW_MAX_PCT,
+  EQUITY_BOND_SPREAD_WIDE_MIN_PCT,
+  ERP_DISPLAY_CALIBER_LABEL,
   TREND_GROUPS,
   trendGroupLabels,
 } from "../lib/crossAssetAnalytics";
@@ -38,17 +45,55 @@ function makeKpi(
   };
 }
 
+function makeDatedKpi(
+  key: string,
+  label: string,
+  points: Array<{ tradeDate: string; value: number }>,
+): ResolvedCrossAssetKpi {
+  return {
+    ...makeKpi(
+      key,
+      label,
+      points.map((point) => point.value),
+    ),
+    sparklinePoints: points,
+  };
+}
+
 describe("buildCorrelationMatrix", () => {
   it("returns empty matrix if fewer than 2 eligible kpis", () => {
-    const result = buildCorrelationMatrix([makeKpi("a", "A", [1, 2])]);
+    const result = buildCorrelationMatrix([
+      makeDatedKpi("a", "A", [
+        { tradeDate: "2026-04-01", value: 1 },
+        { tradeDate: "2026-04-02", value: 2 },
+      ]),
+    ]);
     expect(result.keys.length).toBe(0); // < 5 points → not eligible
   });
 
   it("computes NxN matrix for eligible kpis", () => {
     const kpis = [
-      makeKpi("a", "A", [1, 2, 3, 4, 5]),
-      makeKpi("b", "B", [2, 4, 6, 8, 10]),
-      makeKpi("c", "C", [5, 4, 3, 2, 1]),
+      makeDatedKpi("a", "A", [
+        { tradeDate: "2026-04-01", value: 1 },
+        { tradeDate: "2026-04-02", value: 2 },
+        { tradeDate: "2026-04-03", value: 3 },
+        { tradeDate: "2026-04-04", value: 4 },
+        { tradeDate: "2026-04-05", value: 5 },
+      ]),
+      makeDatedKpi("b", "B", [
+        { tradeDate: "2026-04-01", value: 2 },
+        { tradeDate: "2026-04-02", value: 4 },
+        { tradeDate: "2026-04-03", value: 6 },
+        { tradeDate: "2026-04-04", value: 8 },
+        { tradeDate: "2026-04-05", value: 10 },
+      ]),
+      makeDatedKpi("c", "C", [
+        { tradeDate: "2026-04-01", value: 5 },
+        { tradeDate: "2026-04-02", value: 4 },
+        { tradeDate: "2026-04-03", value: 3 },
+        { tradeDate: "2026-04-04", value: 2 },
+        { tradeDate: "2026-04-05", value: 1 },
+      ]),
     ];
     const m = buildCorrelationMatrix(kpis);
     expect(m.keys).toEqual(["a", "b", "c"]);
@@ -60,6 +105,89 @@ describe("buildCorrelationMatrix", () => {
     expect(m.cells[0][1].value).toBeCloseTo(1, 4);
     // A and C are perfectly anti-correlated
     expect(m.cells[0][2].value).toBeCloseTo(-1, 4);
+  });
+
+  it("excludes the zero-centered financial-conditions score from asset correlations", () => {
+    const matrix = buildCorrelationMatrix([
+      makeDatedKpi("financial_conditions", "金融条件指数", [
+        { tradeDate: "2026-04-01", value: -1.2 },
+        { tradeDate: "2026-04-02", value: -0.8 },
+        { tradeDate: "2026-04-03", value: -0.2 },
+        { tradeDate: "2026-04-04", value: 0.1 },
+        { tradeDate: "2026-04-05", value: -0.4 },
+      ]),
+      makeDatedKpi("csi300", "沪深300", [
+        { tradeDate: "2026-04-01", value: 3800 },
+        { tradeDate: "2026-04-02", value: 3820 },
+        { tradeDate: "2026-04-03", value: 3810 },
+        { tradeDate: "2026-04-04", value: 3840 },
+        { tradeDate: "2026-04-05", value: 3860 },
+      ]),
+      makeDatedKpi("cn_gov_10y", "10Y国债", [
+        { tradeDate: "2026-04-01", value: 2.1 },
+        { tradeDate: "2026-04-02", value: 2.08 },
+        { tradeDate: "2026-04-03", value: 2.09 },
+        { tradeDate: "2026-04-04", value: 2.05 },
+        { tradeDate: "2026-04-05", value: 2.04 },
+      ]),
+    ]);
+
+    expect(matrix.keys).toEqual(["csi300", "cn_gov_10y"]);
+  });
+
+  it("aligns each pair by common trade dates instead of sparkline positions", () => {
+    const matrix = buildCorrelationMatrix([
+      makeDatedKpi("cn_gov_10y", "10Y CN gov", [
+        { tradeDate: "2026-04-01", value: 1 },
+        { tradeDate: "2026-04-02", value: 100 },
+        { tradeDate: "2026-04-04", value: 2 },
+        { tradeDate: "2026-04-05", value: 3 },
+        { tradeDate: "2026-04-06", value: 4 },
+        { tradeDate: "2026-04-07", value: 5 },
+      ]),
+      makeDatedKpi("brent", "Brent", [
+        { tradeDate: "2026-04-01", value: 1 },
+        { tradeDate: "2026-04-03", value: -100 },
+        { tradeDate: "2026-04-04", value: 2 },
+        { tradeDate: "2026-04-05", value: 3 },
+        { tradeDate: "2026-04-06", value: 4 },
+        { tradeDate: "2026-04-07", value: 5 },
+      ]),
+    ]);
+
+    expect(matrix.cells[0][1].value).toBeCloseTo(1, 8);
+  });
+
+  it("does not emit cross-series correlations when dated observations are unavailable", () => {
+    const matrix = buildCorrelationMatrix([
+      makeKpi("cn_gov_10y", "10Y CN gov", [1, 2, 3, 4, 5]),
+      makeKpi("brent", "Brent", [2, 4, 6, 8, 10]),
+    ]);
+
+    expect(matrix.keys).toEqual([]);
+    expect(matrix.cells).toEqual([]);
+  });
+
+  it("returns an unavailable cell when a pair has fewer than five common trade dates", () => {
+    const matrix = buildCorrelationMatrix([
+      makeDatedKpi("cn_gov_10y", "10Y CN gov", [
+        { tradeDate: "2026-04-01", value: 1 },
+        { tradeDate: "2026-04-02", value: 2 },
+        { tradeDate: "2026-04-03", value: 3 },
+        { tradeDate: "2026-04-04", value: 4 },
+        { tradeDate: "2026-04-05", value: 5 },
+      ]),
+      makeDatedKpi("brent", "Brent", [
+        { tradeDate: "2026-04-02", value: 2 },
+        { tradeDate: "2026-04-03", value: 3 },
+        { tradeDate: "2026-04-04", value: 4 },
+        { tradeDate: "2026-04-05", value: 5 },
+        { tradeDate: "2026-04-06", value: 6 },
+      ]),
+    ]);
+
+    expect(matrix.keys).toEqual(["cn_gov_10y", "brent"]);
+    expect(matrix.cells[0][1].value).toBeNull();
   });
 });
 
@@ -77,7 +205,7 @@ describe("correlationColor", () => {
 
 describe("formatCorrelation", () => {
   it("formats null as dash", () => {
-    expect(formatCorrelation(null)).toBe("—");
+    expect(formatCorrelation(null)).toBe(EM_DASH);
   });
   it("formats number to 2 decimals", () => {
     expect(formatCorrelation(0.456)).toBe("0.46");
@@ -88,7 +216,7 @@ describe("identifyMarketRegime", () => {
   it("identifies risk-on when equity rising and bond yield not falling", () => {
     const kpis = [
       makeKpi("cn_gov_10y", "10Y国债", [1.9, 1.91, 1.92, 1.93, 1.95, 1.96, 1.97, 1.98, 1.99, 2.0]),
-      makeKpi("financial_conditions", "沪深300", [3800, 3820, 3850, 3870, 3900, 3920, 3950, 3980, 4000, 4050]),
+      makeKpi("csi300", "沪深300", [3800, 3820, 3850, 3870, 3900, 3920, 3950, 3980, 4000, 4050]),
       makeKpi("money_market_7d", "DR007", [1.8, 1.8, 1.81, 1.81, 1.82, 1.82, 1.82, 1.83, 1.83, 1.83]),
       makeKpi("brent", "布油", [65, 65, 66, 66, 66, 66, 66, 66, 66, 66], { format: "plain" }),
       makeKpi("steel", "钢", [3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600, 3600], { format: "plain" }),
@@ -100,7 +228,7 @@ describe("identifyMarketRegime", () => {
   it("identifies risk-off when equity falling and bond yield falling", () => {
     const kpis = [
       makeKpi("cn_gov_10y", "10Y国债", [2.0, 1.98, 1.96, 1.93, 1.90]),
-      makeKpi("financial_conditions", "沪深300", [4000, 3950, 3900, 3850, 3800]),
+      makeKpi("csi300", "沪深300", [4000, 3950, 3900, 3850, 3800]),
       makeKpi("money_market_7d", "DR007", [1.8, 1.8, 1.8, 1.8, 1.8]),
       makeKpi("brent", "布油", [65, 65, 65, 65, 65], { format: "plain" }),
       makeKpi("steel", "钢", [3600, 3600, 3600, 3600, 3600], { format: "plain" }),
@@ -112,7 +240,7 @@ describe("identifyMarketRegime", () => {
   it("returns mixed for unclear signals", () => {
     const kpis = [
       makeKpi("cn_gov_10y", "10Y国债", [2.0, 2.0, 2.0, 2.0, 2.0]),
-      makeKpi("financial_conditions", "沪深300", [4000, 4000, 4000, 4000, 4000]),
+      makeKpi("csi300", "沪深300", [4000, 4000, 4000, 4000, 4000]),
       makeKpi("money_market_7d", "DR007", [1.8, 1.8, 1.8, 1.8, 1.8]),
       makeKpi("brent", "布油", [65, 65, 65, 65, 65], { format: "plain" }),
       makeKpi("steel", "钢", [3600, 3600, 3600, 3600, 3600], { format: "plain" }),
@@ -179,6 +307,15 @@ describe("buildMomentumScoreboard", () => {
     expect(rows[0].chg1d).not.toBeNull();
     expect(rows[1].direction).toBe("down");
   });
+
+  it("does not calculate percentage momentum for the financial-conditions score", () => {
+    const rows = buildMomentumScoreboard([
+      makeKpi("financial_conditions", "金融条件指数", [-1.2, -0.8, -0.2, 0.1, -0.4]),
+      makeKpi("csi300", "沪深300", [3800, 3820, 3810, 3840, 3860]),
+    ]);
+
+    expect(rows.map((row) => row.key)).toEqual(["csi300"]);
+  });
 });
 
 describe("TREND_GROUPS", () => {
@@ -226,36 +363,171 @@ describe("detectVolatilityClustering", () => {
     const alert = detectVolatilityClustering(kpis);
     expect(alert.clusterCount).toBeGreaterThan(0);
   });
+
+  it("does not classify financial-conditions score changes as asset volatility", () => {
+    const alert = detectVolatilityClustering([
+      makeKpi("financial_conditions", "金融条件指数", [-1, -0.8, -0.5, -0.1, 0.2, -0.2, -0.6, -1.1]),
+      makeKpi("csi300", "沪深300", [3800, 3810, 3820, 3815, 3830, 3840, 3850, 3860]),
+    ]);
+
+    expect(alert.assets.map((asset) => asset.key)).toEqual(["csi300"]);
+  });
 });
 
 describe("computeEquityBondERP", () => {
+  /** 直接构造目标 ERP：盈利收益率 = 10Y + target，PE = 100 / 盈利收益率。 */
+  function erpKpis(targetErpPct: number, bondYieldPct = 2.5) {
+    const earningsYieldPct = bondYieldPct + targetErpPct;
+    return [
+      makeKpi("csi300_pe", "沪深300PE", [100 / earningsYieldPct], { format: "index" }),
+      makeKpi("cn_gov_10y", "10Y国债", [bondYieldPct]),
+    ];
+  }
+
   it("returns unavailable when PE or bond data missing", () => {
-    const kpis = [makeKpi("other", "Other", [1, 2, 3])];
-    const erp = computeEquityBondERP(kpis);
+    const erp = computeEquityBondERP([makeKpi("other", "Other", [1, 2, 3])]);
+    expect(erp.available).toBe(false);
+    expect(erp.verdict).toBe("unavailable");
+    expect(erp.erpPct).toBeNull();
+    expect(erp.earningsYieldPct).toBeNull();
+    expect(erp.bondYieldPct).toBeNull();
+    expect(erp.caliberLabel).toBe(ERP_DISPLAY_CALIBER_LABEL);
+  });
+
+  it("returns unavailable when the PE or bond sparkline has no observation", () => {
+    const erp = computeEquityBondERP([
+      makeKpi("csi300_pe", "沪深300PE", [], { format: "index" }),
+      makeKpi("cn_gov_10y", "10Y国债", []),
+    ]);
     expect(erp.available).toBe(false);
     expect(erp.verdict).toBe("unavailable");
   });
 
-  it("computes equity_cheap when PE is low", () => {
-    const kpis = [
-      makeKpi("csi300_pe", "沪深300PE", [10, 10, 10, 10, 10], { format: "index" }), // 1/10 = 10%
-      makeKpi("cn_gov_10y", "10Y国债", [2.5, 2.5, 2.5, 2.5, 2.5]),                // 2.5%
-    ];
-    const erp = computeEquityBondERP(kpis);
-    expect(erp.available).toBe(true);
-    expect(erp.erpPct).toBeCloseTo(7.5, 1); // 10% - 2.5% = 7.5%
-    expect(erp.verdict).toBe("equity_cheap");
+  it("returns unavailable when PE is non-positive", () => {
+    const erp = computeEquityBondERP([
+      makeKpi("csi300_pe", "沪深300PE", [0], { format: "index" }),
+      makeKpi("cn_gov_10y", "10Y国债", [2.5]),
+    ]);
+    expect(erp.available).toBe(false);
+    expect(erp.verdict).toBe("unavailable");
   });
 
-  it("computes equity_expensive when PE is high", () => {
-    const kpis = [
-      makeKpi("csi300_pe", "沪深300PE", [50, 50, 50, 50, 50], { format: "index" }), // 1/50 = 2%
-      makeKpi("cn_gov_10y", "10Y国债", [2.5, 2.5, 2.5, 2.5, 2.5]),                // 2.5%
-    ];
-    const erp = computeEquityBondERP(kpis);
-    expect(erp.available).toBe(true);
-    expect(erp.erpPct).toBeCloseTo(-0.5, 1); // 2% - 2.5% = -0.5%
-    expect(erp.verdict).toBe("equity_expensive");
+  it("computes equity_cheap at and above the backend wide-spread edge", () => {
+    const atEdge = computeEquityBondERP(erpKpis(EQUITY_BOND_SPREAD_WIDE_MIN_PCT));
+    expect(atEdge.available).toBe(true);
+    expect(atEdge.erpPct).toBeCloseTo(EQUITY_BOND_SPREAD_WIDE_MIN_PCT, 10);
+    expect(atEdge.verdict).toBe("equity_cheap");
+    expect(atEdge.caliberLabel).toBe(ERP_DISPLAY_CALIBER_LABEL);
+
+    const aboveEdge = computeEquityBondERP(erpKpis(EQUITY_BOND_SPREAD_WIDE_MIN_PCT + 3.5));
+    expect(aboveEdge.verdict).toBe("equity_cheap");
+  });
+
+  it("computes equity_expensive at and below the backend narrow-spread edge", () => {
+    const atEdge = computeEquityBondERP(erpKpis(EQUITY_BOND_SPREAD_NARROW_MAX_PCT));
+    expect(atEdge.available).toBe(true);
+    expect(atEdge.erpPct).toBeCloseTo(EQUITY_BOND_SPREAD_NARROW_MAX_PCT, 10);
+    expect(atEdge.verdict).toBe("equity_expensive");
+
+    const belowEdge = computeEquityBondERP(erpKpis(-0.5));
+    expect(belowEdge.erpPct).toBeCloseTo(-0.5, 10);
+    expect(belowEdge.verdict).toBe("equity_expensive");
+  });
+
+  it("treats the 2.75–4.0 middle band as neutral instead of the retired 1–3 band", () => {
+    for (const target of [2.8, 3.0, 3.5, 3.99]) {
+      const erp = computeEquityBondERP(erpKpis(target));
+      expect(erp.verdict, `ERP ${target}`).toBe("neutral");
+      expect(erp.verdictLabel).toBe("中性均衡");
+    }
+  });
+
+  it("keeps equity-side wording out of the governed transmission-axis vocabulary", () => {
+    // §14.6.1 B：`supportive` / `restrictive` 仅保留给受治理的传导轴输出。
+    for (const target of [5, 3.2, 1]) {
+      const erp = computeEquityBondERP(erpKpis(target));
+      expect(erp.verdictLabel).not.toMatch(/supportive|restrictive|支撑|压制/);
+      expect(erp.verdictDescription).not.toMatch(/supportive|restrictive/);
+    }
+  });
+});
+
+describe("equity-bond spread thresholds stay bound to core_finance", () => {
+  const backendSource = readFileSync(
+    resolve(process.cwd(), "../backend/app/core_finance/macro_bond_linkage.py"),
+    "utf8",
+  );
+
+  type BackendSpreadRule = {
+    stance: string;
+    spreadMin: number | null;
+    spreadMax: number | null;
+  };
+
+  function parseEquityBondSpreadRules(source: string): BackendSpreadRule[] {
+    const block = /EQUITY_BOND_SPREAD_RULES[^=]*=\s*\(([\s\S]*?)\n\)\n/.exec(source);
+    if (!block) {
+      throw new Error(
+        "未能在 backend/app/core_finance/macro_bond_linkage.py 中定位 EQUITY_BOND_SPREAD_RULES；后端结构变更时请同步本护栏。",
+      );
+    }
+    const entries = [...block[1].matchAll(/EquityBondSpreadRule\(([\s\S]*?)\n {4}\)/g)];
+    return entries.map((entry) => {
+      const body = entry[1];
+      const stance = /stance="([a-z_]+)"/.exec(body)?.[1];
+      if (!stance) {
+        throw new Error(`EquityBondSpreadRule 缺少 stance：${body}`);
+      }
+      const spreadMin = /spread_min=(-?\d+(?:\.\d+)?)/.exec(body)?.[1];
+      const spreadMax = /spread_max=(-?\d+(?:\.\d+)?)/.exec(body)?.[1];
+      return {
+        stance,
+        spreadMin: spreadMin == null ? null : Number(spreadMin),
+        spreadMax: spreadMax == null ? null : Number(spreadMax),
+      };
+    });
+  }
+
+  const rules = parseEquityBondSpreadRules(backendSource);
+
+  it("binds the frontend wide-spread edge to the least-restrictive backend spread_min", () => {
+    // 只锁前端实际镜像的边：不锁规则条数、顺序或 stance 命名，后端新增规则/调整顺序
+    // /单条规则用不同阈值都不应误报，只要前端边界仍等于后端所有 spread_min 的最小值。
+    const spreadMins = rules
+      .map((rule) => rule.spreadMin)
+      .filter((value): value is number => value != null);
+    expect(spreadMins.length).toBeGreaterThan(0);
+    expect(Math.min(...spreadMins)).toBe(EQUITY_BOND_SPREAD_WIDE_MIN_PCT);
+  });
+
+  it("binds the frontend narrow-spread edge to the least-restrictive backend spread_max", () => {
+    const spreadMaxes = rules
+      .map((rule) => rule.spreadMax)
+      .filter((value): value is number => value != null);
+    expect(spreadMaxes.length).toBeGreaterThan(0);
+    expect(Math.max(...spreadMaxes)).toBe(EQUITY_BOND_SPREAD_NARROW_MAX_PCT);
+  });
+
+  it("keeps the neutral middle band non-empty", () => {
+    expect(EQUITY_BOND_SPREAD_NARROW_MAX_PCT).toBeLessThan(EQUITY_BOND_SPREAD_WIDE_MIN_PCT);
+  });
+
+  it("keeps the backend spread_min/spread_max comparison direction inclusive at the mirrored edge", () => {
+    // 语义依赖：前端 `erp >= WIDE_MIN_PCT` 判 equity_cheap、`erp <= NARROW_MAX_PCT` 判
+    // equity_expensive（含等号命中），这要求后端 `_match_equity_bond_spread_rule` 用 `<`
+    // （非 `<=`）判 spread_min 未达标而跳过、用 `>`（非 `>=`）判 spread_max 超标而跳过——
+    // 即 spread_pct 恰好等于边界值时"不跳过"（命中该规则）。若后端把比较符改成
+    // `<=`/`>=`，前端边界值会从"命中"变成"跳过"，此处解析比较符方向作锁定；
+    // 前端边界含等号的行为已由 `computeEquityBondERP` 的
+    // "computes equity_cheap at and above ..." / "computes equity_expensive at and below ..."
+    // 两条用例通过数值断言锁定。
+    const fnBody = /def _match_equity_bond_spread_rule\([\s\S]*?\n\n\ndef /.exec(backendSource)?.[0];
+    expect(
+      fnBody,
+      "未能在 backend/app/core_finance/macro_bond_linkage.py 中定位 _match_equity_bond_spread_rule；后端结构变更时请同步本护栏。",
+    ).toBeDefined();
+    expect(fnBody).toMatch(/spread_pct\s*<\s*rule\.spread_min/);
+    expect(fnBody).toMatch(/spread_pct\s*>\s*rule\.spread_max/);
   });
 });
 
@@ -280,7 +552,7 @@ describe("buildDriverWaterfall", () => {
   });
 
   it("renders backend contribution polarity without recalculating raw macro scores", () => {
-    const bars = buildDriverWaterfall({
+    const envWithRawScores = {
       liquidity_score: 0.2,
       rate_direction_score: 0.2,
       composite_contributions: [
@@ -289,11 +561,12 @@ describe("buildDriverWaterfall", () => {
         { component: "growth", signed_contribution: 0 },
       ],
       composite_score: 0.02,
-    } as Parameters<typeof buildDriverWaterfall>[0] & { liquidity_score: number; rate_direction_score: number });
+    };
+    const bars = buildDriverWaterfall(envWithRawScores);
     expect(bars[0].key).toBe("liquidity");
     expect(bars[0].value).toBe(-0.06);
     expect(bars[0].color).toBe("#16a34a"); // liquidity easing pulls restrictive composite down
-    expect(bars[1].color).toBe("#dc2626"); // positive contribution is bond-unfavorable
-    expect(bars[2].color).toBe("#94a3b8"); // neutral
+    expect(bars[1].color).toBe(designTokens.color.danger[600]); // positive contribution is bond-unfavorable
+    expect(bars[2].color).toBe(designTokens.color.cockpit.ink450); // neutral
   });
 });

@@ -12,7 +12,10 @@ from backend.app.services import executive_service as es
 
 
 @pytest.fixture(autouse=True)
-def _reset_cache():
+def _reset_cache(monkeypatch: pytest.MonkeyPatch):
+    # Keep cache tests independent from the protected developer database. The
+    # tests below exercise fallback builders and cache behavior explicitly.
+    monkeypatch.setattr(es, "_fetch_product_category_home_headline_values", lambda *_a, **_k: {})
     es.invalidate_home_snapshot_cache()
     yield
     es.invalidate_home_snapshot_cache()
@@ -347,6 +350,47 @@ def test_home_snapshot_cache_invalidates_when_governance_manifest_changes(
     assert mock_compute.call_count == 2
     assert first["result"]["tag"] == "v1"
     assert second["result"]["tag"] == "v2"
+
+
+def test_home_income_trend_prewarm_entries_preserve_flag_and_thread_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    disabled = SimpleNamespace(home_income_trend_prewarm_enabled=False)
+    with patch.object(es, "_warm_home_income_trend_cache_quietly") as mock_warm:
+        assert es.warm_home_income_trend_cache_if_configured(disabled) is False
+        assert es.warm_home_income_trend_cache_in_current_thread_if_configured(disabled) is False
+    mock_warm.assert_not_called()
+
+    started: list[tuple[object, dict[str, object]]] = []
+
+    class FakeThread:
+        def __init__(self, *, target, kwargs=None, daemon=False, name=""):
+            started.append((target, {"kwargs": kwargs or {}, "daemon": daemon, "name": name}))
+
+        def start(self):
+            started.append(("start", {}))
+
+    monkeypatch.setattr(es.threading, "Thread", FakeThread)
+    enabled = SimpleNamespace(home_income_trend_prewarm_enabled=True)
+
+    assert es.warm_home_income_trend_cache_if_configured(enabled) is True
+    assert len(started) == 2
+    target, thread_options = started[0]
+    assert callable(target)
+    assert thread_options == {
+        "kwargs": {"report_date": None, "window": 7},
+        "daemon": True,
+        "name": "moss-home-income-trend-warmup",
+    }
+    assert started[1] == ("start", {})
+
+    with patch.object(es, "_warm_home_income_trend_cache_quietly") as mock_warm:
+        target(**thread_options["kwargs"])
+    mock_warm.assert_called_once_with(report_date=None, window=7)
+
+    with patch.object(es, "_warm_home_income_trend_cache_quietly") as mock_warm:
+        assert es.warm_home_income_trend_cache_in_current_thread_if_configured(enabled) is True
+        mock_warm.assert_called_once_with(report_date=None, window=7, force_refresh=False)
 
 
 def test_home_snapshot_prewarm_can_be_disabled() -> None:

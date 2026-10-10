@@ -7,6 +7,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { runAudit as runArchitectureAudit } from "./audit_frontend_style_architecture.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const designSystemPath = path.join(repoRoot, "frontend/src/theme/designSystem.ts");
@@ -16,7 +17,8 @@ const EXT_RE = /\.(tsx?|css|module\.css)$/i;
 /** @type {RegExp} */
 const HEX_RE = /#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/g;
 const PRIVATE_SHADOW_RE = /\bboxShadow\s*:|box-shadow\s*:/;
-const TOKEN_SHADOW_RE = /designTokens\.shadow|shellTokens\.shadow|var\(--moss-shadow-/;
+const TOKEN_SHADOW_RE =
+  /designTokens\.shadow|shellTokens\.shadow|ibTokens\.shadow|var\(--moss-shadow-[^)]+\)|var\(--ib-shadow\)/;
 const NONE_SHADOW_RE = /\bboxShadow\s*:\s*["']?none["']?|box-shadow\s*:\s*none\b/;
 const LARGE_RADIUS_RE = /\bborderRadius\s*:\s*(?:1[89]|[2-9]\d)|border-radius\s*:\s*(?:1[89]|[2-9]\d)px/;
 const TOKEN_RADIUS_RE = /designTokens\.radius|shellTokens\.radius|var\(--moss-radius-/;
@@ -42,15 +44,38 @@ function gitRevExists(ref) {
   return r.ok;
 }
 
+function resolveUpstreamRef() {
+  const r = git([
+    "rev-parse",
+    "--abbrev-ref",
+    "--symbolic-full-name",
+    "@{upstream}",
+  ]);
+  const ref = r.ok ? r.out.trim() : "";
+  return ref && gitRevExists(ref) ? ref : null;
+}
+
+function resolveMergeBase(left, right) {
+  const r = git(["merge-base", left, right]);
+  const ref = r.ok ? r.out.trim() : "";
+  return ref && gitRevExists(ref) ? ref : null;
+}
+
 function resolveBaseRef() {
   const fromEnv = (process.env.BASE_REF ?? "").trim();
-  const candidates = fromEnv.length
-    ? [fromEnv]
-    : ["origin/codex/choice-stock-field-catalog", "origin/main"];
-  for (const c of candidates) {
-    if (gitRevExists(c)) return c;
+  if (fromEnv && gitRevExists(fromEnv)) {
+    return fromEnv;
   }
-  if (gitRevExists("HEAD")) return "HEAD";
+
+  const upstream = resolveUpstreamRef();
+  if (upstream) {
+    return resolveMergeBase("HEAD", upstream) ?? upstream;
+  }
+
+  if (gitRevExists("origin/main")) {
+    return resolveMergeBase("HEAD", "origin/main") ?? "origin/main";
+  }
+
   return "HEAD";
 }
 
@@ -106,19 +131,44 @@ function isCommentOnlyLine(line) {
   return false;
 }
 
-function stripTrailingLineComment(code) {
-  let s = code;
-  const idx = s.indexOf("//");
-  if (idx === -1) return s;
-  const before = s.slice(0, idx);
-  const quotes =
-    (before.match(/"/g) || []).length + (before.match(/'/g) || []).length;
-  if (quotes % 2 !== 0) return s;
-  return before.trimEnd();
+function stripLineComments(code) {
+  // Diff hunks can start inside a block, so do not carry lexical state across
+  // unrelated added lines. Comment-only continuations are skipped separately.
+  // Quoted CSS/JS values remain visible to the hex guard, including escapes.
+  let result = "";
+  let quote = null;
+  for (let i = 0; i < code.length; i += 1) {
+    const char = code[i];
+    const next = code[i + 1];
+    if (quote) {
+      result += char;
+      if (char === "\\" && next !== undefined) {
+        result += next;
+        i += 1;
+      } else if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (char === '"' || char === "'" || char === "`") {
+      quote = char;
+      result += char;
+    } else if (char === "/" && next === "/") {
+      break;
+    } else if (char === "/" && next === "*") {
+      const end = code.indexOf("*/", i + 2);
+      if (end === -1) break;
+      result += " ".repeat(end + 2 - i);
+      i = end + 1;
+    } else {
+      result += char;
+    }
+  }
+  return result;
 }
 
 function findBadHexesInLine(line, allowlist) {
-  const scan = stripTrailingLineComment(line);
+  const scan = stripLineComments(line);
   const bad = [];
   HEX_RE.lastIndex = 0;
   let m;
@@ -190,6 +240,30 @@ function parseGitDiffAdditions(diffText) {
   return [...merged.entries()].map(([p, additions]) => ({ path: p, additions }));
 }
 
+function collectRemovedLineCounts(diffText) {
+  const removed = new Map();
+  for (const raw of diffText.split(/\r?\n/)) {
+    if (!raw.startsWith("-") || raw.startsWith("---")) continue;
+    const line = raw.slice(1);
+    const key = line.trim();
+    if (!key) continue;
+    removed.set(key, (removed.get(key) ?? 0) + 1);
+  }
+  return removed;
+}
+
+function consumeMovedLine(line, removedLineCounts) {
+  const key = line.trim();
+  const count = removedLineCounts.get(key) ?? 0;
+  if (count <= 0) return false;
+  if (count === 1) {
+    removedLineCounts.delete(key);
+  } else {
+    removedLineCounts.set(key, count - 1);
+  }
+  return true;
+}
+
 function runDiff(baseRef, cached) {
   const scope = ["--", "frontend/src"];
   const args = cached
@@ -218,6 +292,7 @@ function runWorkspaceDiff(cached) {
 
 function auditDiff(diffText, allowlist) {
   const parsed = parseGitDiffAdditions(diffText);
+  const removedLineCounts = collectRemovedLineCounts(diffText);
   /** @type {string[]} */
   const hexFailures = [];
   /** @type {string[]} */
@@ -238,6 +313,7 @@ function auditDiff(diffText, allowlist) {
 
     for (const { line } of additions) {
       if (isCommentOnlyLine(line)) continue;
+      if (consumeMovedLine(line, removedLineCounts)) continue;
       const bad = findBadHexesInLine(line, allowlist);
       if (bad.length) {
         for (const b of bad) {
@@ -390,6 +466,19 @@ function runSelfTest() {
     die("self-test: non-token hex should fail line scan", 2);
   }
 
+  const commentOnlyHex = `color: dt.color.primary[900] /* old value #aabbcc */`;
+  if (findBadHexesInLine(commentOnlyHex, allow).length !== 0) {
+    die("self-test: inline block-comment hex must not count as a color", 2);
+  }
+  const actualWithComment = `color: '#aabbcc', /* old #123456 */ background: '#abcdef' // old #fedcba`;
+  const actualColors = findBadHexesInLine(actualWithComment, allow).map((item) => item.raw);
+  if (actualColors.join(",") !== "#aabbcc,#abcdef") {
+    die(`self-test: real declarations around comments must remain blocked, got ${actualColors}`, 2);
+  }
+  if (findBadHexesInLine(`content: '/* #aabbcc */'`, allow).length !== 1) {
+    die("self-test: comment markers inside strings must not hide hex strings", 2);
+  }
+
   const testPathDiff = [
     "diff --git a/frontend/src/x/TestThing.test.tsx b/frontend/src/x/TestThing.test.tsx",
     "+++ b/frontend/src/x/TestThing.test.tsx",
@@ -443,6 +532,28 @@ function runSelfTest() {
     die("self-test: boxShadow none should not be treated as private shadow", 2);
   }
 
+  const ibTokenShadowDiff = [
+    "diff --git a/frontend/src/x/IbShadow.css b/frontend/src/x/IbShadow.css",
+    "+++ b/frontend/src/x/IbShadow.css",
+    `+  box-shadow: var(--ib-shadow);`,
+    `+  box-shadow: var(--moss-shadow-card);`,
+    `+  boxShadow: ibTokens.shadow,`,
+  ].join("\n");
+  const ibs = auditDiff(ibTokenShadowDiff, allow);
+  if (ibs.shadowFailures.length !== 0) {
+    die("self-test: official IB shadow tokens should not be treated as private shadow", 2);
+  }
+
+  const ibFallbackShadowDiff = [
+    "diff --git a/frontend/src/x/IbShadowFallback.css b/frontend/src/x/IbShadowFallback.css",
+    "+++ b/frontend/src/x/IbShadowFallback.css",
+    `+  box-shadow: var(--ib-shadow, 0 1px 2px rgba(16, 24, 29, 0.05));`,
+  ].join("\n");
+  const ibf = auditDiff(ibFallbackShadowDiff, allow);
+  if (ibf.shadowFailures.length === 0) {
+    die("self-test: IB shadow token with raw fallback should remain a private shadow failure", 2);
+  }
+
   const largeRadiusDiff = [
     "diff --git a/frontend/src/x/Radius.tsx b/frontend/src/x/Radius.tsx",
     "+++ b/frontend/src/x/Radius.tsx",
@@ -475,6 +586,9 @@ function main() {
 
   const cached = argv.has("--cached");
   const baseRef = resolveBaseRef();
+  // A5 checks all current CSS, including untracked styles. It is the same
+  // identity-based no-growth guard used by debt:audit, not a second baseline.
+  const architectureExit = runArchitectureAudit();
 
   if (!existsSync(designSystemPath)) {
     die(`missing design system: ${path.relative(repoRoot, designSystemPath)}`, 2);
@@ -487,6 +601,7 @@ function main() {
     console.log(
       `style diff audit: no changes vs ${cached ? "index (staged)" : baseRef}`,
     );
+    process.exitCode = architectureExit;
     return;
   }
 
@@ -527,6 +642,7 @@ function main() {
   console.log(
     `style diff audit: pass (${primaryLabel}; ${summarizeAuditResult(primaryFindings)})`,
   );
+  process.exitCode = architectureExit;
 }
 
 main();

@@ -13,6 +13,7 @@ from backend.app.repositories.cffex_member_rank_repo import (
     CffexMemberRankRow,
     load_member_rank_frame,
     normalize_cffex_contract,
+    normalize_cffex_sources,
     normalize_trade_date,
     product_code_from_contract,
     rows_from_records,
@@ -22,7 +23,6 @@ from backend.app.repositories.tushare_adapter import (
     import_tushare_pro,
     resolve_tushare_token_with_settings_fallback,
 )
-from backend.app.tasks.cffex_member_rank import persist_cffex_member_rank_rows
 
 
 @dataclass(frozen=True)
@@ -41,14 +41,16 @@ def materialize_cffex_member_rank(
     contracts: tuple[str, ...] = DEFAULT_CFFEX_CONTRACTS,
     sources: tuple[str, ...] = ("choice", "tushare"),
 ) -> dict[str, object]:
+    from backend.app.tasks.cffex_member_rank import persist_cffex_member_rank_rows
+
     settings = get_settings()
     resolved_path = Path(duckdb_path or settings.duckdb_path)
     ingest_batch_id = _new_ingest_batch_id()
     attempts: list[SourceFetchResult] = []
+    normalized_sources = normalize_cffex_sources(sources)
     for contract in contracts:
         normalized_contract = normalize_cffex_contract(contract)
-        for source in sources:
-            source_name = source.strip().lower()
+        for source_name in normalized_sources:
             if source_name == "choice":
                 result, rows = _fetch_choice_rows(
                     trade_date=trade_date,
@@ -81,7 +83,7 @@ def materialize_cffex_member_rank(
         "ingest_batch_id": ingest_batch_id,
         "trade_date": normalize_trade_date(trade_date) if trade_date else None,
         "contracts": [normalize_cffex_contract(item) for item in contracts],
-        "sources": list(sources),
+        "sources": list(normalized_sources),
         "attempts": [attempt.__dict__ for attempt in attempts],
         "row_count": sum(attempt.row_count for attempt in attempts if attempt.status == "materialized"),
     }
@@ -105,20 +107,12 @@ def ensure_cffex_member_rank_for_request(
             "trade_date": normalized_date,
             "contract": normalized_contract,
         }
-    result = materialize_cffex_member_rank(
-        duckdb_path=resolved_path,
-        trade_date=normalized_date,
-        contracts=(normalized_contract,),
-    )
-    refreshed = load_member_rank_frame(resolved_path, trade_date=normalized_date, contract=normalized_contract)
     return {
-        **result,
-        "status": "materialized" if not refreshed.empty else "missing",
-        "row_count": int(len(refreshed)),
+        "status": "missing",
+        "row_count": 0,
         "trade_date": normalized_date,
         "contract": normalized_contract,
     }
-
 
 def _fetch_tushare_rows(
     *,
@@ -244,7 +238,7 @@ def _latest_tushare_product_date(pro: Any, product_code: str) -> str | None:
             kwargs["exchange"] = exchange
         try:
             frame = pro.fut_holding(**kwargs)
-        except Exception:
+        except Exception:  # noqa: S112  # 按 CFFEX/CFE/空 逐个探测 exchange 参数，单个组合被 vendor 拒绝属预期，继续下一组合
             continue
         if frame is None or len(frame) == 0 or "trade_date" not in frame.columns:
             continue

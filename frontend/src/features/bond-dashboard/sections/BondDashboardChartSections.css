@@ -1,0 +1,130 @@
+/*
+ * 02 资产结构 / 03 期限与行业分区里图表本身的样式，由 BondStructureSection 与
+ * MaturityIndustrySection 引入。
+ *
+ * 面板容器、面板头、等高网格、五态占位已分别归 BondDashboardPage.css 的
+ * __panel 家族与 SectionGrid / StateSurface，本文件只留图表语言自己的东西：
+ * antd Segmented 深色收口、饼图中心 overlay、信用等级色带、图内口径小字。
+ * 颜色一律 --dh-api-* 语义链；圆角 var(--dh-api-radius)；字号下限 11px。
+ */
+
+/* 图表上方的一行口径小字（市值加权口径 / 期限桶说明）。 */
+.bond-dashboard-charts__hint {
+  margin: 0;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ------------------------------------------- antd Segmented 深色收口 */
+
+/*
+ * antd token 已全局切 Nocturne（04d9613e，JS 常量与 --dh-api-* 链同出
+ * Nocturne 色源），原钢蓝常量已不存在；Segmented 的 --dh-api-* 重画
+ * （StockDetailDrawer 先例）保留为页内等价防御层（历史兜底）。
+ */
+.bond-dashboard-charts__segmented.ant-segmented {
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-soft);
+}
+
+.bond-dashboard-charts__segmented .ant-segmented-item {
+  border-radius: var(--dh-api-radius);
+  color: var(--dh-api-soft);
+  font-size: 12px;
+}
+
+.bond-dashboard-charts__segmented .ant-segmented-item:hover:not(.ant-segmented-item-selected) {
+  color: var(--dh-api-ink);
+}
+
+.bond-dashboard-charts__segmented .ant-segmented-item-selected,
+.bond-dashboard-charts__segmented .ant-segmented-thumb {
+  background: var(--dh-api-panel-3);
+  color: var(--dh-api-ink);
+  box-shadow: none;
+}
+
+/* ------------------------------------------------ 饼图 + 中心合计 */
+
+.bond-dashboard-charts__pie-wrap {
+  position: relative;
+}
+
+/* overlay 锚点与 pie center 同步（迁入 ChartCard 后图例在左下，series center = 50% / 46%）。 */
+.bond-dashboard-charts__pie-overlay {
+  position: absolute;
+  top: 46%;
+  left: 50%;
+  text-align: center;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.bond-dashboard-charts__pie-overlay-label {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.bond-dashboard-charts__pie-overlay-value {
+  color: var(--dh-api-blue);
+  font-family: var(--moss-font-tabular);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------ 信用等级色带 */
+
+/* min-height 与 CreditRatingBlocks.tsx 的 RATING_STRIP_MIN_HEIGHT 同值。 */
+.bond-dashboard-charts__rating-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: stretch;
+  width: 100%;
+  min-height: 132px;
+}
+
+/* 背景色与 flex 权重是逐块动态值，由组件 inline style 提供。 */
+.bond-dashboard-charts__rating-block {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 64px;
+  padding: 10px 8px;
+  border-radius: var(--dh-api-radius);
+  /* 色块底为 Nocturne 中/浅色，块内文字统一用面板深色保证对比。 */
+  color: var(--dh-api-panel);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dh-api-panel) 15%, transparent);
+}
+
+.bond-dashboard-charts__rating-category {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.bond-dashboard-charts__rating-amount {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+.bond-dashboard-charts__rating-pct {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 只数补充读数：窄评级块中独占一行，避免与占比并排溢出。 */
+.bond-dashboard-charts__rating-count {
+  display: block;
+  margin-top: 2px;
+}

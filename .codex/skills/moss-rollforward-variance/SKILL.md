@@ -1,6 +1,6 @@
 ---
 name: moss-rollforward-variance
-description: Use when working on MOSS balance movement, PnL bridge, operations analysis, period-over-period variance, roll-forward, movement explanation, or management commentary workflows.
+description: "【MOSS滚动与方差分析】用于余额变动、PnL桥、运营分析、期间方差、roll-forward和管理层解读工作。"
 ---
 
 # MOSS Roll-Forward And Variance

@@ -60,7 +60,8 @@ def test_resolve_kpi_authority_gate_blocks_when_dsn_missing():
     assert gate["reason"] == "missing-dsn"
 
 
-def test_kpi_owners_payload_raises_when_authority_is_blocked(monkeypatch):
+def test_kpi_owners_payload_returns_disclosed_empty_state_when_no_active_owners(monkeypatch):
+    """数据未物化（无 active owner）不是服务故障：返回结构化空态 + 权威门披露，而非 5xx。"""
     module = _load_kpi_service_module()
 
     monkeypatch.setattr(
@@ -69,6 +70,38 @@ def test_kpi_owners_payload_raises_when_authority_is_blocked(monkeypatch):
         lambda **_kwargs: {
             "status": "blocked",
             "reason": "no-active-owners",
+            "owner_count": 0,
+            "year": 2026,
+        },
+    )
+
+    payload = module.kpi_owners_payload(
+        dsn="postgresql://moss:moss@127.0.0.1:55432/moss",
+        year=2026,
+        is_active=True,
+    )
+
+    assert payload["owners"] == []
+    assert payload["total"] == 0
+    assert payload["meta"] == {
+        "authority_status": "blocked",
+        "reason": "no-active-owners",
+        "owner_count": 0,
+        "year": 2026,
+    }
+
+
+@pytest.mark.parametrize("reason", ["missing-dsn", "repository-error:OperationalError"])
+def test_kpi_owners_payload_still_raises_for_authority_infrastructure_failures(monkeypatch, reason):
+    """配置缺失 / 存储故障仍保持 fail-closed（路由映射为 503），不得伪装成空态。"""
+    module = _load_kpi_service_module()
+
+    monkeypatch.setattr(
+        module,
+        "resolve_kpi_authority_gate",
+        lambda **_kwargs: {
+            "status": "blocked",
+            "reason": reason,
             "owner_count": 0,
             "year": 2026,
         },

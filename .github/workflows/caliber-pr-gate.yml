@@ -1,0 +1,299 @@
+name: Caliber PR Gate
+
+on:
+  pull_request:
+    branches: ["codex/V1"]
+
+permissions:
+  contents: read
+
+jobs:
+  caliber-pr-gate:
+    name: Caliber PR Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      scheduler_scope: ${{ steps.scheduler_scope.outputs.selected }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Select Windows scheduler checks
+        id: scheduler_scope
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch origin "$BASE_REF"
+          selected="$(python scripts/check_caliber_gate.py --base-ref "origin/$BASE_REF" --scheduler-scope)"
+          echo "selected=$selected" >> "$GITHUB_OUTPUT"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.32"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Install backend test dependencies
+        run: uv sync --frozen --project backend --extra dev --python 3.11
+
+      # Run the map guard before trusting the PR's selector output.
+      - name: Verify mapping and CI workflow contract
+        run: backend/.venv/bin/python -m pytest -q tests/test_caliber_gate_mapping.py tests/test_ci_workflow_contents.py
+
+      - name: Run selected regressions against the PR base
+        run: |
+          git fetch origin "${{ github.base_ref }}"
+          backend/.venv/bin/python scripts/check_caliber_gate.py --base-ref "origin/${{ github.base_ref }}"
+
+      - name: Select formal release suite
+        id: release_scope
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          selected="$(backend/.venv/bin/python scripts/check_caliber_gate.py --base-ref "origin/$BASE_REF" --release-scope)"
+          echo "selected=$selected" >> "$GITHUB_OUTPUT"
+
+      - name: Run canonical backend release suite
+        if: steps.release_scope.outputs.selected == 'true'
+        run: backend/.venv/bin/python scripts/backend_release_suite.py
+
+      - name: Report unrelated formal diff
+        if: steps.release_scope.outputs.selected == 'false'
+        run: echo "No formal-calculation or release-cutoff paths changed; canonical release suite was not run." >> "$GITHUB_STEP_SUMMARY"
+
+  scheduler-windows:
+    name: V1 Windows Data Update Scheduler
+    needs: caliber-pr-gate
+    if: always() && needs.caliber-pr-gate.outputs.scheduler_scope == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install locked pytest
+        run: python -m pip install "pytest==9.0.3"
+
+      - name: Require Windows PowerShell
+        run: python -c "import shutil; assert shutil.which('powershell.exe'), 'powershell.exe is required'"
+
+      - name: Run PowerShell scheduler contracts
+        run: >-
+          python -m pytest --noconftest -q
+          tests/test_data_update_queue_launcher_logging.py
+          tests/test_install_data_update_queue.py
+
+  frontend-pr-slice:
+    name: V1 Balance Frontend Slice
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python for path selection
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Select first-scope frontend changes
+        id: frontend_scope
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch origin "$BASE_REF"
+          selected="$(python scripts/check_caliber_gate.py --base-ref "origin/$BASE_REF" --frontend-scope)"
+          echo "selected=$selected" >> "$GITHUB_OUTPUT"
+
+      - name: Select daily-balance browser contract
+        id: data_update_browser_scope
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          selected="$(python scripts/check_caliber_gate.py --base-ref "origin/$BASE_REF" --data-update-browser-scope)"
+          echo "selected=$selected" >> "$GITHUB_OUTPUT"
+
+      - name: Report unrelated frontend diff
+        if: steps.frontend_scope.outputs.selected == 'false'
+        run: echo "No first-scope frontend paths changed; frontend checks were not run." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Set up Node.js
+        if: steps.frontend_scope.outputs.selected == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        if: steps.frontend_scope.outputs.selected == 'true'
+        working-directory: frontend
+        run: npm ci
+
+      - name: TypeScript type check
+        if: steps.frontend_scope.outputs.selected == 'true'
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: Run focused frontend regressions
+        if: steps.frontend_scope.outputs.selected == 'true'
+        working-directory: frontend
+        run: >-
+          npm run test --
+          dataUpdatesClient
+          DataUpdateCenter
+          PlatformConfigPage
+          balanceAnalysisClient
+          balanceMovementClient
+          homeSupplementalClient
+          balanceAnalysisPageModel
+          BalanceAnalysisDateSemanticsContract
+          --no-file-parallelism
+
+      - name: Run balance analysis page contract
+        if: steps.frontend_scope.outputs.selected == 'true'
+        working-directory: frontend
+        run: npm run test -- BalanceAnalysisPage --no-file-parallelism
+
+      - name: Run balance movement request boundary
+        if: steps.frontend_scope.outputs.selected == 'true'
+        working-directory: frontend
+        run: npm run test -- BalanceMovementRequestBoundary --no-file-parallelism
+
+      - name: Lint first-scope frontend files
+        if: steps.frontend_scope.outputs.selected == 'true'
+        working-directory: frontend
+        run: >-
+          npx eslint
+          src/api/dataUpdatesClient.ts
+          src/api/balanceAnalysisClient.ts
+          src/api/balanceMovementClient.ts
+          src/api/homeSupplementalClient.ts
+          src/features/platform-config
+          src/features/balance-analysis
+          src/test/PlatformConfigPage.test.tsx
+
+      - name: Production build
+        if: steps.frontend_scope.outputs.selected == 'true'
+        working-directory: frontend
+        run: VITE_DATA_SOURCE=real npm run build
+
+      - name: Install Playwright Chromium for daily balance
+        if: steps.data_update_browser_scope.outputs.selected == 'true'
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Run synthetic daily-balance browser contract
+        if: steps.data_update_browser_scope.outputs.selected == 'true'
+        working-directory: frontend
+        env:
+          VITE_DATA_SOURCE: "mock"
+          MOSS_PLAYWRIGHT_USE_WEB_SERVER: "1"
+          MOSS_PLAYWRIGHT_BASE_URL: "http://127.0.0.1:5888"
+        run: >-
+          npm run test:a11y-smoke --
+          tests/playwright/data-update-center-balance-daily.spec.mjs
+          --workers=1 --retries=0
+
+      - name: Upload daily-balance browser evidence
+        if: always() && steps.data_update_browser_scope.outputs.selected == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-update-browser-v1
+          path: .codex-tmp/playwright-results/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  agent-eval-replay:
+    name: V1 Agent Eval Replay
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # No applicable task, or all deterministically void, needs only stdlib.
+      - name: Check PR replay dependency setup
+        id: agent_eval_preflight
+        run: |
+          git fetch origin "${{ github.base_ref }}"
+          python scripts/agent_eval/pr_replay.py --base-ref "origin/${{ github.base_ref }}" \
+            --preflight >> "$GITHUB_OUTPUT"
+
+      - name: Set up uv
+        if: steps.agent_eval_preflight.outputs.needs_dependency_setup != 'false'
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.32"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Install backend dependencies from backend/uv.lock
+        if: steps.agent_eval_preflight.outputs.needs_dependency_setup != 'false'
+        run: |
+          uv sync --frozen --project backend --extra dev --python 3.11
+          echo "VIRTUAL_ENV=${GITHUB_WORKSPACE}/backend/.venv" >> "$GITHUB_ENV"
+          echo "${GITHUB_WORKSPACE}/backend/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Set up Node.js
+        if: steps.agent_eval_preflight.outputs.needs_dependency_setup != 'false'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        if: steps.agent_eval_preflight.outputs.needs_dependency_setup != 'false'
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        if: steps.agent_eval_preflight.outputs.needs_dependency_setup != 'false'
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      # Replay pass/fail is informational; orchestration errors fail this job.
+      - name: Run PR replay evaluation
+        env:
+          VITE_DATA_SOURCE: "mock"
+          MOSS_PLAYWRIGHT_USE_WEB_SERVER: "1"
+          MOSS_PLAYWRIGHT_BASE_URL: "http://127.0.0.1:5888"
+        run: |
+          python scripts/agent_eval/pr_replay.py --base-ref "origin/${{ github.base_ref }}" \
+            --out-md .codex-tmp/agent-eval/pr-replay/summary.md
+
+      - name: Publish step summary
+        if: always() && hashFiles('.codex-tmp/agent-eval/pr-replay/summary.md') != ''
+        run: cat .codex-tmp/agent-eval/pr-replay/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload replay archives
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-eval-pr-replay-v1
+          path: .codex-tmp/agent-eval/pr-replay/
+          retention-days: 14
+          if-no-files-found: ignore

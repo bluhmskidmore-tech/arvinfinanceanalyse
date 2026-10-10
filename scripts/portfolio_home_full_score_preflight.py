@@ -38,8 +38,10 @@ OWNER_ORDER = ["risk_owner", "data_owner", "business_owner"]
 BLOCKER_OWNER = {
     "risk_tensor_quality_warning": "risk_owner",
     "krd_contract_decision_required": "risk_owner",
+    "krd_bucket_warning_mismatch": "risk_owner",
     "bond_maturity_date_remediation_required": "data_owner",
     "tyw_liability_maturity_date_remediation_required": "data_owner",
+    "bond_matured_outstanding_reconciliation_required": "data_owner",
     "duration_exclusion_warning_mismatch": "data_owner",
     "risk_tensor_warning_mismatch": "risk_owner",
     "business_owner_approval": "business_owner",
@@ -175,6 +177,10 @@ def _current_evidence(
     risk_warning: dict[str, object],
     intake: dict[str, object],
 ) -> dict[str, object]:
+    if blocker == "bond_matured_outstanding_reconciliation_required":
+        gates = _dict_value(scorecard, "gates")
+        full_closure = _dict_value(gates, "full_closure_evidence")
+        return _dict_value(full_closure, "bond_matured_outstanding")
     if blocker == "bond_maturity_date_remediation_required":
         return _bond_maturity_evidence(maturity_queue)
     if blocker == "tyw_liability_maturity_date_remediation_required":
@@ -182,6 +188,7 @@ def _current_evidence(
     if blocker in {
         "risk_tensor_quality_warning",
         "duration_exclusion_warning_mismatch",
+        "krd_bucket_warning_mismatch",
         "risk_tensor_warning_mismatch",
     }:
         return _risk_warning_evidence(risk_warning)
@@ -450,7 +457,10 @@ def build_preflight(
         "candidate_boundary": _candidate_boundary(maturity_queue),
         "owner_routes": _owner_routes(blocker_matrix),
         "blocker_matrix": blocker_matrix,
-        "required_next_command": REQUIRED_FULL_SCORE_COMMAND,
+        "required_next_command": REQUIRED_FULL_SCORE_COMMAND.replace(
+            " --limit",
+            f" --report-date {report_date} --limit",
+        ),
     }
 
 

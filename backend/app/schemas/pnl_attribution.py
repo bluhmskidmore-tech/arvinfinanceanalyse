@@ -10,8 +10,10 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, Literal
 
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
 from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_from_raw
-from pydantic import BaseModel, model_validator
+from backend.app.schemas.result_meta import ResultMeta
 
 
 def _coerce_value_to_numeric(value: Any, unit: NumericUnit, sign_aware: bool) -> Any:
@@ -69,6 +71,9 @@ class VolumeRateAttributionItem(BaseModel):
     volume_effect: Numeric | None = None
     rate_effect: Numeric | None = None
     interaction_effect: Numeric | None = None
+    fair_value_effect: Numeric | None = None
+    capital_gain_effect: Numeric | None = None
+    manual_adjustment_effect: Numeric | None = None
     attrib_sum: Numeric | None = None
     recon_error: Numeric | None = None
     volume_contribution_pct: Numeric | None = None
@@ -86,6 +91,9 @@ class VolumeRateAttributionItem(BaseModel):
         "volume_effect": ("yuan", True),
         "rate_effect": ("yuan", True),
         "interaction_effect": ("yuan", True),
+        "fair_value_effect": ("yuan", True),
+        "capital_gain_effect": ("yuan", True),
+        "manual_adjustment_effect": ("yuan", True),
         "attrib_sum": ("yuan", True),
         "recon_error": ("yuan", True),
         "volume_contribution_pct": ("pct", True),
@@ -108,6 +116,12 @@ class VolumeRateAttributionPayload(BaseModel):
     total_volume_effect: Numeric | None = None
     total_rate_effect: Numeric | None = None
     total_interaction_effect: Numeric | None = None
+    total_fair_value_effect: Numeric | None = None
+    total_capital_gain_effect: Numeric | None = None
+    total_manual_adjustment_effect: Numeric | None = None
+    attribution_basis: str = "total_pnl_scale_proxy"
+    has_complete_inputs: bool = True
+    total_recon_error: Numeric | None = None
     items: list[VolumeRateAttributionItem]
     has_previous_data: bool
 
@@ -118,6 +132,10 @@ class VolumeRateAttributionPayload(BaseModel):
         "total_volume_effect": ("yuan", True),
         "total_rate_effect": ("yuan", True),
         "total_interaction_effect": ("yuan", True),
+        "total_fair_value_effect": ("yuan", True),
+        "total_capital_gain_effect": ("yuan", True),
+        "total_manual_adjustment_effect": ("yuan", True),
+        "total_recon_error": ("yuan", True),
     }
 
     @model_validator(mode="before")
@@ -279,8 +297,10 @@ class PnlCompositionPayload(BaseModel):
 
 
 class PnlAttributionAnalysisSummary(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     report_date: str
-    primary_driver: Literal["volume", "rate", "market", "unknown"]
+    primary_driver: Literal["volume", "rate", "interaction", "fair_value", "capital_gain", "manual_adjustment", "unexplained", "market", "unknown"]
     primary_driver_pct: Numeric
     key_findings: list[str]
     tpl_market_aligned: bool
@@ -294,6 +314,13 @@ class PnlAttributionAnalysisSummary(BaseModel):
     @classmethod
     def _coerce(cls, data: Any) -> Any:
         return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
+class PnlAttributionAnalysisSummaryEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: ResultMeta
+    result: PnlAttributionAnalysisSummary
 
 
 # =========================================================================
@@ -374,12 +401,117 @@ class CarryRollDownPayload(BaseModel):
 # =========================================================================
 
 
+class AttributionRiskCoverageExclusion(BaseModel):
+    reason: Literal[
+        "no_maturity",
+        "missing_maturity",
+        "matured_or_expired",
+        "nonpositive_duration",
+    ]
+    row_count: int
+    market_value: Numeric
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+        "market_value": ("yuan", False),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
+class AttributionRiskCoverage(BaseModel):
+    total_row_count: int
+    covered_row_count: int
+    excluded_row_count: int
+    total_market_value: Numeric
+    covered_market_value: Numeric
+    excluded_market_value: Numeric
+    coverage_pct: Numeric
+    excluded_pct: Numeric
+    exclusions: list[AttributionRiskCoverageExclusion]
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+        "total_market_value": ("yuan", False),
+        "covered_market_value": ("yuan", False),
+        "excluded_market_value": ("yuan", False),
+        "coverage_pct": ("pct", False),
+        "excluded_pct": ("pct", False),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
+class SpreadAttributionExclusion(BaseModel):
+    reason: str
+    start_row_count: int
+    end_row_count: int
+    start_market_value: Numeric
+    end_market_value: Numeric
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+        "start_market_value": ("yuan", False),
+        "end_market_value": ("yuan", False),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
+class SpreadAttributionCoverage(BaseModel):
+    start_row_count: int
+    end_row_count: int
+    matched_position_count: int
+    attributed_position_count: int
+    start_market_value: Numeric
+    end_market_value: Numeric
+    covered_start_market_value: Numeric
+    covered_end_market_value: Numeric
+    excluded_start_market_value: Numeric
+    excluded_end_market_value: Numeric
+    start_coverage_pct: Numeric
+    end_coverage_pct: Numeric
+    exclusions: list[SpreadAttributionExclusion]
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+        "start_market_value": ("yuan", False),
+        "end_market_value": ("yuan", False),
+        "covered_start_market_value": ("yuan", False),
+        "covered_end_market_value": ("yuan", False),
+        "excluded_start_market_value": ("yuan", False),
+        "excluded_end_market_value": ("yuan", False),
+        "start_coverage_pct": ("pct", False),
+        "end_coverage_pct": ("pct", False),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            data = dict(data)
+            for name in ("start_coverage_pct", "end_coverage_pct"):
+                if isinstance(data.get(name), (int, float)):
+                    data[name] = numeric_from_raw(
+                        raw=data[name], unit="pct", sign_aware=False, raw_scale="percent",
+                    ).model_dump(mode="json")
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
 class SpreadAttributionItem(BaseModel):
     category: str
     category_type: str
     market_value: Numeric
     duration: Numeric
     weight: Numeric
+    matched_start_market_value: Numeric
+    attribution_duration: Numeric | None = None
+    attributed_position_count: int
     yield_change: Numeric | None = None
     treasury_change: Numeric | None = None
     spread_change: Numeric | None = None
@@ -392,7 +524,9 @@ class SpreadAttributionItem(BaseModel):
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "market_value": ("yuan", False),
         "duration": ("ratio", False),
-        "weight": ("ratio", False),
+        "weight": ("pct", False),
+        "matched_start_market_value": ("yuan", False),
+        "attribution_duration": ("ratio", False),
         "yield_change": ("bp", True),
         "treasury_change": ("bp", True),
         "spread_change": ("bp", True),
@@ -417,12 +551,18 @@ class SpreadAttributionPayload(BaseModel):
     treasury_10y_end: Numeric | None = None
     treasury_10y_change: Numeric | None = None
     total_market_value: Numeric
+    risk_coverage: AttributionRiskCoverage
     portfolio_duration: Numeric
     total_treasury_effect: Numeric
     total_spread_effect: Numeric
     total_price_change: Numeric
     primary_driver: str
     interpretation: str
+    attribution_basis: Literal["matched_positions_start_exposure"]
+    method_note: str
+    calculation_status: Literal["complete", "partial", "unavailable"]
+    attribution_coverage: SpreadAttributionCoverage
+    warnings: list[str] = []
     items: list[SpreadAttributionItem]
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
@@ -454,7 +594,8 @@ class KRDAttributionBucket(BaseModel):
     weight: Numeric
     bond_count: int
     bucket_duration: Numeric
-    krd: Numeric
+    avg_modified_duration: Numeric | None = None
+    krd: Numeric  # deprecated alias of avg_modified_duration / bucket_duration
     yield_change: Numeric | None = None
     duration_contribution: Numeric
     contribution_pct: Numeric
@@ -462,10 +603,11 @@ class KRDAttributionBucket(BaseModel):
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "tenor_years": ("ratio", False),
         "market_value": ("yuan", False),
-        "weight": ("ratio", False),
+        "weight": ("pct", False),
         "bucket_duration": ("ratio", False),
+        "avg_modified_duration": ("ratio", True),
         "krd": ("ratio", True),
-        "yield_change": ("pct", True),
+        "yield_change": ("bp", True),
         "duration_contribution": ("yuan", True),
         "contribution_pct": ("pct", True),
     }
@@ -473,6 +615,19 @@ class KRDAttributionBucket(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _coerce(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            data = dict(data)
+            avg_md = data.get("avg_modified_duration")
+            bucket_dur = data.get("bucket_duration")
+            legacy_krd = data.get("krd")
+            if avg_md is None and bucket_dur is not None:
+                data["avg_modified_duration"] = bucket_dur
+            elif avg_md is None and legacy_krd is not None:
+                data["avg_modified_duration"] = legacy_krd
+            if legacy_krd is None and data.get("avg_modified_duration") is not None:
+                data["krd"] = data["avg_modified_duration"]
+            if bucket_dur is None and data.get("avg_modified_duration") is not None:
+                data["bucket_duration"] = data["avg_modified_duration"]
         return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
 
 
@@ -481,9 +636,12 @@ class KRDAttributionPayload(BaseModel):
     start_date: str
     end_date: str
     total_market_value: Numeric
+    risk_coverage: AttributionRiskCoverage
     portfolio_duration: Numeric
     portfolio_dv01: Numeric
     total_duration_effect: Numeric
+    calculation_status: Literal["complete", "partial", "unavailable"] = "complete"
+    warnings: list[str] = Field(default_factory=list)
     curve_shift_type: str
     curve_interpretation: str
     buckets: list[KRDAttributionBucket]
@@ -577,6 +735,8 @@ class CampisiAttributionItem(BaseModel):
 
 
 class CampisiAttributionPayload(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     report_date: str
     period_start: str
     period_end: str
@@ -614,3 +774,109 @@ class CampisiAttributionPayload(BaseModel):
     @classmethod
     def _coerce(cls, data: Any) -> Any:
         return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
+class CampisiAttributionEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: ResultMeta
+    result: CampisiAttributionPayload
+
+
+# =========================================================================
+# Workbench response envelopes
+#
+# `pnl_attribution_service` builds every workbench body as
+# ``<Payload>.model_validate(...).model_dump(mode="json")`` and then lets
+# ``_with_optional_warnings`` append a ``warnings`` list on degraded reads.
+# The response models below therefore restate exactly that: the payload the
+# service already validated against, plus the one key it may add afterwards.
+#
+# ``warnings`` is *absent* on a healthy read rather than empty, so the routes
+# pair these models with ``response_model_exclude_unset=True``; declaring a
+# default here without that flag would materialize a key the endpoint never
+# returned.
+# =========================================================================
+
+
+class _WorkbenchResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    warnings: list[str] | None = None
+
+
+class VolumeRateAttributionResult(VolumeRateAttributionPayload, _WorkbenchResult):
+    pass
+
+
+class VolumeRateAttributionEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: ResultMeta
+    result: VolumeRateAttributionResult
+
+
+class TPLMarketCorrelationResult(TPLMarketCorrelationPayload, _WorkbenchResult):
+    pass
+
+
+class TPLMarketCorrelationEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: ResultMeta
+    result: TPLMarketCorrelationResult
+
+
+class PnlCompositionResult(PnlCompositionPayload, _WorkbenchResult):
+    pass
+
+
+class PnlCompositionEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: ResultMeta
+    result: PnlCompositionResult
+
+
+class CarryRollDownResult(CarryRollDownPayload, _WorkbenchResult):
+    pass
+
+
+class CarryRollDownEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: ResultMeta
+    result: CarryRollDownResult
+
+
+class SpreadAttributionResult(SpreadAttributionPayload, _WorkbenchResult):
+    warnings: list[str] = []
+
+
+class SpreadAttributionEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: ResultMeta
+    result: SpreadAttributionResult
+
+
+class KRDAttributionResult(KRDAttributionPayload, _WorkbenchResult):
+    warnings: list[str] = Field(default_factory=list)
+
+
+class KRDAttributionEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: ResultMeta
+    result: KRDAttributionResult
+
+
+class AdvancedAttributionSummaryResult(AdvancedAttributionSummary, _WorkbenchResult):
+    pass
+
+
+class AdvancedAttributionSummaryEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    result_meta: ResultMeta
+    result: AdvancedAttributionSummaryResult

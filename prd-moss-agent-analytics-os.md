@@ -1,5 +1,10 @@
 # MOSS Agent Analytics OS PRD
 
+> 本文件是仓库产品 PRD 的权威正文，权威顺序见
+> [docs/DOCUMENT_AUTHORITY.md](docs/DOCUMENT_AUTHORITY.md#权威顺序)。
+> [docs/prd-moss-agent-analytics-os.md](docs/prd-moss-agent-analytics-os.md) 保留为旧路径与章节锚点的兼容入口。
+> 本文件维护产品定义和阶段目标；已生效的局部范围与接口状态由 §17 引用的权威文档维护。
+
 ## 1. 项目定义
 
 ### 1.1 系统本质
@@ -46,11 +51,27 @@
 并且：
 
 - 所有正式金融计算只允许出现在 `backend/app/core_finance/`
-- `backend/app/api/` 只允许做参数校验、鉴权、调用 service、返回响应
+- `backend/app/api/` 只允许做参数校验、**授权**、调用 service、返回响应
 - `frontend/` 不允许补算正式金融指标
 - DuckDB 常态只读；写入只能走 `backend/app/tasks/`
 - `Scenario` 与 `Formal` 必须隔离
 - 所有正式结果必须带 `result_meta`
+
+> **关于「授权」的准确边界（当前仓库有授权，没有认证）。** 原文此处写的是「鉴权」，该词混淆了
+> authentication 与 authorization，会让读者以为 API 层已经在校验调用方身份。准确结论与
+> [README.md](README.md)「关键约束」一节、[docs/SYSTEM_STACK_SPEC_FOR_CODEX.md](docs/SYSTEM_STACK_SPEC_FOR_CODEX.md)
+> 第 1 节一致：
+>
+> - 授权（authorization）确实存在：`backend/app/security/auth_context.py::ensure_user_allowed` 做基于
+>   `resource`/`action`/`scope` 的 RBAC 判定，`backend/app/api/deps.py` 把它接进路由依赖。
+> - 认证（authentication）**不存在**：全仓没有 `HTTPBearer` / `OAuth2` / `APIKeyHeader` / JWT / session。
+>   身份取自 `X-User-Id` / `X-User-Role` 请求头 → `MOSS_USER_ID` / `MOSS_USER_ROLE` 环境变量 →
+>   兜底常量 `anonymous` / `viewer`。
+> - 信任开关 `MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST` **默认关闭**：此时请求头被忽略，所有请求共用
+>   同一个进程级身份，RBAC 实际上是在对一个固定身份判权；开关打开时任何调用方都能用请求头自称任意
+>   `user_id` 和 `role`。**两种姿态都不构成认证。**
+> - 因此本节的「授权」只描述 API 层允许做的**动作类型**，不构成安全声明；不得据此认为该层已完成身份
+>   校验，也不得在它之上做安全性判断或对外暴露。
 
 ### 2.3 ADR
 
@@ -226,7 +247,7 @@ repo/
 只允许：
 
 - 参数校验
-- 鉴权
+- **授权**（authorization / RBAC；仓库当前**没有认证**，边界见 §2.2 的说明块）
 - service 调用
 - DTO 输出
 - 错误映射
@@ -704,43 +725,10 @@ Choice / AkShare 断连导致热路径页面整体雪崩。
 
 ## 17. 首轮实施边界
 
-如果进入真正编码阶段，默认执行边界按 `repo-wide Phase 2（通用正式计算）` 解释，但仅对 formal-compute 主链生效。
+默认执行边界按 `repo-wide Phase 2（通用正式计算）` 解释，只对 formal-compute 主链生效。纳入的链路、历史 `Phase 1 closeout` 含义和局部授权规则统一见 [DOCUMENT_AUTHORITY.md 的阶段边界规则](docs/DOCUMENT_AUTHORITY.md#阶段边界规则)。
 
-边界解释如下：
+已生效的局部范围、读取接口状态与范围扩张排除项统一见 [Current Surface Boundaries](docs/DOCUMENT_AUTHORITY.md#current-surface-boundaries)。其中已落地接口的维护与正式金融口径晋升分别判断；接口开放不构成范围扩张或正式使用授权。本 PRD 不重复维护当前接口清单。
 
-- 本次 repo-wide `Phase 2` cutover 只覆盖：
-  - formal balance
-  - formal PnL
-  - formal FX
-  - formal yield curve
-  - PnL bridge
-  - risk tensor
-  - 核心 bond analytics formal read surfaces
-- `Phase 1 closeout` 仍属于历史收口概念；它只用于未纳入本次 cutover 的骨架、预览、占位、验证和治理欠账。
-- `.omx/plans/` 中的 `next-slice`、`closeout`、`execution-plan` 等文档属于计划与候选执行面，不是权限来源。
-- 上述计划文档只有在以下两种情况下才可执行：
-  - 明确属于 repo-wide `Phase 2` 已纳入的 formal-compute 主链；
-  - 被新的更高优先级指令或 dated execution update 明确授权。
-- scoped override 只对被点名的工作流生效；在当前口径下，它主要用于已排除模块、历史工作流或未来新增工作流，而不再是 formal-compute 主链的主要授权来源。
+`.omx/plans/` 中的 `next-slice`、`closeout`、`execution-plan` 等仍属于计划与候选执行面，不是权限来源。dated execution update 按工作流适用性选择，只授权被点名的范围；清单和适用原则见 [当前有效 scoped override](docs/DOCUMENT_AUTHORITY.md#当前有效-scoped-override)。
 
-当前保留的历史 scoped override（截至 2026-04-12）如下：
-
-- 见 `docs/CURRENT_EXECUTION_UPDATE_2026-04-09.md`
-- 见 `docs/CURRENT_EXECUTION_UPDATE_2026-04-10.md`
-- 见 `docs/CURRENT_EXECUTION_UPDATE_2026-04-11.md`
-- 见 `docs/CURRENT_EXECUTION_UPDATE_2026-04-12.md`
-
-本次 cutover 明确不包含：
-
-- `executive.*`
-- Agent MVP / `/api/agent/query` / `/agent`
-- `source_preview` / `macro-data` / `choice-news` / `market-data` 的 preview/vendor/analytical surface
-- `qdb_gl_monthly_analysis`、`liability_analytics_compat` 等 analytical-only / compatibility 模块
-- cube-query、broad frontend rollout、以及其他 `Phase 3 / Phase 4` 风格扩张项
-
-默认输出要求如下：
-
-- 变更文件清单
-- 测试结果
-- 未完成项
-- 下一轮建议
+交付与验证要求遵循根 [AGENTS.md 的工作和验证协议](AGENTS.md#work-and-validation-protocol)，不因阶段名称自动扩大本次任务或验收范围。

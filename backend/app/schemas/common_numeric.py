@@ -6,13 +6,36 @@ percent, bp, ratio, count, dv01) should switch from raw strings to ``Numeric``.
 
 Design reference: ``docs/superpowers/specs/2026-04-18-frontend-numeric-correctness-design.md`` § 3.
 """
+
 from __future__ import annotations
 
-from typing import Literal
+import math
+from decimal import Decimal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 NumericUnit = Literal["yuan", "pct", "bp", "ratio", "years", "count", "dv01", "yi"]
+
+# How the caller declares the scale of a raw ``pct`` input:
+# - "auto":    legacy heuristic — abs(raw) > 1 is treated as percent-points and
+#              divided by 100; abs(raw) <= 1 is treated as an already-normalized
+#              decimal ratio. Ambiguous for true percent-point values in (0, 1]
+#              (e.g. a 0.85% yield passed as 0.85 stays 0.85 → renders "85.00%").
+# - "percent": raw is percent-points (0.85 == 0.85%); always divided by 100.
+# - "ratio":   raw is a decimal ratio (0.0085 == 0.85%); never rescaled.
+NumericRawScale = Literal["auto", "percent", "ratio"]
+
+
+def _decimal_to_plain_text(value: Decimal) -> str:
+    """Serialize a finite Decimal without exponent notation.
+
+    The fixed-point format preserves the Decimal exponent as trailing fractional
+    zeroes (for example, ``Decimal("0E-8")`` becomes ``"0.00000000"``).
+    """
+    if not value.is_finite():
+        raise ValueError("raw Decimal must be finite")
+    return format(value, "f")
 
 
 class Numeric(BaseModel):
@@ -20,6 +43,8 @@ class Numeric(BaseModel):
 
     Fields:
         raw:          Unconverted raw number in ``unit``; ``None`` means truly missing.
+        raw_text:     Optional lossless decimal representation. Automatically populated
+                      when ``raw`` is supplied as ``Decimal``.
         unit:         The unit of ``raw``; drives how callers format and compare values.
         display:      Pre-formatted display string (sign, unit suffix, precision all
                       baked in); for ``raw is None`` callers should render ``"—"``.
@@ -30,10 +55,23 @@ class Numeric(BaseModel):
     """
 
     raw: float | None
+    raw_text: str | None = Field(default=None, exclude_if=lambda value: value is None)
     unit: NumericUnit
     display: str
     precision: int = Field(ge=0)
     sign_aware: bool
+
+    @model_validator(mode="before")
+    @classmethod
+    def _preserve_decimal_raw_text(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        raw = data.get("raw")
+        if not isinstance(raw, Decimal) or data.get("raw_text") is not None:
+            return data
+        out = dict(data)
+        out["raw_text"] = _decimal_to_plain_text(raw)
+        return out
 
 
 def null_numeric(
@@ -59,11 +97,12 @@ def null_numeric(
 
 def numeric_from_raw(
     *,
-    raw: float | None,
+    raw: float | Decimal | None,
     unit: NumericUnit,
     precision: int = 2,
     sign_aware: bool = True,
     signed_format: bool = True,
+    raw_scale: NumericRawScale = "auto",
 ) -> Numeric:
     """Build a ``Numeric`` from a raw value, generating a default ``display``.
 
@@ -79,14 +118,32 @@ def numeric_from_raw(
         sign_aware:    Whether callers should render signed.
         signed_format: When ``True`` and ``sign_aware`` and ``raw >= 0``, the
                        default display includes a leading ``+``.
+        raw_scale:     Declares the scale of a ``pct`` raw input (see
+                       ``NumericRawScale``). Only meaningful for ``unit="pct"``;
+                       the default ``"auto"`` keeps the legacy abs(raw) > 1
+                       heuristic for backward compatibility. Callers whose
+                       percent-point values can legitimately fall in (0, 1]
+                       (yields, spreads, period returns) must pass
+                       ``raw_scale="percent"`` explicitly.
     """
     if raw is None:
         return null_numeric(unit=unit, precision=precision, sign_aware=sign_aware)
 
-    raw_value = float(raw)
-    normalized_raw = _normalize_numeric_raw(raw_value, unit)
+    if isinstance(raw, Decimal):
+        if not raw.is_finite():
+            return null_numeric(unit=unit, precision=precision, sign_aware=sign_aware)
+        raw_value: float | Decimal = raw
+    else:
+        raw_value = float(raw)
+    if not isinstance(raw_value, Decimal) and not math.isfinite(raw_value):
+        return null_numeric(unit=unit, precision=precision, sign_aware=sign_aware)
+
+    normalized_raw = _normalize_numeric_raw(raw_value, unit, raw_scale)
+    compatibility_raw = float(normalized_raw)
+    if not math.isfinite(compatibility_raw):
+        return null_numeric(unit=unit, precision=precision, sign_aware=sign_aware)
     display = _format_numeric_display(
-        raw=normalized_raw,
+        raw=compatibility_raw,
         unit=unit,
         precision=precision,
         sign_aware=sign_aware,
@@ -94,7 +151,8 @@ def numeric_from_raw(
     )
 
     return Numeric(
-        raw=normalized_raw,
+        raw=compatibility_raw,
+        raw_text=_decimal_to_plain_text(normalized_raw) if isinstance(normalized_raw, Decimal) else None,
         unit=unit,
         display=display,
         precision=precision,
@@ -102,8 +160,23 @@ def numeric_from_raw(
     )
 
 
-def _normalize_numeric_raw(raw: float, unit: NumericUnit) -> float:
-    if unit == "pct" and abs(raw) > 1.0:
+def _normalize_numeric_raw(
+    raw: float | Decimal,
+    unit: NumericUnit,
+    raw_scale: NumericRawScale = "auto",
+) -> float | Decimal:
+    if unit != "pct":
+        return raw
+    if raw_scale == "percent":
+        if isinstance(raw, Decimal):
+            return raw / Decimal("100")
+        return raw / 100.0
+    if raw_scale == "ratio":
+        return raw
+    # Legacy heuristic ("auto"): treat abs(raw) > 1 as percent-points.
+    if isinstance(raw, Decimal):
+        return raw / Decimal("100") if abs(raw) > 1 else raw
+    if abs(raw) > 1:
         return raw / 100.0
     return raw
 

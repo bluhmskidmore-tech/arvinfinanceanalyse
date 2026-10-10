@@ -9,12 +9,30 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import duckdb
+import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.main import app
 
 
-def test_existing_ui_pnl_attribution_placeholder_remains_available_during_pnl_domain_scaffolding():
+@pytest.fixture()
+def grant_executive_read(seed_wildcard_scope, tmp_path, monkeypatch):
+    """Executive routes have no development fallback and need an explicit resource grant."""
+    from backend.app.governance.settings import get_settings
+    from backend.app.repositories.user_scope_repo import UserScopeRepository
+
+    duckdb_path = tmp_path / "placeholder.duckdb"
+    duckdb.connect(str(duckdb_path)).close()
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    repo = UserScopeRepository(str(get_settings().postgres_dsn))
+    repo.grant_scope(user_id="*", role=None, resource="executive", action="read")
+
+
+def test_existing_ui_pnl_attribution_placeholder_remains_available_during_pnl_domain_scaffolding(
+    grant_executive_read,
+):
     client = TestClient(app)
 
     response = client.get("/ui/pnl/attribution")
@@ -26,7 +44,9 @@ def test_existing_ui_pnl_attribution_placeholder_remains_available_during_pnl_do
     assert payload["result_meta"]["result_kind"] == "executive.pnl-attribution"
 
 
-def test_ui_pnl_attribution_placeholder_contract_does_not_claim_formal_pnl_ownership():
+def test_ui_pnl_attribution_placeholder_contract_does_not_claim_formal_pnl_ownership(
+    grant_executive_read,
+):
     client = TestClient(app)
 
     payload = client.get("/ui/pnl/attribution").json()

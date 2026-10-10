@@ -6,6 +6,7 @@ from datetime import date, datetime
 from typing import Any, cast
 
 import duckdb
+from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
 from backend.app.schema_registry.duckdb_loader import REGISTRY_DIR, parse_registry_sql_text
 from backend.app.schemas.research_calendar import (
     ResearchCalendarEvent,
@@ -57,7 +58,7 @@ class ResearchCalendarRepository:
         if self._conn is not None:
             yield self._conn
             return
-        c = duckdb.connect(self._path or ":memory:", read_only=True)
+        c = duckdb.connect(resolve_effective_read_path(self._path or ":memory:"), read_only=True)
         try:
             yield c
         finally:

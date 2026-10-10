@@ -1,7 +1,7 @@
 # Average Balance Candidate Verification Snapshot
 
 Date: `2026-06-10`
-Page ID: `GAP-AVERAGE-BALANCE-PAGE`
+Page ID: `PAGE-ADB-001`
 Route: `/average-balance`
 Primary API: `/api/analysis/adb`
 

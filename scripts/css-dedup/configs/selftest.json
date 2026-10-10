@@ -1,0 +1,8 @@
+{
+  "cssPath": "scripts/css-dedup/selftest.css",
+  "tsxFiles": [],
+  "wildcards": [],
+  "finalMarker": null,
+  "mockUrl": "http://127.0.0.1:5897/",
+  "realUrl": "http://localhost:5888/"
+}

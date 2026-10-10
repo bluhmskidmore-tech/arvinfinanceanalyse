@@ -1,0 +1,1150 @@
+[
+  {
+    "name": "home",
+    "route": "/",
+    "label": "经营日报首页",
+    "navError": null,
+    "finalUrl": "http://127.0.0.1:5888/",
+    "apiCalls": [
+      {
+        "status": 200,
+        "url": "/src/api/clientContext.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/httpResponseError.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/homeExecutiveClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/executiveHomeSnapshotFetch.ts"
+      },
+      {
+        "status": 200,
+        "url": "/ui/home/snapshot"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/queryKeys.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/homeSupplementalClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/numeric.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/homeMarketTickerClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/api/bond-analytics/portfolio-headlines?report_date=2026-06-30"
+      },
+      {
+        "status": 200,
+        "url": "/ui/market-data/rates"
+      },
+      {
+        "status": 200,
+        "url": "/ui/home/macro-release-context?start_date=2026-07-19&end_date=2026-09-02&history_limit=8"
+      },
+      {
+        "status": 200,
+        "url": "/api/bond-dashboard/headline-kpis?report_date=2026-06-30"
+      },
+      {
+        "status": 200,
+        "url": "/ui/calendar/supply-auctions?start_date=2026-07-12&end_date=2026-08-02"
+      },
+      {
+        "status": 200,
+        "url": "/ui/news/choice-events/latest?limit=6&offset=0&topic_code=S888010007API"
+      },
+      {
+        "status": 200,
+        "url": "/api/bond-analytics/yield-curve-term-structure?report_date=2026-06-30&curve_types=treasury%2Ccdb%2Caaa_credit"
+      },
+      {
+        "status": 200,
+        "url": "/api/bond-dashboard/home-summary?report_date=2026-06-30"
+      },
+      {
+        "status": 200,
+        "url": "/ui/news/choice-events/latest?limit=6&offset=0&topic_code=S888010003API"
+      },
+      {
+        "status": 200,
+        "url": "/ui/news/choice-events/latest?limit=6&offset=0&topic_code=S888010005API"
+      },
+      {
+        "status": 200,
+        "url": "/ui/news/choice-events/latest?limit=6&offset=0&topic_code=S888005004API"
+      },
+      {
+        "status": 200,
+        "url": "/ui/news/choice-events/latest?limit=6&offset=0&topic_code=C000003002"
+      },
+      {
+        "status": 200,
+        "url": "/ui/news/choice-events/latest?limit=6&offset=0&topic_code=C000003006"
+      },
+      {
+        "status": 200,
+        "url": "/api/bond-analytics/return-decomposition?report_date=2026-06-30&period_type=MoM&asset_class=all&accounting_class=all"
+      },
+      {
+        "status": 200,
+        "url": "/api/bond-analytics/credit-spread-migration?report_date=2026-06-30"
+      },
+      {
+        "status": 200,
+        "url": "/ui/home/income-trend?report_date=2026-06-30&window=7"
+      },
+      {
+        "status": 200,
+        "url": "/api/bond-analytics/top-holdings?report_date=2026-06-30&top_n=14"
+      },
+      {
+        "status": 200,
+        "url": "/ui/news/choice-events/latest?limit=8&offset=0&topic_code=tushare.news"
+      },
+      {
+        "status": 200,
+        "url": "/ui/news/choice-events/latest?limit=6&offset=0&topic_code=tushare.npr"
+      },
+      {
+        "status": 200,
+        "url": "/ui/news/choice-events/latest?limit=6&offset=0&topic_code=tushare.major_news"
+      },
+      {
+        "status": 200,
+        "url": "/ui/news/choice-events/latest?limit=200&offset=0&topic_code=tushare.news.sina"
+      },
+      {
+        "status": 200,
+        "url": "/api/bond-analytics/position-changes?report_date=2026-06-30&top_n=5"
+      },
+      {
+        "status": 200,
+        "url": "/ui/home/research-reports?report_date=2026-06-30&limit=5"
+      },
+      {
+        "status": 200,
+        "url": "/api/pnl-attribution/campisi/four-effects?end_date=2026-06-30&lookback_days=30"
+      }
+    ],
+    "consoleErrorCount": 0,
+    "consoleErrors": [],
+    "innerTextHead": "Skip to main content\nM\nMOSS\n工作台\n经营日报\n首页\n组合工作台\n首页\n市场工作台\n首页\n风险工作台\n首页\n绩效工作台\n首页\n报表与数据\n首页\n对话\nMOSS Chat\n可用\n直接提问\n支持入口\n报表中心\n中台配置\n帮助文档\n组合经营日报\nPORTFOLIO DAILY\n报告日\n报告日一致\n数据已更新\n12:26\n市场已收盘\n·\n估值已完成\n仅完整数据\n刷新\n数据已更新 · 通过\n报告日 2026-06-30 · 数据截至 资产负债 2026-06-30 · 损益 2026-06-30\n早间决策一览\n数据来源 首页主快照\n趋势判断待复核\n\n债券资产规模（债券资产口径） 3,734.29亿，年度损益（不扣FTP） +42.43亿；趋势判断待复核。\n主链质量按快照口径展示；补充模块进入下方证据看板复核。\n\n关注信用利差与久期暴露\n→\n证据已就绪\n主链来源核验通过\n来源"
+  },
+  {
+    "name": "portfolio",
+    "route": "/portfolio",
+    "label": "组合首页",
+    "navError": null,
+    "finalUrl": "http://127.0.0.1:5888/portfolio",
+    "apiCalls": [
+      {
+        "status": 200,
+        "url": "/src/api/clientContext.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/client.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/healthClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/executiveClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/cashflowClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/balanceAnalysisClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/bondAnalyticsClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/liabilityAdbClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/pnlClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/pnlCoreClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/pnlAttributionClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/productCategoryClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/qdbGlMonthlyAnalysisClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/positionsClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/balanceMovementClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/ledgerClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/kpiClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/cubeClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/bondDashboardWorkbenchEndpoints.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/agentClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/workbenchDashboardApi.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/marketDataClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/macroToolkitClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/executiveHomeSnapshotFetch.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/numeric.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/bondDashboardBundleMock.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/httpResponseError.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/bondAnalyticsYieldCurveTermStructureMock.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/marketDataMocks.ts"
+      },
+      {
+        "status": 200,
+        "url": "/ui/balance-analysis/dates"
+      },
+      {
+        "status": 200,
+        "url": "/api/bond-dashboard/dates"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/homeSupplementalClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/api/bond-dashboard/home-summary?report_date=2026-06-30"
+      },
+      {
+        "status": 200,
+        "url": "/ui/balance-analysis/summary-by-basis?report_date=2026-06-30&position_scope=all&currency_basis=CNY"
+      },
+      {
+        "status": 200,
+        "url": "/ui/balance-analysis/overview?report_date=2026-06-30&position_scope=all&currency_basis=CNY"
+      },
+      {
+        "status": 200,
+        "url": "/api/bond-dashboard/risk-indicators?report_date=2026-06-30"
+      },
+      {
+        "status": 200,
+        "url": "/api/risk/tensor/dates"
+      },
+      {
+        "status": 200,
+        "url": "/api/pnl-attribution/summary?report_date=2026-06-30"
+      }
+    ],
+    "consoleErrorCount": 0,
+    "consoleErrors": [],
+    "innerTextHead": "Skip to main content\nM\nMOSS\n工作台\n经营日报\n首页\n组合工作台\n首页\n市场工作台\n首页\n风险工作台\n首页\n绩效工作台\n首页\n报表与数据\n首页\n对话\nMOSS Chat\n可用\n直接提问\n支持入口\n报表中心\n中台配置\n帮助文档\nM\n组合工作台\n\n规模、久期、结构与损益 — 首页读链路汇总\n\n已接入\n资产负债日\n2026-06-30\n债券总览日\n2026-06-30\n组合复核\n仅供分析\n仅供分析：来源证据未达到决策级口径\n\n不使用前端补数 / 风险闭合：同日闭合 2026-06-30\n\n风险约束使用现有字段与首屏监控阈值；行动队列：先复核来源证据、日期和回退状态，不形成调仓建议。 数据可信度：已接入；源日期：债券总览=2026-06-30；风险指标=2026-06-30；资产负债=2026-06-30；损益归因=2026-06-30；风险闭合：同日闭合 2026-06"
+  },
+  {
+    "name": "market",
+    "route": "/market-overview",
+    "label": "市场首页",
+    "navError": null,
+    "finalUrl": "http://127.0.0.1:5888/market-overview",
+    "apiCalls": [
+      {
+        "status": 200,
+        "url": "/src/api/clientContext.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/client.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/cashflowClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/bondAnalyticsClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/executiveClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/healthClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/liabilityAdbClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/pnlClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/pnlAttributionClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/positionsClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/pnlCoreClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/qdbGlMonthlyAnalysisClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/productCategoryClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/balanceMovementClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/ledgerClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/balanceAnalysisClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/cubeClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/kpiClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/workbenchDashboardApi.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/agentClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/marketDataClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/bondDashboardWorkbenchEndpoints.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/macroToolkitClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/numeric.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/bondAnalyticsYieldCurveTermStructureMock.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/bondDashboardBundleMock.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/executiveHomeSnapshotFetch.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/httpResponseError.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/marketDataMocks.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/homeMarketTickerClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/ui/market-data/rates"
+      },
+      {
+        "status": 200,
+        "url": "/ui/macro/choice-series/latest"
+      },
+      {
+        "status": 200,
+        "url": "/ui/news/choice-events/latest?limit=3&offset=0"
+      },
+      {
+        "status": 200,
+        "url": "/ui/market-data/catalog"
+      },
+      {
+        "status": 200,
+        "url": "/ui/macro/toolkit/analysis?detail=full&history_limit=430"
+      },
+      {
+        "status": 200,
+        "url": "/ui/macro/toolkit/analysis/strategy-summaries"
+      }
+    ],
+    "consoleErrorCount": 0,
+    "consoleErrors": [],
+    "innerTextHead": "Skip to main content\nM\nMOSS\n工作台\n经营日报\n首页\n组合工作台\n首页\n市场工作台\n首页\n风险工作台\n首页\n绩效工作台\n首页\n报表与数据\n首页\n对话\nMOSS Chat\n可用\n直接提问\n支持入口\n报表中心\n中台配置\n帮助文档\n市场工作台\n\n今天利率、跨资产和新闻事件是否改变组合阅读顺序？\n\n刷新数据\n市场数据页\n同步 Choice 宏观与市场快照\n已接入\n最新行情日\n2026-07-10\n正式序列日\n2026-07-10\n利率\n10Y 国债\n1.74%\n+0.2bp\n2026-07-10\n2Y 国债\n1.25%\n+4bp\n2026-07-07\n5Y 国债\n1.44%\n+0.8bp\n2026-07-07\n7Y 国债\n1.57%\n+0.8bp\n2026-07-07\n30Y 国债\n2.26%\n+2bp\n2026-07-07\n1Y 国债\n1.12%\n-0.4bp\n2026"
+  },
+  {
+    "name": "bond-analysis",
+    "route": "/bond-analysis",
+    "label": "债券分析",
+    "navError": null,
+    "finalUrl": "http://127.0.0.1:5888/bond-analysis",
+    "apiCalls": [
+      {
+        "status": 200,
+        "url": "/src/api/clientContext.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/client.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/balanceAnalysisClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/bondAnalyticsClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/cashflowClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/executiveClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/healthClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/liabilityAdbClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/pnlClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/pnlAttributionClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/productCategoryClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/pnlCoreClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/positionsClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/qdbGlMonthlyAnalysisClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/ledgerClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/balanceMovementClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/marketDataClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/macroToolkitClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/kpiClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/cubeClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/agentClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/workbenchDashboardApi.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/numeric.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/bondDashboardBundleMock.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/bondDashboardWorkbenchEndpoints.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/bondAnalyticsYieldCurveTermStructureMock.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/executiveHomeSnapshotFetch.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/httpResponseError.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/marketDataMocks.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/queryKeys.ts"
+      },
+      {
+        "status": 200,
+        "url": "/api/bond-analytics/dates"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/homeMarketTickerClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/ui/macro/choice-series/latest"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/homeSupplementalClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/api/bond-dashboard/dates"
+      },
+      {
+        "status": 200,
+        "url": "/ui/calendar/supply-auctions?end_date=2026-06-30"
+      },
+      {
+        "status": 200,
+        "url": "/api/bond-dashboard/bundle?sections=headline-kpis%2Cmaturity-structure%2Ctop-holdings%2Cportfolio-headlines%2Casset-structure%2Crisk-indicators%2Cindustry-distribution%2Cdv01-risk-ac%2Cdv01-risk-oci%2Cdv01-risk-tpl%2Cdv01-risk-all%2Cyield-curve-term-structure&report_date=2026-06-30&industry_top_n=10&analytics_top_n=10&dv01_top_n=1&dv01_shock_bps=1&curve_types=treasury%2Ccdb"
+      },
+      {
+        "status": 200,
+        "url": "/api/bond-analytics/return-decomposition?report_date=2026-06-30&period_type=MoM&detail=summary"
+      },
+      {
+        "status": 200,
+        "url": "/api/bond-analytics/action-attribution?report_date=2026-06-30&period_type=MoM"
+      }
+    ],
+    "consoleErrorCount": 0,
+    "consoleErrors": [],
+    "innerTextHead": "Skip to main content\nM\nMOSS\n工作台\n经营日报\n首页\n组合工作台\n首页\n市场工作台\n首页\n风险工作台\n首页\n绩效工作台\n首页\n报表与数据\n首页\n对话\nMOSS Chat\n可用\n直接提问\n支持入口\n报表中心\n中台配置\n帮助文档\n债券分析\n报告日 2026-06-30\n管理视角\n报告日\n2026-06-30\n2026-05-31\n2026-05-30\n2026-05-29\n2026-05-28\n2026-05-27\n2026-05-26\n2026-05-25\n2026-05-24\n2026-05-23\n2026-05-22\n2026-05-21\n2026-05-20\n2026-05-19\n2026-05-18\n2026-05-17\n2026-05-16\n2026-05-15\n2026-05-14\n2026-05-13\n2026-05-12\n2026-05-11\n202"
+  },
+  {
+    "name": "market-data",
+    "route": "/market-data",
+    "label": "市场数据",
+    "navError": null,
+    "finalUrl": "http://127.0.0.1:5888/market-data",
+    "apiCalls": [
+      {
+        "status": 200,
+        "url": "/src/api/clientContext.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/homeMarketTickerClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/httpResponseError.ts"
+      },
+      {
+        "status": 200,
+        "url": "/ui/macro/choice-series/latest"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/client.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/cashflowClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/balanceAnalysisClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/executiveClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/healthClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/bondAnalyticsClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/pnlClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/liabilityAdbClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/pnlAttributionClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/pnlCoreClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/qdbGlMonthlyAnalysisClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/productCategoryClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/positionsClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/balanceMovementClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/ledgerClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/marketDataClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/cubeClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/kpiClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/macroToolkitClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/agentClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/workbenchDashboardApi.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/bondDashboardWorkbenchEndpoints.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/queryKeys.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/executiveHomeSnapshotFetch.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/numeric.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/bondAnalyticsYieldCurveTermStructureMock.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/bondDashboardBundleMock.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/marketDataMocks.ts"
+      },
+      {
+        "status": 200,
+        "url": "/ui/market-data/rates"
+      },
+      {
+        "status": 200,
+        "url": "/ui/macro/choice-series/latest"
+      },
+      {
+        "status": 200,
+        "url": "/ui/market-data/livermore/cycle-proxy-backtest"
+      },
+      {
+        "status": 200,
+        "url": "/ui/market-data/livermore/candidate-history-portfolio-backtest"
+      },
+      {
+        "status": 200,
+        "url": "/ui/macro/toolkit/analysis?detail=core"
+      },
+      {
+        "status": 403,
+        "url": "/api/external-data/watermarks"
+      },
+      {
+        "status": 200,
+        "url": "/ui/market-data/catalog"
+      },
+      {
+        "status": 200,
+        "url": "/ui/market-data/fx/analytical"
+      },
+      {
+        "status": 200,
+        "url": "/ui/market-data/fx/formal-status"
+      },
+      {
+        "status": 200,
+        "url": "/ui/market-data/ncd-funding-proxy"
+      },
+      {
+        "status": 200,
+        "url": "/ui/market-data/bond-futures/rankings?contract=T.CFE&limit=10"
+      },
+      {
+        "status": 200,
+        "url": "/ui/market-data/livermore/sector-rank-series?as_of_date=2026-07-19&top_k=5"
+      },
+      {
+        "status": 200,
+        "url": "/ui/market-data/coverage-summary"
+      },
+      {
+        "status": 200,
+        "url": "/ui/market-data/tushare-supplement?money_supply_limit=12&eco_cal_limit=30"
+      },
+      {
+        "status": 200,
+        "url": "/ui/market-data/livermore/signal-confluence?as_of_date=2026-07-19"
+      }
+    ],
+    "consoleErrorCount": 1,
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+    ],
+    "innerTextHead": "Skip to main content\nM\nMOSS\n工作台\n经营日报\n首页\n组合工作台\n首页\n市场工作台\n首页\n风险工作台\n首页\n绩效工作台\n首页\n报表与数据\n首页\n对话\nMOSS Chat\n可用\n直接提问\n支持入口\n报表中心\n中台配置\n帮助文档\n市场数据\n报告日 默认路由\n管理视角\n报表中心\n中台配置\n市场快讯\n10年国债\n1.74%\n+0.2bp\n10年国开\n1.79%\n--\n10年美债\n4.56%\n+2bp\n中美10年利差\n-282bp\n-2bp\nDR007\n1.38%\n0bp\n美元/人民币\n6.8CNY/USD\n-0CNY/USD\n市场数据终端\n市场数据\n\n当前市场利率、资金面、外汇状况如何？\n\n数据日期 2026-07-10\n数据正常\n·\n数据正常\n国债+国开\n全部来源\n刷新数据\n10年国债\n1.74%\n+0.2bp\n10年国开\n1.79%\n+1bp\n5年国债\n1.44%\n+"
+  },
+  {
+    "name": "operations",
+    "route": "/operations-analysis",
+    "label": "经营分析",
+    "navError": null,
+    "finalUrl": "http://127.0.0.1:5888/operations-analysis",
+    "apiCalls": [
+      {
+        "status": 200,
+        "url": "/src/api/clientContext.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/homeMarketTickerClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/httpResponseError.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/client.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/balanceAnalysisClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/bondAnalyticsClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/cashflowClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/executiveClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/healthClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/liabilityAdbClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/pnlClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/ui/macro/choice-series/latest"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/pnlCoreClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/pnlAttributionClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/productCategoryClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/positionsClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/qdbGlMonthlyAnalysisClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/balanceMovementClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/ledgerClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/kpiClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/cubeClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/marketDataClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/macroToolkitClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/bondDashboardWorkbenchEndpoints.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/bondAnalyticsYieldCurveTermStructureMock.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/agentClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/bondDashboardBundleMock.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/executiveHomeSnapshotFetch.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/workbenchDashboardApi.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/numeric.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/marketDataMocks.ts"
+      },
+      {
+        "status": 200,
+        "url": "/ui/macro/choice-series/latest"
+      },
+      {
+        "status": 503,
+        "url": "/ui/preview/source-foundation"
+      },
+      {
+        "status": 200,
+        "url": "/ui/news/choice-events/latest?limit=3&offset=0"
+      },
+      {
+        "status": 200,
+        "url": "/ui/market-data/catalog"
+      },
+      {
+        "status": 200,
+        "url": "/ui/market-data/fx/formal-status"
+      },
+      {
+        "status": 200,
+        "url": "/ui/balance-analysis/dates"
+      },
+      {
+        "status": 200,
+        "url": "/ui/pnl/product-category/dates"
+      },
+      {
+        "status": 200,
+        "url": "/ui/balance-analysis/overview?report_date=2026-06-30&position_scope=all&currency_basis=CNY"
+      },
+      {
+        "status": 200,
+        "url": "/ui/pnl/product-category?report_date=2026-06-30&view=monthly"
+      }
+    ],
+    "consoleErrorCount": 1,
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+    ],
+    "innerTextHead": "Skip to main content\nM\nMOSS\n工作台\n经营日报\n首页\n组合工作台\n首页\n市场工作台\n首页\n风险工作台\n首页\n绩效工作台\n首页\n报表与数据\n首页\n对话\nMOSS Chat\n可用\n直接提问\n支持入口\n报表中心\n中台配置\n帮助文档\n经营分析\n报告日 默认路由\n管理视角\n报表中心\n中台配置\n市场快讯\n10年国债\n1.74%\n+0.2bp\n10年国开\n1.79%\n--\n10年美债\n4.56%\n+2bp\n中美10年利差\n-282bp\n-2bp\nDR007\n1.38%\n0bp\n美元/人民币\n6.8CNY/USD\n-0CNY/USD\n当前工作台页面\n经营日报\n经营日报\n经营分析\n决策事项\n临时例外\n临时例外：该路由仅在第一阶段 PAGE-OPS-001 收口期间保持可见；如收口延期，下一轮 readiness 梳理需降级。\n第一阶段仅在页面契约收口期间保留该路由可见；不要把它视为"
+  },
+  {
+    "name": "reports",
+    "route": "/reports",
+    "label": "报表中心",
+    "navError": null,
+    "finalUrl": "http://127.0.0.1:5888/reports",
+    "apiCalls": [
+      {
+        "status": 200,
+        "url": "/src/api/clientContext.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/client.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/cashflowClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/healthClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/bondAnalyticsClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/executiveClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/balanceAnalysisClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/pnlCoreClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/pnlClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/liabilityAdbClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/pnlAttributionClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/productCategoryClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/positionsClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/qdbGlMonthlyAnalysisClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/ledgerClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/balanceMovementClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/kpiClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/marketDataClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/bondDashboardWorkbenchEndpoints.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/cubeClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/workbenchDashboardApi.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/agentClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/macroToolkitClient.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/bondDashboardBundleMock.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/numeric.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/bondAnalyticsYieldCurveTermStructureMock.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/executiveHomeSnapshotFetch.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/httpResponseError.ts"
+      },
+      {
+        "status": 200,
+        "url": "/src/api/marketDataMocks.ts"
+      },
+      {
+        "status": 503,
+        "url": "/ui/preview/source-foundation"
+      },
+      {
+        "status": 403,
+        "url": "/api/cube/dimensions/bond_analytics"
+      }
+    ],
+    "consoleErrorCount": 3,
+    "consoleErrors": [
+      "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+      "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+      "Warning: Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.%s 读取失败：不使用前端补数。 \n    at u"
+    ],
+    "innerTextHead": "Skip to main content\nM\nMOSS\n工作台\n经营日报\n首页\n组合工作台\n首页\n市场工作台\n首页\n风险工作台\n首页\n绩效工作台\n首页\n报表与数据\n首页\n对话\nMOSS Chat\n可用\n直接提问\n支持入口\n报表中心\n中台配置\n帮助文档\n报表与数据\n读取失败\n\n当前数据健康、来源状态和报表能力是否可支撑交付？\n\n首页聚合数据中心健康、数据源状态、自助查询和报表中心规划状态；未接入报表能力保持规划中。\n\n来源\n健康检查 / 数据源 / Cube 查询 / 报表规划 / real\n状态\n数据中心读链路失败，不使用前端补数。\nLive\nok\nGET /health/live。\nHealth\nok\nGET /health。\n数据源\n0\nsource foundation sources。\nCube 维度\n0\ncube dimensions 未返回。\n实时健康\n已返回\nlive pro"
+  }
+]

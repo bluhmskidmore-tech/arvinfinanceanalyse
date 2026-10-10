@@ -14,6 +14,8 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
 from backend.app.core_finance.attribution_core import (
     DayCountConvention,
     QualityFlag,
@@ -37,6 +39,12 @@ from backend.app.core_finance.attribution_core import (
 # ---------------------------------------------------------------------------
 
 class TestCalculateReconciliation:
+
+    # --- deprecation (2026-08 审计 M3：无生产调用方，危险死代码保守处置) ---
+
+    def test_emits_deprecation_warning(self):
+        with pytest.warns(DeprecationWarning, match="calculate_reconciliation 已弃用"):
+            calculate_reconciliation({"carry": Decimal("100")}, Decimal("100"))
 
     # --- basic residual arithmetic ---
 
@@ -285,6 +293,16 @@ class TestValidatePnlScope:
 # ---------------------------------------------------------------------------
 
 class TestEstimateModifiedDuration:
+
+    # --- deprecation (2026-08 审计 M3：与 bond_analytics.common 同名不同签名，勿混用) ---
+
+    def test_emits_deprecation_warning(self):
+        with pytest.warns(DeprecationWarning, match="estimate_modified_duration 已弃用"):
+            estimate_modified_duration(
+                maturity_date=date(2031, 1, 1),
+                report_date=date(2026, 1, 1),
+                coupon_rate=Decimal("0.03"),
+            )
 
     def test_returns_decimal(self):
         d = estimate_modified_duration(

@@ -1,21 +1,25 @@
 """
 Agent HTTP + schema contracts.
 
-Production default (`agent_enabled=False`): `POST /api/agent/query` returns **503** with
-`AgentDisabledResponse` — not a live Agent. Tests that return 200 use an isolated FastAPI
-app with `agent_enabled` stubbed True to exercise envelope/schema only.
+Production default (`agent_enabled=False`): Agent routes are not registered. Tests that return
+200 use an isolated FastAPI app with `agent_enabled` stubbed True to exercise envelope/schema
+only.
 """
 
 from __future__ import annotations
 
-import json
+# Marker split: disabled/scope guards -> excluded_surface_regression;
+# enabled-path HTTP/schema contracts -> excluded_surface_acceptance (per-test below).
 
+import json
+from types import SimpleNamespace
+
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
-from backend.app.main import app as default_app
-from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
+from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV, AuthContext
 from tests.helpers import load_module
 
 AGENT_READ_HEADERS = {"X-User-Id": "agent-read-user", "X-User-Role": "viewer"}
@@ -43,13 +47,39 @@ def _agent_auth_fields(tmp_path) -> dict[str, str]:
     }
 
 
-def _seed_agent_read_scope(tmp_path, monkeypatch, *, user_id: str = "*") -> None:
+def _seed_agent_scope(
+    tmp_path,
+    monkeypatch,
+    *,
+    action: str,
+    user_id: str = "*",
+) -> None:
     _configure_agent_scope_store(tmp_path, monkeypatch).grant_scope(
         user_id=user_id,
         role=None,
         resource="agent",
-        action="read",
+        action=action,
     )
+
+
+def _seed_agent_read_scope(tmp_path, monkeypatch, *, user_id: str = "*") -> None:
+    """Seed a user who may use the Agent entry *and* read every resource a local intent binds to.
+
+    ``agent:read`` alone only opens the Agent endpoints; each governed intent additionally
+    requires the read scope of the REST resource it queries (S-H2). Tests that need the
+    narrower "agent:read only" identity call ``_seed_agent_scope(..., action="read")`` directly.
+    """
+    from backend.app.services.agent_service import INTENT_READ_RESOURCES
+
+    _seed_agent_scope(
+        tmp_path,
+        monkeypatch,
+        action="read",
+        user_id=user_id,
+    )
+    store = _configure_agent_scope_store(tmp_path, monkeypatch)
+    for resource in sorted(set(INTENT_READ_RESOURCES.values())):
+        store.grant_scope(user_id=user_id, role=None, resource=resource, action="read")
 
 
 def _sample_agent_envelope():
@@ -72,6 +102,9 @@ def _sample_agent_envelope():
                 "report_date": "2026-03-31",
                 "report_date_resolution": "latest_default",
             },
+            sql_executed=[
+                "select count(*), sum(total_pnl) from fact_formal_pnl_fi where report_date = ?",
+            ],
             evidence_rows=2,
             quality_flag="ok",
         ),
@@ -91,10 +124,16 @@ def _sample_agent_envelope():
                 "report_date": "2026-03-31",
                 "report_date_resolution": "latest_default",
             },
-            sql_executed=[],
+            sql_executed=[
+                "select count(*), sum(total_pnl) from fact_formal_pnl_fi where report_date = ?",
+            ],
             evidence_rows=2,
         ),
     )
+
+
+def _loopback_request() -> SimpleNamespace:
+    return SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"))
 
 
 def _client_with_stubbed_agent(monkeypatch):
@@ -125,6 +164,98 @@ def _client_with_stubbed_agent(monkeypatch):
     return TestClient(app)
 
 
+@pytest.mark.excluded_surface_regression
+@pytest.mark.surface_agent_mvp
+def test_agent_development_environment_bypasses_scope_store(monkeypatch) -> None:
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    scope_checks: list[str] = []
+
+    def unexpected_scope_check(**kwargs):
+        scope_checks.append(str(kwargs["action"]))
+        raise AssertionError("development Agent request reached the scope store")
+
+    monkeypatch.setattr(route_module, "ensure_user_allowed", unexpected_scope_check)
+    auth = AuthContext(
+        user_id="development-agent-user",
+        role="developer",
+        identity_source="fallback",
+    )
+    settings = SimpleNamespace(
+        environment="development",
+        agent_dev_scope_bypass=True,
+    )
+
+    route_module._ensure_agent_read_allowed(
+        auth,
+        settings,
+        http_request=_loopback_request(),
+    )
+    route_module._ensure_agent_execute_allowed(
+        auth,
+        settings,
+        http_request=_loopback_request(),
+    )
+
+    assert scope_checks == []
+
+
+@pytest.mark.excluded_surface_regression
+@pytest.mark.surface_agent_mvp
+def test_agent_development_bypass_requires_explicit_opt_in(monkeypatch) -> None:
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    scope_checks: list[str] = []
+
+    def record_scope_check(**kwargs):
+        scope_checks.append(str(kwargs["action"]))
+
+    monkeypatch.setattr(route_module, "ensure_user_allowed", record_scope_check)
+    auth = AuthContext(
+        user_id="development-agent-user",
+        role="developer",
+        identity_source="fallback",
+    )
+
+    route_module._ensure_agent_read_allowed(
+        auth,
+        SimpleNamespace(
+            environment="development",
+            agent_dev_scope_bypass=False,
+        ),
+        http_request=_loopback_request(),
+    )
+    route_module._ensure_agent_execute_allowed(
+        auth,
+        SimpleNamespace(agent_dev_scope_bypass=True),
+        http_request=_loopback_request(),
+    )
+    route_module._ensure_agent_read_allowed(
+        auth,
+        SimpleNamespace(
+            environment=" ",
+            agent_dev_scope_bypass=True,
+        ),
+        http_request=_loopback_request(),
+    )
+    route_module._ensure_agent_execute_allowed(
+        auth,
+        SimpleNamespace(
+            environment="staging",
+            agent_dev_scope_bypass=True,
+        ),
+        http_request=_loopback_request(),
+    )
+
+    assert scope_checks == ["read", "execute", "read", "execute"]
+
+
+@pytest.mark.excluded_surface_regression
+@pytest.mark.surface_agent_mvp
 def test_agent_enabled_endpoints_require_explicit_read_scope(tmp_path, monkeypatch) -> None:
     route_module = load_module(
         "backend.app.api.routes.agent",
@@ -138,6 +269,7 @@ def test_agent_enabled_endpoints_require_explicit_read_scope(tmp_path, monkeypat
             "SettingsStub",
             (),
             {
+                "environment": "production",
                 "agent_enabled": True,
                 "agent_provider": "hermes",
                 "agent_hermes_transport": "bridge",
@@ -174,31 +306,178 @@ def test_agent_enabled_endpoints_require_explicit_read_scope(tmp_path, monkeypat
     assert calls == []
 
 
-def test_default_app_agent_query_is_disabled_503(monkeypatch, tmp_path):
-    """Unmocked app: Agent is disabled unless the feature flag is explicitly enabled."""
-    def disabled_settings():
-        return type(
+@pytest.mark.excluded_surface_regression
+@pytest.mark.surface_agent_mvp
+def test_agent_read_scope_alone_cannot_read_intent_bound_resources(tmp_path, monkeypatch) -> None:
+    """S-H2: agent:read only opens the Agent entry; each intent needs its REST resource's read scope."""
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    # agent:read only -- deliberately NOT the broad _seed_agent_read_scope helper.
+    _seed_agent_scope(tmp_path, monkeypatch, action="read")
+    monkeypatch.setattr(
+        route_module,
+        "get_settings",
+        lambda: type(
             "SettingsStub",
             (),
             {
-                "agent_enabled": False,
+                "environment": "production",
+                "agent_enabled": True,
                 "agent_provider": "local",
                 "duckdb_path": str(tmp_path / "moss.duckdb"),
                 "governance_path": str(tmp_path / "governance"),
+                **_agent_auth_fields(tmp_path),
             },
-        )()
-    for route in default_app.routes:
-        if getattr(route, "path", None) == "/api/agent/query":
-            monkeypatch.setitem(route.endpoint.__globals__, "get_settings", disabled_settings)
-    client = TestClient(default_app)
-    response = client.post("/api/agent/query", json={"question": "PnL summary"})
+        )(),
+    )
+    executed: list[str] = []
 
-    assert response.status_code == 503
-    body = response.json()
-    assert body["enabled"] is False
-    assert "disabled" in body["detail"].lower()
+    def fake_execute_agent_query(request, duckdb_path, governance_dir):
+        executed.append(request.question)
+        return _sample_agent_envelope()
+
+    def unexpected_run_create(*_args, **_kwargs):
+        raise AssertionError("POST /runs must not create a run without the intent's resource scope.")
+
+    monkeypatch.setattr(route_module, "execute_agent_query", fake_execute_agent_query)
+    monkeypatch.setattr(route_module, "create_agent_run", unexpected_run_create)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app, raise_server_exceptions=False)
+
+    # portfolio_overview reads BalanceAnalysisRepository -> balance_analysis:read
+    denied_query = client.post(
+        "/api/agent/query",
+        json={"question": "组合概览"},
+        headers=AGENT_READ_HEADERS,
+    )
+    # pnl_summary reads PnlRepository -> pnl:read (run creation is denied before dispatch)
+    denied_run = client.post(
+        "/api/agent/runs",
+        json={"question": "PnL summary"},
+        headers=AGENT_READ_HEADERS,
+    )
+
+    assert denied_query.status_code == 403
+    assert "balance_analysis" in denied_query.json()["detail"]
+    assert denied_run.status_code == 403
+    assert "pnl" in denied_run.json()["detail"]
+    assert executed == []
+
+    _configure_agent_scope_store(tmp_path, monkeypatch).grant_scope(
+        user_id="*",
+        role=None,
+        resource="balance_analysis",
+        action="read",
+    )
+
+    allowed_query = client.post(
+        "/api/agent/query",
+        json={"question": "组合概览"},
+        headers=AGENT_READ_HEADERS,
+    )
+    still_denied_run = client.post(
+        "/api/agent/runs",
+        json={"question": "PnL summary"},
+        headers=AGENT_READ_HEADERS,
+    )
+
+    assert allowed_query.status_code == 200
+    assert executed == ["组合概览"]
+    assert still_denied_run.status_code == 403
 
 
+@pytest.mark.excluded_surface_regression
+@pytest.mark.surface_agent_mvp
+def test_agent_intent_resource_resolution_mirrors_dispatch_rules() -> None:
+    """The pre-dispatch resource check must follow AnalysisViewTool.execute's routing exactly."""
+    from backend.app.agent.schemas.agent_request import AgentQueryRequest
+    from backend.app.security.route_policy import POLICY_SCOPE_SEMANTICS
+    from backend.app.services.agent_service import (
+        INTENT_READ_RESOURCES,
+        _build_intent_handlers,
+        resolve_agent_intent_read_resources,
+    )
+
+    # Every bound resource must be a real internal read scope already used by a REST route.
+    for resource in INTENT_READ_RESOURCES.values():
+        assert POLICY_SCOPE_SEMANTICS[(resource, "read")].policy_class == "internal", resource
+    # Every registered handler must be bound, except the ones that read no governed DuckDB data.
+    # A new intent added without a binding would silently fall back to agent:read only.
+    unbound_handlers = set(_build_intent_handlers("unused.duckdb", "unused-governance")) - set(
+        INTENT_READ_RESOURCES
+    )
+    assert unbound_handlers == {"gitnexus_status"}
+
+    def resources(question: str, **context) -> list[str]:
+        return resolve_agent_intent_read_resources(
+            AgentQueryRequest(question=question, context=context)
+        )
+
+    # Keyword / explicit intents bind to the repository they read.
+    assert resources("组合概览") == ["balance_analysis"]
+    assert resources("PnL summary") == ["pnl"]
+    assert resources("ping", intent="duration_risk") == ["risk_tensor"]
+    assert resources("ping", cube_query={"fact_table": "bond_analytics"}) == ["cube"]
+    # Provider / pure conversation / unknown paths read no governed data.
+    assert resources("ping") == []
+    assert resources("帮我判断今天的主要风险") == []
+    assert resources("ping", workflow_id="does_not_exist") == []
+    # Financial workflows: plan card reads nothing; execute mode runs every mapped intent.
+    assert resources("ping", workflow_id="pnl_review") == []
+    assert resources("ping", workflow_id="pnl_review", workflow_mode="execute") == [
+        "pnl",
+        "product_category_pnl",
+    ]
+    assert resources("ping", workflow_id="portfolio_review", workflow_mode="execute") == [
+        "balance_analysis",
+        "risk_tensor",
+        "bond_analytics",
+    ]
+    # Research workflow: plan card reads nothing; execute mode or explicit intent runs the handler.
+    assert resources("研究速读") == []
+    assert resources("研究速读", workflow_mode="execute") == ["choice_news.data"]
+    assert resources("ping", intent="research_radar_brief") == ["choice_news.data"]
+
+
+@pytest.mark.excluded_surface_regression
+@pytest.mark.surface_agent_mvp
+def test_default_app_does_not_publish_agent_routes_or_openapi_when_disabled(monkeypatch):
+    """Disabled configuration does not publish Agent URL or schema surfaces."""
+    monkeypatch.setenv("MOSS_AGENT_ENABLED", "false")
+    get_settings.cache_clear()
+    try:
+        disabled_main = load_module("backend.app.main", "backend/app/main.py")
+        paths = {getattr(route, "path", "") for route in disabled_main.app.routes}
+        client = TestClient(disabled_main.app)
+        response = client.post("/api/agent/query", json={"question": "PnL summary"})
+
+        assert not any(path.startswith("/api/agent") for path in paths)
+        assert not any(path.startswith("/api/agent") for path in disabled_main.app.openapi()["paths"])
+        assert response.status_code == 404
+    finally:
+        get_settings.cache_clear()
+
+
+@pytest.mark.excluded_surface_acceptance
+@pytest.mark.surface_agent_mvp
+def test_enabled_app_registers_agent_routes_and_openapi(monkeypatch):
+    monkeypatch.setenv("MOSS_AGENT_ENABLED", "true")
+    get_settings.cache_clear()
+    try:
+        enabled_main = load_module("backend.app.main", "backend/app/main.py")
+        paths = {getattr(route, "path", "") for route in enabled_main.app.routes}
+
+        assert "/api/agent/query" in paths
+        assert "/api/agent/query" in enabled_main.app.openapi()["paths"]
+    finally:
+        get_settings.cache_clear()
+
+
+@pytest.mark.excluded_surface_acceptance
+@pytest.mark.surface_agent_mvp
 def test_agent_request_schema_defines_phase1_contract():
     module = load_module(
         "backend.app.agent.schemas.agent_request",
@@ -218,6 +497,8 @@ def test_agent_request_schema_defines_phase1_contract():
     } <= fields
 
 
+@pytest.mark.excluded_surface_acceptance
+@pytest.mark.surface_agent_mvp
 def test_agent_request_schema_accepts_page_context():
     module = load_module(
         "backend.app.agent.schemas.agent_request",
@@ -242,6 +523,8 @@ def test_agent_request_schema_accepts_page_context():
     assert request.page_context.context_note == "Current reconciliation page filters and top break row."
 
 
+@pytest.mark.excluded_surface_acceptance
+@pytest.mark.surface_agent_mvp
 def test_agent_response_schema_exposes_target_state_and_disabled_contracts():
     module = load_module(
         "backend.app.agent.schemas.agent_response",
@@ -254,6 +537,8 @@ def test_agent_response_schema_exposes_target_state_and_disabled_contracts():
     assert {"enabled", "phase", "detail"} <= set(disabled.model_fields)
 
 
+@pytest.mark.excluded_surface_acceptance
+@pytest.mark.surface_agent_mvp
 def test_agent_response_schema_exposes_passive_suggested_actions():
     module = load_module(
         "backend.app.agent.schemas.agent_response",
@@ -267,6 +552,8 @@ def test_agent_response_schema_exposes_passive_suggested_actions():
     assert "evidence_strength" in module.AgentResultMeta.model_fields
 
 
+@pytest.mark.excluded_surface_acceptance
+@pytest.mark.surface_agent_mvp
 def test_agent_provider_runtime_schema_downgrades_ok_quality_flag():
     module = load_module(
         "backend.app.agent.schemas.agent_response",
@@ -296,6 +583,35 @@ def test_agent_provider_runtime_schema_downgrades_ok_quality_flag():
     assert meta.quality_flag == "warning"
 
 
+@pytest.mark.excluded_surface_acceptance
+@pytest.mark.surface_agent_mvp
+def test_agent_schema_defaults_missing_evidence_strength_to_non_governed():
+    module = load_module(
+        "backend.app.agent.schemas.agent_response",
+        "backend/app/agent/schemas/agent_response.py",
+    )
+
+    evidence = module.AgentEvidence(quality_flag="ok")
+    meta = module.AgentResultMeta(
+        trace_id="tr_missing_strength",
+        basis="analytical",
+        result_kind="agent.unknown",
+        formal_use_allowed=False,
+        source_version="sv_agent_unknown",
+        vendor_version="vv_none",
+        rule_version="rv_agent_unknown",
+        cache_version="cv_agent_unknown",
+        quality_flag="ok",
+    )
+
+    assert evidence.evidence_strength == "local_fallback"
+    assert meta.evidence_strength == "local_fallback"
+    assert evidence.quality_flag == "warning"
+    assert meta.quality_flag == "warning"
+
+
+@pytest.mark.excluded_surface_acceptance
+@pytest.mark.surface_agent_mvp
 def test_agent_query_executes_when_agent_setting_is_on(monkeypatch, tmp_path):
     route_module = load_module(
         "backend.app.api.routes.agent",
@@ -336,6 +652,50 @@ def test_agent_query_executes_when_agent_setting_is_on(monkeypatch, tmp_path):
     assert calls
 
 
+@pytest.mark.excluded_surface_acceptance
+@pytest.mark.surface_agent_mvp
+def test_agent_envelope_contract_exposes_read_only_sql_disclosure(monkeypatch, tmp_path):
+    """Governed intent envelopes must disclose the executed/equivalent read-only SQL."""
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    _seed_agent_read_scope(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        route_module,
+        "get_settings",
+        lambda: type(
+            "SettingsStub",
+            (),
+            {
+                "agent_enabled": True,
+                "agent_provider": "local",
+                "duckdb_path": str(tmp_path / "moss.duckdb"),
+                "governance_path": str(tmp_path / "governance"),
+                **_agent_auth_fields(tmp_path),
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        route_module,
+        "execute_agent_query",
+        lambda request, duckdb_path, governance_dir: _sample_agent_envelope(),
+    )
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    response = client.post("/api/agent/query", json={"question": "PnL summary"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["evidence"]["sql_executed"]
+    assert all(sql.lower().startswith("select") for sql in payload["evidence"]["sql_executed"])
+    assert payload["result_meta"]["sql_executed"] == payload["evidence"]["sql_executed"]
+
+
+@pytest.mark.excluded_surface_regression
+@pytest.mark.surface_agent_mvp
 def test_agent_query_returns_disabled_when_agent_is_off(monkeypatch, tmp_path):
     route_module = load_module(
         "backend.app.api.routes.agent",
@@ -367,6 +727,8 @@ def test_agent_query_returns_disabled_when_agent_is_off(monkeypatch, tmp_path):
     assert "result_meta" not in payload
 
 
+@pytest.mark.excluded_surface_regression
+@pytest.mark.surface_agent_mvp
 def test_disabled_agent_query_appends_disabled_audit_log(monkeypatch, tmp_path):
     route_module = load_module(
         "backend.app.api.routes.agent",
@@ -400,6 +762,54 @@ def test_disabled_agent_query_appends_disabled_audit_log(monkeypatch, tmp_path):
     assert audit_payload["result_meta"]["formal_use_allowed"] is False
 
 
+@pytest.mark.excluded_surface_regression
+@pytest.mark.surface_agent_mvp
+def test_agent_endpoints_share_flat_disabled_error_contract(monkeypatch, tmp_path):
+    """Every agent endpoint (query/runs lifecycle/workspace) must return the same
+    flat 503 AgentDisabledResponse body, not an HTTPException-style {"detail": str}."""
+    import importlib
+
+    from backend.app.services.agent_service import phase1_disabled_response
+
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    workspace_route_module = importlib.import_module(
+        "backend.app.api.routes.agent_workspace"
+    )
+    settings = SimpleNamespace(
+        agent_enabled=False,
+        agent_provider="local",
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_path=str(tmp_path / "governance"),
+    )
+    monkeypatch.setattr(route_module, "get_settings", lambda: settings)
+    monkeypatch.setattr(workspace_route_module, "get_settings", lambda: settings)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+    run_id = "agent_run:disabled"
+
+    responses = {
+        "POST /query": client.post("/api/agent/query", json={"question": "PnL summary"}),
+        "POST /runs": client.post("/api/agent/runs", json={"question": "PnL summary"}),
+        "GET /runs": client.get("/api/agent/runs"),
+        "GET /runs/{id}": client.get(f"/api/agent/runs/{run_id}"),
+        "GET /runs/{id}/events": client.get(f"/api/agent/runs/{run_id}/events"),
+        "POST /runs/{id}/cancel": client.post(f"/api/agent/runs/{run_id}/cancel"),
+        "POST /runs/{id}/retry": client.post(f"/api/agent/runs/{run_id}/retry"),
+        "GET /projects": client.get("/api/agent/projects"),
+    }
+
+    expected_body = phase1_disabled_response().model_dump(mode="json")
+    for endpoint, response in responses.items():
+        assert response.status_code == 503, (endpoint, response.status_code)
+        assert response.json() == expected_body, (endpoint, response.json())
+
+
+@pytest.mark.excluded_surface_acceptance
+@pytest.mark.surface_agent_mvp
 def test_agent_query_maps_executor_value_error_when_agent_is_on(monkeypatch, tmp_path):
     route_module = load_module(
         "backend.app.api.routes.agent",
@@ -438,6 +848,8 @@ def test_agent_query_maps_executor_value_error_when_agent_is_on(monkeypatch, tmp
     assert response.json()["detail"] == "No agent data found."
 
 
+@pytest.mark.excluded_surface_acceptance
+@pytest.mark.surface_agent_mvp
 def test_agent_query_maps_executor_runtime_error_when_agent_is_on(monkeypatch, tmp_path):
     route_module = load_module(
         "backend.app.api.routes.agent",
@@ -476,6 +888,75 @@ def test_agent_query_maps_executor_runtime_error_when_agent_is_on(monkeypatch, t
     assert response.json()["detail"] == "DuckDB read path unavailable."
 
 
+@pytest.mark.excluded_surface_acceptance
+@pytest.mark.surface_agent_mvp
+@pytest.mark.parametrize("provider", ["hermes", "dexter"])
+def test_agent_query_maps_provider_runtime_error_to_safe_stable_contract(
+    provider,
+    monkeypatch,
+    tmp_path,
+    caplog,
+):
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    _seed_agent_read_scope(tmp_path, monkeypatch)
+    settings = SimpleNamespace(
+        agent_enabled=True,
+        agent_provider=provider,
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_path=str(tmp_path / "governance"),
+        **_agent_auth_fields(tmp_path),
+    )
+    monkeypatch.setattr(route_module, "get_settings", lambda: settings)
+    sensitive_markers = (
+        "json-access-secret",
+        "dict-password-secret",
+        "opaque-provider-secret",
+        "multi-at-password",
+    )
+    provider_error = (
+        f"{provider} unavailable with "
+        '{"access_token":"json-access-secret"} '
+        "{'password': 'dict-password-secret'} "
+        "opaque-provider-secret at "
+        "https://user:multi-at-password@segment@provider.example/query"
+    )
+
+    def fail_provider(*_args, **_kwargs):
+        raise RuntimeError(provider_error)
+
+    monkeypatch.setattr(
+        route_module,
+        "execute_hermes_agent_query" if provider == "hermes" else "execute_dexter_agent_query",
+        fail_provider,
+    )
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/agent/query",
+        json={"question": "external provider diagnostics"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == {
+        "code": "AGENT_PROVIDER_EXECUTION_FAILED",
+        "message": "Agent provider execution failed.",
+    }
+    serialized_response = response.text
+    for marker in sensitive_markers:
+        assert marker not in serialized_response
+        assert marker not in caplog.text
+    assert "error_code=AGENT_PROVIDER_EXECUTION_FAILED" in caplog.text
+    assert "error_type=RuntimeError" in caplog.text
+    assert "detail=" not in caplog.text
+
+
+@pytest.mark.excluded_surface_acceptance
+@pytest.mark.surface_agent_mvp
 def test_agent_query_routes_to_hermes_provider_when_configured(monkeypatch, tmp_path):
     route_module = load_module(
         "backend.app.api.routes.agent",
@@ -534,6 +1015,8 @@ def test_agent_query_routes_to_hermes_provider_when_configured(monkeypatch, tmp_
     assert calls[0][2] == "gpt-test"
 
 
+@pytest.mark.excluded_surface_acceptance
+@pytest.mark.surface_agent_mvp
 def test_agent_query_keeps_plain_analysis_chat_local_when_hermes_configured(monkeypatch, tmp_path):
     route_module = load_module(
         "backend.app.api.routes.agent",
@@ -597,6 +1080,82 @@ def test_agent_query_keeps_plain_analysis_chat_local_when_hermes_configured(monk
     assert not hermes_calls
 
 
+@pytest.mark.excluded_surface_acceptance
+@pytest.mark.surface_agent_mvp
+def test_agent_query_page_default_context_stays_local_even_with_hermes_provider(monkeypatch, tmp_path):
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    _seed_agent_read_scope(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        route_module,
+        "get_settings",
+        lambda: type(
+            "SettingsStub",
+            (),
+            {
+                "agent_enabled": True,
+                "agent_provider": "hermes",
+                "agent_hermes_command": "hermes",
+                "agent_hermes_wsl_distro": "",
+                "agent_hermes_model": "gpt-test",
+                "agent_hermes_timeout_seconds": 9.0,
+                "duckdb_path": str(tmp_path / "moss.duckdb"),
+                "governance_path": str(tmp_path / "governance"),
+                **_agent_auth_fields(tmp_path),
+            },
+        )(),
+    )
+    local_calls = []
+    hermes_calls = []
+    local_envelope = _sample_agent_envelope().model_copy(
+        update={
+            "answer": "Local page default answered.",
+            "result_meta": _sample_agent_envelope().result_meta.model_copy(
+                update={
+                    "result_kind": "agent.portfolio_overview",
+                    "formal_use_allowed": True,
+                }
+            ),
+        }
+    )
+
+    def fake_execute_agent_query(request, duckdb_path, governance_dir):
+        local_calls.append((request, duckdb_path, governance_dir))
+        return local_envelope
+
+    def fake_execute_hermes_agent_query(request, governance_dir, settings):
+        hermes_calls.append((request, governance_dir, settings))
+        return _sample_agent_envelope()
+
+    monkeypatch.setattr(route_module, "execute_agent_query", fake_execute_agent_query)
+    monkeypatch.setattr(route_module, "execute_hermes_agent_query", fake_execute_hermes_agent_query)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/agent/query",
+        json={
+            "question": "explain this page",
+            "page_context": {
+                "page_id": "dashboard",
+                "current_filters": {"report_date": "2026-03-31"},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["answer"] == "Local page default answered."
+    assert payload["result_meta"]["result_kind"] == "agent.portfolio_overview"
+    assert local_calls
+    assert not hermes_calls
+
+
+@pytest.mark.excluded_surface_acceptance
+@pytest.mark.surface_agent_mvp
 def test_agent_query_keeps_explicit_governed_intent_local_when_hermes_configured(monkeypatch, tmp_path):
     route_module = load_module(
         "backend.app.api.routes.agent",
@@ -651,6 +1210,85 @@ def test_agent_query_keeps_explicit_governed_intent_local_when_hermes_configured
     assert not hermes_calls
 
 
+@pytest.mark.excluded_surface_acceptance
+@pytest.mark.surface_agent_mvp
+def test_financial_workflow_context_forces_local_executor_when_hermes_is_configured():
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+    settings = type("SettingsStub", (), {"agent_provider": "hermes"})()
+    request = request_module.AgentQueryRequest(
+        question="生成市场与新闻简报",
+        context={
+            "workflow_id": "market_brief",
+            "workflow_mode": "execute",
+        },
+    )
+
+    provider, executor = route_module._resolve_agent_executor(request, settings)
+
+    assert provider == "local"
+    assert executor is route_module._execute_local_agent_query
+
+
+@pytest.mark.excluded_surface_acceptance
+@pytest.mark.surface_agent_mvp
+def test_standalone_workbench_analysis_uses_configured_hermes_executor():
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+    request = request_module.AgentQueryRequest(
+        question="解释当前页面的主要结论和风险点",
+        routing_surface="standalone_workbench",
+    )
+
+    provider, executor = route_module._resolve_agent_executor(
+        request,
+        type("SettingsStub", (), {"agent_provider": "hermes"})(),
+    )
+
+    assert provider == "hermes"
+    assert executor is route_module.execute_hermes_agent_query
+
+
+@pytest.mark.excluded_surface_acceptance
+@pytest.mark.surface_agent_mvp
+def test_standalone_workbench_analysis_rejects_silent_local_provider_fallback():
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+    request = request_module.AgentQueryRequest(
+        question="解释当前页面的主要结论和风险点",
+        routing_surface="standalone_workbench",
+    )
+
+    with pytest.raises(route_module.HTTPException) as exc_info:
+        route_module._resolve_agent_executor(
+            request,
+            type("SettingsStub", (), {"agent_provider": "local"})(),
+        )
+
+    assert exc_info.value.status_code == 503
+    assert "provider" in str(exc_info.value.detail).lower()
+
+
+@pytest.mark.excluded_surface_acceptance
+@pytest.mark.surface_agent_mvp
 def test_agent_endpoints_reject_mutating_action_context(monkeypatch, tmp_path):
     route_module = load_module(
         "backend.app.api.routes.agent",
@@ -710,9 +1348,13 @@ def test_agent_endpoints_reject_mutating_action_context(monkeypatch, tmp_path):
     assert not calls
 
 
+@pytest.mark.excluded_surface_acceptance
+@pytest.mark.surface_agent_mvp
 def test_agent_query_requires_confirmation_token_for_confirmed_suggested_action(monkeypatch, tmp_path):
     from backend.app.agent.runtime.action_token import agent_action_confirmation_token
 
+    # 固定提交者身份为 fallback anonymous，与 token 内的签发 scope 对齐。
+    monkeypatch.delenv("MOSS_USER_ID", raising=False)
     route_module = load_module(
         "backend.app.api.routes.agent",
         "backend/app/api/routes/agent.py",
@@ -746,7 +1388,10 @@ def test_agent_query_requires_confirmation_token_for_confirmed_suggested_action(
     confirmed_action = {
         "type": "execute_intent",
         "label": "Portfolio overview",
-        "payload": {"intent": "portfolio_overview"},
+        "payload": {
+            "intent": "portfolio_overview",
+            "confirmation_scope": {"user_id": "anonymous"},
+        },
     }
     confirmed_token = agent_action_confirmation_token(
         action_type=confirmed_action["type"],
@@ -829,6 +1474,8 @@ def test_agent_query_requires_confirmation_token_for_confirmed_suggested_action(
     assert calls[-1][0].context["suggested_action_confirmation_token"] == confirmed_token
 
 
+@pytest.mark.excluded_surface_acceptance
+@pytest.mark.surface_agent_mvp
 def test_agent_query_rejects_expired_suggested_action_confirmation_token(monkeypatch, tmp_path):
     from backend.app.agent.runtime.action_token import agent_action_confirmation_token
 
@@ -865,7 +1512,10 @@ def test_agent_query_rejects_expired_suggested_action_confirmation_token(monkeyp
     confirmed_action = {
         "type": "execute_intent",
         "label": "Portfolio overview",
-        "payload": {"intent": "portfolio_overview"},
+        "payload": {
+            "intent": "portfolio_overview",
+            "confirmation_scope": {"user_id": "anonymous"},
+        },
     }
     expired_token = agent_action_confirmation_token(
         action_type=confirmed_action["type"],
@@ -892,6 +1542,8 @@ def test_agent_query_rejects_expired_suggested_action_confirmation_token(monkeyp
     assert calls == []
 
 
+@pytest.mark.excluded_surface_acceptance
+@pytest.mark.surface_agent_mvp
 def test_agent_endpoints_require_token_when_suggested_action_payload_requires_confirmation(monkeypatch, tmp_path):
     route_module = load_module(
         "backend.app.api.routes.agent",
@@ -950,6 +1602,8 @@ def test_agent_endpoints_require_token_when_suggested_action_payload_requires_co
     assert not calls
 
 
+@pytest.mark.excluded_surface_acceptance
+@pytest.mark.surface_agent_mvp
 def test_agent_query_routes_to_dexter_provider_when_configured(monkeypatch, tmp_path):
     route_module = load_module(
         "backend.app.api.routes.agent",
@@ -1030,6 +1684,8 @@ def test_agent_query_routes_to_dexter_provider_when_configured(monkeypatch, tmp_
     assert calls[0][2] == "dexter-test"
 
 
+@pytest.mark.excluded_surface_acceptance
+@pytest.mark.surface_agent_mvp
 def test_external_provider_envelopes_sanitize_toolsets_and_mark_provider_runtime_evidence():
     from backend.app.agent.schemas.agent_request import AgentQueryRequest
     from backend.app.services.dexter_agent_service import build_dexter_envelope
@@ -1058,8 +1714,10 @@ def test_external_provider_envelopes_sanitize_toolsets_and_mark_provider_runtime
         research_context=None,
     )
 
-    assert hermes.evidence.filters_applied["toolsets"] == "query"
-    assert hermes.result_meta.filters_applied["toolsets"] == "query"
+    assert hermes.evidence.filters_applied["toolsets"] == "web"
+    assert hermes.result_meta.filters_applied["toolsets"] == "web"
+    assert hermes.evidence.filters_applied["capability_scope"] == "evidence,query,research"
+    assert hermes.result_meta.filters_applied["capability_scope"] == "evidence,query,research"
     assert hermes.evidence.evidence_strength == "provider_runtime"
     assert hermes.result_meta.evidence_strength == "provider_runtime"
     assert hermes.result_meta.quality_flag == "warning"

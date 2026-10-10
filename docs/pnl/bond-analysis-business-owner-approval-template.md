@@ -37,6 +37,13 @@ Reviewed owner evidence packet: `docs/pnl/bond-analysis-owner-evidence-packet.md
 Reviewed fixed-income convention decision draft: `docs/pnl/bond-analysis-fixed-income-convention-decision-draft.md`
 Owner signoff runbook: `docs/pnl/bond-analysis-owner-signoff-runbook.md`
 
+Latest verification evidence is summarized in the sign-off packet and must be reviewed before any approval decision:
+
+- Full page verification: `scripts/codex-verify-page.ps1 -PageSlug bond-analysis -Run`
+- Golden sample capture-ready verification: `python -m pytest tests/test_golden_samples_capture_ready.py -q`
+- Owner boundary verification: `python -m pytest tests/test_bond_analysis_business_owner_approval_status.py tests/test_golden_samples_capture_ready.py -q`
+- Boundary note: owner approval remains fail-closed until this template is completed, signed, and `--require-captured` passes.
+
 ## Fixed-Income Convention Decisions
 
 Market value basis: `<clean | dirty | other>`

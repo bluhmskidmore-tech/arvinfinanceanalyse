@@ -1,0 +1,359 @@
+# 经营日报首页  /
+final_url: http://127.0.0.1:5888/
+title: MOSS Workbench
+
+## innerText (first ~3000 chars)
+Skip to main content
+M
+MOSS
+工作台
+经营日报
+首页
+组合工作台
+首页
+市场工作台
+首页
+风险工作台
+首页
+绩效工作台
+首页
+报表与数据
+首页
+对话
+MOSS Chat
+可用
+直接提问
+支持入口
+报表中心
+中台配置
+帮助文档
+组合经营日报
+PORTFOLIO DAILY
+报告日
+报告日一致
+数据已更新
+12:26
+市场已收盘
+·
+估值已完成
+仅完整数据
+刷新
+数据已更新 · 通过
+报告日 2026-06-30 · 数据截至 资产负债 2026-06-30 · 损益 2026-06-30
+早间决策一览
+数据来源 首页主快照
+趋势判断待复核
+
+债券资产规模（债券资产口径） 3,734.29亿，年度损益（不扣FTP） +42.43亿；趋势判断待复核。
+主链质量按快照口径展示；补充模块进入下方证据看板复核。
+
+关注信用利差与久期暴露
+→
+证据已就绪
+主链来源核验通过
+来源核验
+结论旁展示可信度
+受管快照
+通过
+经营指标
+通过
+产品分类
+通过
+正式台账
+下方复核
+分析上下文
+下方复核
+保留缺口
+暂不可用
+AUM
+债券资产规模（债券资产口径）
+3,734.29亿
+通过
+较前日 -2.99%
+损益
+年度损益（不扣FTP）
++42.43亿
+通过
+较前日 +16.26%
+NIM
+净息差
++0.93%
+通过
+较前日 +0.04pp
+DV01
+组合DV01
+106,949,424
+通过
+较前日 +0.68%
+产品分类经营摘要
+快照已下发
+年度汇总损益
++18.26 亿
+年度营业收入
++18.26 亿
+年度中间业务收入
++0.86 亿
+本月收入
++2.13 亿
+待复核
+暂无
+暂无复核入口
+当前无待办或复核入口
+来源：首页
+优先级：低
+待接入
+负责人待接入
+截止时间未维护
+暂无复核日志接口：当前未接入此模块，需要时到「平台配置」启用。
+决策建议
+建议
+进入对应专题页继续下钻原因链条
+关注信用利差与久期暴露
+数据质量
+链路
+报告日
+报告日 2026-06-30
+来源
+首页快照
+口径
+数据已更新 · 经营读数
+更新时间
+2026-07-19 12:26
+用途
+复核参考
+数据状态
+与快照一致
+宏观 / 日历上下文
+未来事件、政策资金面、供给窗口
+3
+发布项
+6
+新闻项
+1
+供给提示
+重大信息发布日期前瞻
+未来 45 天 · 3 项
+07-29
+10天后
+海外FOMC 议息会议
+7月28-29日 · 货币政策 · Federal Reserve
+高优先级
+07-30
+11天后
+海外美国 GDP 初值（2026Q2）
+08:30 ET · GDP · BEA
+高优先级
+07-31
+12天后
+国内中国官方 PMI（2026年7月）
+09:30 CST · PMI · NBS
+高优先级
+过去数据与变动
+共 8 项
+政策与资金面
+最近更新 07-15 04:01
+Tushare 兜底
+数据截至 07-15 04:01
+最近更新 07-15 04:01
+
+6 条政策与资金面快讯，重点集中在央行/公开市场、海外宏观。
+
+来源：Tushare 宏观快讯（Choice 不可用或偏旧兜底）
+数据截至 07-15 04:01
+来源状态：Tushare 兜底
+刷新：随页面查询读取已落库数据
+数据诊断
+当前源 Tushare 兜底：原始 206 条，入选 6 条，去重后 6 条，展示 6 条。
+
+当前使用 Tushare 兜底：Choice 快讯无可展示项，已切换到兜底源。
+
+已展示 6 条；另有 200 条因非政策/资金面未展示。
+
+原始
+206 条
+入选
+6 条
+去重后
+6 条
+展示
+6 条
+非政策/资金面
+200 条
+央行/公开市场
+4 条
+市场快讯
+英国央行行长贝利：英国需要优先实现经济增长。
+07-15 04:01
+市场快讯
+美国制裁伊朗央行。
+07-15 03:56
+市场快讯
+【芝加哥联储行长：服务业通胀仍过高 但最新CPI数据意外温和】芝加哥联储行长奥斯坦·古尔斯比表示，周二公布的消费者价格指数报告“意外温和”，但决策者需要不止一个月的数据来评估通胀是否朝着央行2%的目标回落。古尔斯比周二在威斯康星州Kenosha出席活动时表示，服务业通胀一直“过高”，但周二公布的数据“令人鼓舞”。他说：“如果能有几个月像这样，我会感觉更好，我们越早能够证明通胀向2%回落，就越早能够正常化”。
+07-15 02:34
+市场快讯
+【沃什称现有基础通胀指标不理想 “超有兴趣”找到新监测工具】美联储主席凯文·沃什表示，他“超有兴趣”找到新的指标来更好地监测通胀，从而帮助央行做决策。沃什说，他没有偏好的通胀衡量指标，“当然”有兴趣找到大型零售商销售商品的平均或中位价。沃什还在回答议员提问时表示，受密切关注的两项剔除食品和能源价格的基础通胀指标并非很好的衡量标准。
+07-15 02:24
+海外宏观
+2 条
+市场快讯
+美国财政部：美国涉伊朗通用许可允许逐步终止相关业务、开展特定交易，并卸载 7 月 14 日遭冻结的特定个人或船只名下货物。
+07-15 03:50
+市场快讯
+美国财政部官网：美国出台针对伊朗的新一轮制裁措施。
+07-15 03:49
+供给/招标：已查询当前窗口，暂无事件
+市场 / 日历上下文
+自然日补充信息，不参与严格 KPI 核验
+
+今日市场解释：市场温度：中性
+
+PnL归因：最大贡献 Carry/Income +5.08 亿；最大拖累 个券选择/残差 -0.13 亿；四因子 Carry/Income +5.08 亿 · 利率曲线 +0.00 亿 · 信用利差 +0.00 亿 · 个券选择/残差 -0.13 亿。
+
+曲线/利差 →
+市场利率
+补充
+自然日
+供给/招标
+可用
+窗口
+债券新闻
+正常
+事件流
+宏观新闻
+Tushare 兜底
+新闻流
+PnL归因曲线/利率信用利差
+债券信息新闻
+来源：Choice / Tushare 债券新闻
+数据日期 2026-07-19
+来源状态：正常
+刷新：随页面查询自动更新
+持仓命中
+1 条
+持仓命中
+北京华峰测控技术股份有限公司向不特定对象发行可转换公司债券上市公告书
+命中持仓：025098 · 07-15 04:12
+债券市场
+1 条
+债券市场
+— 日本 5 月持有美国国债规模为 1.143 万亿美元，4 月为 1.210 万亿美元。
+宏观新闻 · 07-15 04:01
+发行/评级
+1 条
+发行/评级
+— 英国财政大臣里夫斯：英国将在2027年初发行首个数字主权债券。
+宏观新闻 · 07-15 04:10
+持仓明细
+进入
+收益归因分析
+进入
+久期分布
+进入
+信用敞口分析
+进入
+行业分布
+进入
+交易流水
+进入
+接口台账
+下半屏可呈现的数据范围
+#	接口	可渲染模块	状态	处理方式
+01	/ui/home/snapshot	判断 / 治理 / KPI / 品类标题	200 OK	直接
+02	/api/dashboard/core_metrics + daily-changes	日期门控补充经营指标	200 OK	补充
+03	/api/bond-dashboard/home-summary	风险 + 7 类结构	200 OK	看板
+04	/api/bond-analytics/top-
+
+## computed styles
+{
+  "body_backgroundColor": "rgb(244, 243, 240)",
+  "body_color": "rgb(31, 41, 55)",
+  "body_fontFamily": "\"PingFang SC\", \"Microsoft YaHei UI\", \"Noto Sans SC\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", Arial, sans-serif",
+  "body_fontSize": "16px",
+  "root_backgroundColor": "rgb(245, 247, 249)",
+  "main_backgroundColor": "rgba(0, 0, 0, 0)",
+  "body_borderRadius_first": "0px",
+  "css_vars": {
+    "--background": "oklch(0.9702 0 0)",
+    "--foreground": "oklch(0.2103 0.0059 285.89)",
+    "--border": "oklch(90% 0.004 286.32)",
+    "--font-sans": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\",\n      \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+    "--radius": "0.5rem",
+    "--moss-color-primary-50": "#e8f1fb",
+    "--moss-color-primary-100": "#d0e3f6",
+    "--moss-color-primary-200": "#a8c9ec",
+    "--moss-color-primary-300": "#79a7de",
+    "--moss-color-primary-400": "#4d84cc",
+    "--moss-color-primary-500": "#2f68b8",
+    "--moss-color-primary-600": "#1850a1",
+    "--moss-color-primary-700": "#144287",
+    "--moss-color-primary-800": "#10356a",
+    "--moss-color-primary-900": "#0c2a54",
+    "--moss-color-info-50": "#eff6ff",
+    "--moss-color-info-100": "#dbeafe",
+    "--moss-color-info-200": "#bfdbfe",
+    "--moss-color-info-300": "#93c5fd",
+    "--moss-color-info-400": "#60a5fa",
+    "--moss-color-info-500": "#3b82f6",
+    "--moss-color-info-600": "#2563eb",
+    "--moss-color-info-700": "#1d4ed8",
+    "--moss-color-info-800": "#1e40af",
+    "--moss-color-info-900": "#1e3a8a",
+    "--moss-color-success-50": "#ecf8f2",
+    "--moss-color-success-100": "#d5efe0",
+    "--moss-color-success-200": "#aedfc8",
+    "--moss-color-success-300": "#7fc8a4",
+    "--moss-color-success-400": "#52ad84",
+    "--moss-color-success-500": "#2d8a5e",
+    "--moss-color-success-600": "#25714d",
+    "--moss-color-success-700": "#1d5c40",
+    "--moss-color-success-800": "#174833",
+    "--moss-color-success-900": "#123828",
+    "--moss-color-warning-50": "#fff9eb",
+    "--moss-color-warning-100": "#fef0d4",
+    "--moss-color-warning-200": "#fde0a8",
+    "--moss-color-warning-300": "#fbc874",
+    "--moss-color-warning-400": "#f8a93a",
+    "--moss-color-warning-500": "#d97706",
+    "--moss-color-warning-600": "#b35c05",
+    "--moss-color-warning-700": "#8f4708",
+    "--moss-color-warning-800": "#713a0c",
+    "--moss-color-warning-900": "#5c300e"
+  }
+}
+
+## api calls (33)
+200  /src/api/clientContext.ts
+200  /src/api/httpResponseError.ts
+200  /src/api/homeExecutiveClient.ts
+200  /src/api/executiveHomeSnapshotFetch.ts
+200  /ui/home/snapshot
+200  /src/api/queryKeys.ts
+200  /src/api/homeSupplementalClient.ts
+200  /src/api/numeric.ts
+200  /src/api/homeMarketTickerClient.ts
+200  /api/bond-analytics/portfolio-headlines?report_date=2026-06-30
+200  /ui/market-data/rates
+200  /ui/home/macro-release-context?start_date=2026-07-19&end_date=2026-09-02&history_limit=8
+200  /api/bond-dashboard/headline-kpis?report_date=2026-06-30
+200  /ui/calendar/supply-auctions?start_date=2026-07-12&end_date=2026-08-02
+200  /ui/news/choice-events/latest?limit=6&offset=0&topic_code=S888010007API
+200  /api/bond-analytics/yield-curve-term-structure?report_date=2026-06-30&curve_types=treasury%2Ccdb%2Caaa_credit
+200  /api/bond-dashboard/home-summary?report_date=2026-06-30
+200  /ui/news/choice-events/latest?limit=6&offset=0&topic_code=S888010003API
+200  /ui/news/choice-events/latest?limit=6&offset=0&topic_code=S888010005API
+200  /ui/news/choice-events/latest?limit=6&offset=0&topic_code=S888005004API
+200  /ui/news/choice-events/latest?limit=6&offset=0&topic_code=C000003002
+200  /ui/news/choice-events/latest?limit=6&offset=0&topic_code=C000003006
+200  /api/bond-analytics/return-decomposition?report_date=2026-06-30&period_type=MoM&asset_class=all&accounting_class=all
+200  /api/bond-analytics/credit-spread-migration?report_date=2026-06-30
+200  /ui/home/income-trend?report_date=2026-06-30&window=7
+200  /api/bond-analytics/top-holdings?report_date=2026-06-30&top_n=14
+200  /ui/news/choice-events/latest?limit=8&offset=0&topic_code=tushare.news
+200  /ui/news/choice-events/latest?limit=6&offset=0&topic_code=tushare.npr
+200  /ui/news/choice-events/latest?limit=6&offset=0&topic_code=tushare.major_news
+200  /ui/news/choice-events/latest?limit=200&offset=0&topic_code=tushare.news.sina
+200  /api/bond-analytics/position-changes?report_date=2026-06-30&top_n=5
+200  /ui/home/research-reports?report_date=2026-06-30&limit=5
+200  /api/pnl-attribution/campisi/four-effects?end_date=2026-06-30&lookback_days=30
+
+## console errors (0)

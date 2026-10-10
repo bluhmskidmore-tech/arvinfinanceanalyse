@@ -71,9 +71,12 @@ def source_foundation(
     _require_source_preview_http_enabled()
     _ensure_source_preview_allowed(auth=auth, action="read")
     settings = get_settings()
-    return source_preview_envelope(
-        duckdb_path=str(settings.duckdb_path),
-    )
+    try:
+        return source_preview_envelope(
+            duckdb_path=str(settings.duckdb_path),
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/source-foundation/history")
@@ -88,12 +91,15 @@ def source_foundation_history(
     if source_family is not None:
         source_family = _validate_source_family(source_family)
     settings = get_settings()
-    return source_preview_history_envelope(
-        duckdb_path=str(settings.duckdb_path),
-        limit=limit,
-        offset=offset,
-        source_family=source_family,
-    )
+    try:
+        return source_preview_history_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            limit=limit,
+            offset=offset,
+            source_family=source_family,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.post("/source-foundation/refresh")
@@ -148,13 +154,16 @@ def source_rows(
     _require_source_preview_http_enabled()
     _ensure_source_preview_allowed(auth=auth, action="read")
     settings = get_settings()
-    return preview_rows_envelope(
-        duckdb_path=str(settings.duckdb_path),
-        source_family=_validate_source_family(source_family),
-        limit=limit,
-        offset=offset,
-        ingest_batch_id=ingest_batch_id,
-    )
+    try:
+        return preview_rows_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            source_family=_validate_source_family(source_family),
+            limit=limit,
+            offset=offset,
+            ingest_batch_id=ingest_batch_id,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/source-foundation/{source_family}/traces")
@@ -168,10 +177,13 @@ def source_traces(
     _require_source_preview_http_enabled()
     _ensure_source_preview_allowed(auth=auth, action="read")
     settings = get_settings()
-    return preview_traces_envelope(
-        duckdb_path=str(settings.duckdb_path),
-        source_family=_validate_source_family(source_family),
-        limit=limit,
-        offset=offset,
-        ingest_batch_id=ingest_batch_id,
-    )
+    try:
+        return preview_traces_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            source_family=_validate_source_family(source_family),
+            limit=limit,
+            offset=offset,
+            ingest_batch_id=ingest_batch_id,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc

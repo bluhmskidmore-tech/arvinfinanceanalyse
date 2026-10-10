@@ -1,0 +1,44 @@
+/*
+ * 04 组合与风险 / 05 业务类型指标分区专属样式，由 PortfolioRiskSection 与
+ * BusinessTypeSection import。
+ *
+ * 表格密度（表头 11px/500、表体 12px、发丝底边、数值列右对齐等宽）、合计行收口、
+ * 三列等高栅格与五态占位已分别归 DataTable 与 SectionGrid，本文件因此不再有
+ * 任何 .ant-table 覆盖，只剩风险指标的标签/读数列表——它是键值列表不是行列表，
+ * 且每行要挂 data-testid，DataTable 目前不提供行级 testId 通道。
+ * 颜色一律 --dh-api-* 语义链；字号下限 11px。
+ */
+
+.bond-dashboard-risk-list {
+  display: grid;
+}
+
+.bond-dashboard-risk-list__row {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.bond-dashboard-risk-list__row:last-child {
+  border-bottom: 0;
+}
+
+.bond-dashboard-risk-list__label {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* 数值默认 ink（首页纪律：语义色只用于涨跌/警戒，指标读数不上蓝）。 */
+.bond-dashboard-risk-list__value {
+  color: var(--dh-api-ink);
+  font-family: var(--moss-font-tabular);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}

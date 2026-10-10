@@ -1,6 +1,6 @@
 import { Button, Card, Tag } from "antd";
 
-import { designTokens } from "../../../theme/designSystem";
+import { designTokens, dhApiTokens } from "../../../theme/designSystem";
 import type { BondAnalyticsReadinessItem } from "../lib/bondAnalyticsOverviewModel";
 import type { BondAnalyticsModuleKey } from "../lib/bondAnalyticsModuleRegistry";
 import { EYEBROW, panelStyle, promotionLabel, readinessStatusLabel, readinessSurface, readinessTagColor } from "./bondAnalyticsCockpitTokens";
@@ -22,7 +22,7 @@ function ReadinessRow({
       style={{
         border: `1px solid ${surface.borderColor}`,
         background: surface.background,
-        borderRadius: dt.radius.lg,
+        borderRadius: dhApiTokens.radius,
         padding: dt.space[4],
         display: "grid",
         gap: dt.space[3],
@@ -33,12 +33,12 @@ function ReadinessRow({
       <div style={{ display: "flex", justifyContent: "space-between", gap: dt.space[3], flexWrap: "wrap" }}>
         <div style={{ display: "grid", gap: dt.space[2], minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: dt.space[2], flexWrap: "wrap" }}>
-            <div style={{ fontSize: dt.fontSize[14], fontWeight: 700, color: dt.color.primary[900] }}>{item.label}</div>
+            <div style={{ fontSize: dt.fontSize[14], fontWeight: 600, color: dt.color.primary[900] }}>{item.label}</div>
             <span
               style={{
                 fontSize: dt.fontSize[11],
                 color: surface.accent,
-                fontWeight: 700,
+                fontWeight: 600,
                 textTransform: "uppercase",
                 letterSpacing: "0.08em",
               }}
@@ -55,7 +55,7 @@ function ReadinessRow({
       {warningText ? (
         <div
           style={{
-            borderRadius: dt.radius.md,
+            borderRadius: dhApiTokens.radius,
             padding: `${dt.space[2]}px ${dt.space[3]}px`,
             background: `${dt.color.neutral[50]}B8`,
             color: surface.text,
@@ -90,7 +90,7 @@ export function BondAnalyticsReadinessMatrix({ readinessItems, onOpenModuleDetai
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: dt.space[3], flexWrap: "wrap" }}>
           <div style={{ display: "grid", gap: dt.space[2] }}>
             <div style={EYEBROW}>模块就绪</div>
-            <div style={{ fontSize: dt.fontSize[18], fontWeight: 700, color: dt.color.primary[900] }}>下钻队列与主位边界</div>
+            <div style={{ fontSize: dt.fontSize[18], fontWeight: 600, color: dt.color.primary[900] }}>下钻队列与主位边界</div>
           </div>
           <div style={{ color: dt.color.neutral[600], fontSize: dt.fontSize[12] }}>{readinessItems.length} 个总览关联模块</div>
         </div>

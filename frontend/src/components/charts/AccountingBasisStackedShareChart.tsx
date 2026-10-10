@@ -1,4 +1,8 @@
-import ReactECharts, { type EChartsOption } from "../../lib/echarts";
+import type { EChartsOption } from "../../lib/echarts";
+import { designTokens, ibTokens } from "../../theme/designSystem";
+import { EM_DASH } from "../../utils/format";
+import { ChartCard } from "./ChartCard";
+import type { ChartCardHeight } from "./chartCardScale";
 
 export type AccountingBasisStackedSharePoint = {
   monthLabel: string;
@@ -12,9 +16,9 @@ export type AccountingBasisStackedSharePoint = {
 };
 
 const basisSeries = [
-  { key: "AC", name: "AC", color: "#10284a" },
-  { key: "OCI", name: "OCI", color: "#33689a" },
-  { key: "TPL", name: "TPL", color: "#d8d8d8" },
+  { key: "AC", name: "AC", color: ibTokens.color.accent },
+  { key: "OCI", name: "OCI", color: designTokens.color.primary[500] },
+  { key: "TPL", name: "TPL", color: designTokens.color.neutral[300] },
 ] as const;
 
 function formatPct(value: number) {
@@ -22,7 +26,7 @@ function formatPct(value: number) {
 }
 
 function formatYi(value: number | undefined) {
-  return value === undefined || Number.isNaN(value) ? "-" : `${value.toFixed(2)} 亿`;
+  return value === undefined || Number.isNaN(value) ? EM_DASH : `${value.toFixed(2)} 亿`;
 }
 
 function dataIndexFromTooltip(params: unknown) {
@@ -42,7 +46,7 @@ function labelValue(params: unknown) {
   return Number.isFinite(value) ? value : 0;
 }
 
-function buildOption(rows: AccountingBasisStackedSharePoint[], title: string): EChartsOption {
+function buildOption(rows: AccountingBasisStackedSharePoint[]): EChartsOption {
   const series = basisSeries.map((seriesItem) => ({
     name: seriesItem.name,
     type: "bar" as const,
@@ -53,7 +57,7 @@ function buildOption(rows: AccountingBasisStackedSharePoint[], title: string): E
     label: {
       show: true,
       position: "inside" as const,
-      color: seriesItem.key === "TPL" ? "#334155" : "#ffffff",
+      color: seriesItem.key === "TPL" ? ibTokens.color.ink : ibTokens.color.surface,
       fontSize: 12,
       fontWeight: 600,
       formatter: (params: unknown) => {
@@ -64,18 +68,6 @@ function buildOption(rows: AccountingBasisStackedSharePoint[], title: string): E
   }));
 
   return {
-    title: {
-      text: title,
-      left: 0,
-      top: 0,
-      textStyle: { fontSize: 16, fontWeight: 700, color: "#2f3744" },
-    },
-    legend: {
-      bottom: 0,
-      data: basisSeries.map((item) => item.name),
-      itemWidth: 28,
-      itemHeight: 10,
-    },
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "shadow" },
@@ -91,18 +83,18 @@ function buildOption(rows: AccountingBasisStackedSharePoint[], title: string): E
         ].join("<br/>");
       },
     },
-    grid: { left: 36, right: 24, top: 54, bottom: 72 },
+    grid: { left: 36, right: 24, top: 54 },
     xAxis: {
       type: "category",
       data: rows.map((row) => row.monthLabel),
       axisTick: { alignWithLabel: true },
-      axisLabel: { fontSize: 12, color: "#555", interval: 0 },
+      axisLabel: { fontSize: 12, color: ibTokens.color.inkSecondary, interval: 0 },
     },
     yAxis: {
       type: "value",
       max: 100,
       axisLabel: { formatter: (value: number) => `${value.toFixed(0)}%` },
-      splitLine: { lineStyle: { color: "#eceff3" } },
+      splitLine: { lineStyle: { color: ibTokens.color.hairline } },
     },
     series,
   };
@@ -111,20 +103,21 @@ function buildOption(rows: AccountingBasisStackedSharePoint[], title: string): E
 type AccountingBasisStackedShareChartProps = {
   rows: AccountingBasisStackedSharePoint[];
   title: string;
-  height?: number;
+  height?: ChartCardHeight;
 };
 
 export default function AccountingBasisStackedShareChart({
   rows,
   title,
-  height = 390,
+  height = 280,
 }: AccountingBasisStackedShareChartProps) {
   return (
-    <ReactECharts
-      option={buildOption(rows, title)}
-      style={{ height, width: "100%" }}
-      notMerge
-      lazyUpdate
+    <ChartCard
+      title={title}
+      unit="%"
+      option={rows.length > 0 ? buildOption(rows) : null}
+      height={height}
+      emptyMessage="暂无会计口径占比数据"
     />
   );
 }

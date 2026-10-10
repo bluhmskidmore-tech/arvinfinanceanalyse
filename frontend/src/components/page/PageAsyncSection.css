@@ -1,0 +1,26 @@
+.moss-page-async-section--fill {
+  height: 100%;
+}
+
+.moss-page-async-section__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.moss-page-async-section__header .moss-page-v2-evidence-panel__heading {
+  margin-bottom: 0;
+}
+
+.moss-page-async-section__retry {
+  width: fit-content;
+  padding: 6px 14px;
+  border: 1px solid var(--ib-hairline);
+  border-radius: var(--ib-radius);
+  background: var(--ib-surface);
+  color: var(--moss-color-text-primary);
+  font-size: 12px;
+  cursor: pointer;
+}

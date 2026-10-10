@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "source": "DESIGN.md §3, §4.2, §5.3–5.4, §10.1",
+  "viewports": [
+    { "width": 1440, "height": 900, "scope": "full" },
+    { "width": 1280, "height": 720, "scope": "minimum" }
+  ],
+  "routes": ["/", "/positions", "/portfolio", "/market-overview", "/ledger-pnl", "/balance-analysis", "/bond-analysis", "/risk-overview", "/product-category-pnl", "/stock-analysis", "/pnl-by-business", "/balance-movement-analysis", "/average-balance", "/kpi", "/cross-asset", "/pnl-attribution", "/risk-tensor", "/market-data", "/macro-toolkit", "/team-performance", "/publication-showcase"],
+  "measurements": {
+    "fontSizes": [11, 12, 13, 14, 20, 24],
+    "fontWeights": [400, 500, 600],
+    "radii": [0, 8],
+    "controlHeight": 36,
+    "controlFontSize": 13,
+    "controlRadius": 8,
+    "tabFontSize": 12,
+    "tabFontWeight": 500,
+    "tabRadius": 0,
+    "tableRowHeights": [28, 32],
+    "tableHeightTolerance": 1,
+    "tableFontSize": 12,
+    "tableHeaderWeight": 500,
+    "tableCellWeight": 400,
+    "tableTotalWeight": 600
+  },
+  "rules": {
+    "skeleton.frames": { "max": 0 },
+    "skeleton.leftEdgeRange": { "max": 1, "minimum": true },
+    "containers.depth3": { "max": 0 },
+    "containers.depth2": { "max": 4 },
+    "containers.undocumentedDepth2": { "max": 0 },
+    "typography.boldPct": { "max": 15 },
+    "typography.foldBoldPct": { "max": 22 },
+    "typography.heavy": { "max": 0 },
+    "typography.weights": { "max": 0 },
+    "typography.sizes": { "max": 0 },
+    "typography.smallPct": { "max": 15 },
+    "typography.heroCount": { "max": 1 },
+    "numbers.nonTabular": { "max": 0 },
+    "numbers.mono": { "max": 0 },
+    "accent.elements": { "max": 15 },
+    "accent.borders": { "max": 3 },
+    "labels.colored": { "max": 4 },
+    "states.demo": { "max": 2 },
+    "states.routine": { "max": 0 },
+    "decoration.shadows": { "max": 0 },
+    "decoration.gradients": { "max": 0 },
+    "decoration.radii": { "max": 0 },
+    "tables.rowHeight": { "max": 0 },
+    "tables.headerTypography": { "max": 0 },
+    "tables.cellTypography": { "max": 0 },
+    "tables.numericAlignment": { "max": 0 },
+    "tables.verticalBorders": { "max": 0 },
+    "controls.geometry": { "max": 0, "minimum": true },
+    "controls.primaryPerGroup": { "max": 0, "minimum": true },
+    "stability.overflow": { "max": 0, "minimum": true },
+    "stability.truncation": { "max": 0, "minimum": true },
+    "stability.jsErrors": { "max": 0 }
+  },
+  "decorationWhitelist": [
+    { "kind": "shadow", "selector": ".ant-select-dropdown, .ant-dropdown, .ant-picker-dropdown, .ant-popover, .ant-tooltip, .ant-modal, .ant-drawer", "reason": "浮层阴影", "source": "DESIGN.md §4.2" },
+    { "kind": "shadow", "selector": ":focus-visible", "reason": "键盘焦点环", "source": "DESIGN.md §4.2" },
+    { "kind": "shadow", "selector": ".ant-table-cell-fix-left-last, .ant-table-cell-fix-right-first, .ag-pinned-left-cols-container, .ag-pinned-right-cols-container", "reason": "表格固定列分隔阴影", "source": "DESIGN.md §4.2" },
+    { "kind": "gradient", "selector": "select", "reason": "原生 select 箭头", "source": "DESIGN.md §4.2" },
+    { "kind": "gradient", "selector": ".ant-skeleton, .ant-skeleton *", "reason": "中性色加载骨架（仍检查是否中性）", "source": "DESIGN.md §4.2", "neutralOnly": true }
+  ],
+  "exceptions": [
+    { "route": "/", "rule": "typography.sizes", "reason": "经营日报首页保留 09-26 基准字号；D-D 只改数字字体族", "approvedBy": "用户（DESIGN.md §3、§9.2；D-D，2026-10-02）", "source": "DESIGN.md §3、§9.2", "selectors": ["*"] }
+  ],
+  "depth2Reasons": [],
+  "manualReview": [
+    "眯眼、灰度、与样板页并排的三项目视检查及方案五问",
+    "600 字重的语义角色、11px 元信息角色与首页锁定字号",
+    "图表 canvas 内部的字号、语义色、系列、网格及单色面积填充",
+    "KPI、导航、状态面的结构、颜色语义与无数据/异常态",
+    "同列精度、单位基线、条纹背景及长说明截断的业务语义",
+    "数据条、首页呼吸光等语义白名单须核对具体元素后登记已有批准来源",
+    "字体加载体积、加载前后位移以及 Windows 125%/150% 缩放"
+  ]
+}

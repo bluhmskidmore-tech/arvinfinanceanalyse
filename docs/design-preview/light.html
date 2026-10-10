@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-state="after">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>经营报表 · IB 浅色样张</title>
+<style>
+/* ============================================================
+   IB 浅色页样张：同一 DOM，两组令牌
+   before = 现状（大圆角白卡 + 杂色蓝 + 装饰渐变 + 比例数字）
+   after  = 目标态（IB 纸感：锐角 / 单一藏青 / 扁平 / 等宽数字）
+   切换只翻转 <html data-state>，视觉差异全部来自 CSS 变量
+   ============================================================ */
+
+:root[data-state="before"] {
+  --bg-page:      #f5f7f9;
+  --bg-panel:     #ffffff;
+  --bg-panel2:    #f1f5f9;
+  --border:       #edf1f7;
+  --border-2:     #e7edf4;
+  --text:         #0f172a;
+  --text-2:       #475569;
+  --text-3:       #94a3b8;
+  --accent:       #2563eb;
+  --accent-b:     #3b82f6;
+  --up:           #10b981;
+  --down:         #ef4444;
+  --warn:         #f59e0b;
+  --dot-ok:       #10b981;
+  --dot-warn:     #f59e0b;
+  --dot-bad:      #ef4444;
+  --radius:       20px;
+  --marker-r:     50%;
+  --shadow:       0 10px 30px rgba(15,23,42,.08);
+  --font-title:   -apple-system, 'PingFang SC', 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
+  --title-spacing: 0;
+  --font-num:     -apple-system, 'PingFang SC', 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
+  --num-variant:  normal;
+  --deco-display: block;
+  --dash:         #c3cede;
+}
+
+:root[data-state="after"] {
+  --bg-page:      #f4f3f0;
+  --bg-panel:     #ffffff;
+  --bg-panel2:    #f7f6f3;
+  --border:       #e2e0da;
+  --border-2:     #e2e0da;
+  --text:         #16191d;
+  --text-2:       #5c6370;
+  --text-3:       #8a8f98;
+  --accent:       #14366b;
+  --accent-b:     #14366b;
+  --up:           #1f7a4d;
+  --down:         #b42318;
+  --warn:         #b54708;
+  --dot-ok:       #1f7a4d;
+  --dot-warn:     #b54708;
+  --dot-bad:      #b42318;
+  --radius:       2px;
+  --marker-r:     1px;
+  --shadow:       0 1px 2px rgba(16,25,29,.06);
+  --font-title:   Georgia, 'Noto Serif SC', serif;
+  --title-spacing: .01em;
+  --font-num:     ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
+  --num-variant:  tabular-nums;
+  --deco-display: none;
+  --dash:         #d6d3cb;
+}
+
+/* before：待办圆点是纯装饰彩色（紫/橙/青，按位置着色，不承载语义） */
+:root[data-state="before"] .todo li:nth-child(1) .dot { background: #8b5cf6; }
+:root[data-state="before"] .todo li:nth-child(2) .dot { background: #f59e0b; }
+:root[data-state="before"] .todo li:nth-child(3) .dot { background: #06b6d4; }
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  background: var(--bg-page);
+  color: var(--text);
+  font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+body * {
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+
+.num {
+  font-family: var(--font-num);
+  font-variant-numeric: var(--num-variant);
+}
+
+/* ---------- 固定元素：样张标签 + 状态切换 ---------- */
+
+.sample-tag {
+  position: fixed; top: 16px; left: 16px; z-index: 60;
+  font-size: 12px; color: var(--text-3); letter-spacing: .04em;
+  background: var(--bg-page);
+  padding: 4px 8px; border: 1px solid var(--border-2); border-radius: var(--radius);
+}
+
+.state-toggle {
+  position: fixed; top: 14px; right: 16px; z-index: 60;
+  display: flex; gap: 2px;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 3px; box-shadow: var(--shadow);
+}
+.state-toggle button {
+  font-family: inherit; font-size: 12px; letter-spacing: .06em;
+  padding: 5px 14px; border: 0; border-radius: calc(var(--radius) - 2px);
+  background: transparent; color: var(--text-3); cursor: pointer;
+}
+.state-toggle button.active {
+  background: var(--accent); color: #ffffff;
+}
+
+/* ---------- 页面骨架 ---------- */
+
+.page {
+  max-width: 1200px; margin: 0 auto;
+  padding: 72px 24px 48px;
+}
+
+/* ---------- ① 刊头区 ---------- */
+
+.masthead {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.masthead-title {
+  font-family: var(--font-title);
+  letter-spacing: var(--title-spacing);
+  font-size: 34px; font-weight: 600; color: var(--text);
+  line-height: 1.2;
+}
+.masthead-meta {
+  font-size: 13px; color: var(--text-2);
+  white-space: nowrap;
+}
+
+/* 装饰渐变条：before 显示 / after 删除（结构性发丝线由 masthead 底线承担） */
+.deco-band {
+  display: var(--deco-display);
+  height: 4px; margin-top: 12px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2563eb, #93c5fd);
+}
+
+/* ---------- ② KPI 横带 ---------- */
+
+.kpis {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+  margin-top: 20px;
+}
+.kpi {
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 16px 18px;
+}
+.kpi:nth-child(odd)  { --kpi-accent: var(--accent); }
+.kpi:nth-child(even) { --kpi-accent: var(--accent-b); }
+.kpi-label {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 12px; color: var(--text-2); letter-spacing: .03em;
+}
+.kpi-marker {
+  width: 8px; height: 8px;
+  border-radius: var(--marker-r);
+  background: var(--kpi-accent);
+}
+.kpi-value {
+  margin-top: 10px;
+  font-family: var(--font-num); font-variant-numeric: var(--num-variant);
+  font-size: 28px; font-weight: 600; color: var(--text);
+  white-space: nowrap;
+}
+.kpi-value .unit { font-size: 13px; font-weight: 400; color: var(--text-3); margin-left: 5px; }
+.kpi-delta { margin-top: 8px; font-size: 12px; color: var(--text-3); }
+.kpi-delta .up   { color: var(--up); }
+.kpi-delta .down { color: var(--down); }
+
+/* ---------- ③ 主区双栏 ---------- */
+
+.grid-2 {
+  display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 12px;
+  margin-top: 12px; align-items: start;
+}
+.panel {
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 16px 18px;
+}
+.panel-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding-bottom: 10px;
+}
+.panel-title { font-size: 15px; font-weight: 600; color: var(--text); }
+.panel-note  { font-size: 12px; color: var(--text-3); }
+.panel-side  { display: flex; align-items: baseline; gap: 14px; }
+
+.link {
+  font-size: 12px; color: var(--accent); cursor: pointer;
+  text-decoration: none; white-space: nowrap;
+}
+.link.alt { color: var(--accent-b); }
+.link:hover { text-decoration: underline; }
+
+/* 损益简表：行间发丝线分隔，不是行行卡片 */
+.pl-table { width: 100%; border-collapse: collapse; }
+.pl-table th {
+  text-align: left; font-size: 11px; font-weight: 500; letter-spacing: .06em;
+  color: var(--text-3); padding: 8px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.pl-table td {
+  font-size: 13px; color: var(--text-2); padding: 11px 8px;
+  border-bottom: 1px solid var(--border-2);
+}
+.pl-table tbody tr:last-child td { border-bottom: 0; }
+.pl-table tbody tr:hover { background: var(--bg-panel2); }
+.pl-table .name { color: var(--text); font-weight: 500; }
+.pl-table .num { text-align: right; white-space: nowrap; }
+.pl-table th.num { text-align: right; }
+.pl-table .up   { color: var(--up); }
+.pl-table .down { color: var(--down); }
+.pl-table .na   { color: var(--text-3); }
+
+/* 右栏堆叠 */
+.side-stack { display: grid; gap: 12px; }
+
+/* 待办事项 */
+.todo { list-style: none; }
+.todo li {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 0; border-bottom: 1px solid var(--border-2);
+}
+.todo li:last-child { border-bottom: 0; padding-bottom: 2px; }
+.todo li:first-child { padding-top: 2px; }
+.dot {
+  flex: none; width: 8px; height: 8px; border-radius: 50%;
+}
+.dot.ok   { background: var(--dot-ok); }
+.dot.warn { background: var(--dot-warn); }
+.dot.bad  { background: var(--dot-bad); }
+.todo-text { flex: 1; font-size: 13px; color: var(--text-2); }
+.todo-st { flex: none; font-size: 12px; }
+.todo-st.warn { color: var(--warn); }
+.todo-st.bad  { color: var(--down); }
+.todo-st.ok   { color: var(--text-3); }
+
+/* 数据质量 */
+.dq { list-style: none; }
+.dq li {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 0; border-bottom: 1px solid var(--border-2);
+}
+.dq li:last-child { border-bottom: 0; padding-bottom: 2px; }
+.dq li:first-child { padding-top: 2px; }
+.dq-label { flex: 1; font-size: 13px; color: var(--text-2); }
+.dq-count {
+  flex: none; font-family: var(--font-num); font-variant-numeric: var(--num-variant);
+  font-size: 13px; font-weight: 600; color: var(--text);
+}
+
+/* ---------- ④ 空态示例 ---------- */
+
+.empty {
+  margin-top: 12px; height: 104px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px dashed var(--dash); border-radius: var(--radius);
+  font-size: 13px; color: var(--text-3); letter-spacing: .02em;
+}
+
+/* ---------- 窄屏 ---------- */
+
+@media (max-width: 800px) {
+  .page { padding: 88px 16px 40px; }
+  .sample-tag { position: absolute; }
+  .masthead { display: block; }
+  .masthead-meta { margin-top: 6px; white-space: normal; }
+  .kpis { grid-template-columns: repeat(2, 1fr); }
+  .grid-2 { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="sample-tag">设计样张 · 演示数据</div>
+
+<div class="state-toggle" role="group" aria-label="状态切换">
+  <button id="btn-before" data-target="before" type="button">现状</button>
+  <button id="btn-after"  data-target="after" type="button" class="active">目标态</button>
+</div>
+
+<div class="page">
+
+  <!-- ① 刊头区 -->
+  <header class="masthead">
+    <h1 class="masthead-title">经营报表</h1>
+    <div class="masthead-meta">报告日 <span class="num">2026-07-18</span> · 口径：正式</div>
+  </header>
+  <div class="deco-band" aria-hidden="true"></div>
+
+  <!-- ② KPI 横带 -->
+  <section class="kpis">
+    <div class="kpi">
+      <div class="kpi-label"><i class="kpi-marker"></i>营业收入</div>
+      <div class="kpi-value">4.82<span class="unit">亿元</span></div>
+      <div class="kpi-delta">环比 <span class="up num">+2.4%</span></div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label"><i class="kpi-marker"></i>净利润</div>
+      <div class="kpi-value">1.16<span class="unit">亿元</span></div>
+      <div class="kpi-delta">环比 <span class="up num">+1.8%</span></div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label"><i class="kpi-marker"></i>成本收入比</div>
+      <div class="kpi-value">31.4<span class="unit">%</span></div>
+      <div class="kpi-delta">环比 <span class="down num">-0.6pct</span></div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label"><i class="kpi-marker"></i>不良率</div>
+      <div class="kpi-value">0.87<span class="unit">%</span></div>
+      <div class="kpi-delta">环比 <span class="down num">-3bp</span></div>
+    </div>
+  </section>
+
+  <!-- ③ 主区双栏 -->
+  <section class="grid-2">
+
+    <!-- 左：损益简表 -->
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">损益简表</div>
+        <div class="panel-side">
+          <span class="panel-note">单位：亿元</span>
+          <a class="link">查看明细 →</a>
+        </div>
+      </div>
+      <table class="pl-table">
+        <thead>
+          <tr>
+            <th>项目</th>
+            <th class="num">本期</th>
+            <th class="num">上期</th>
+            <th class="num">同比</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="name">利息净收入</td>
+            <td class="num">3.21</td>
+            <td class="num">3.02</td>
+            <td class="num up">+6.3%</td>
+          </tr>
+          <tr>
+            <td class="name">手续费净收入</td>
+            <td class="num">0.86</td>
+            <td class="num">0.79</td>
+            <td class="num up">+8.9%</td>
+          </tr>
+          <tr>
+            <td class="name">投资收益</td>
+            <td class="num">0.52</td>
+            <td class="num">0.61</td>
+            <td class="num down">-14.8%</td>
+          </tr>
+          <tr>
+            <td class="name">公允价值变动</td>
+            <td class="num">0.18</td>
+            <td class="num">-0.05</td>
+            <td class="num na">—</td>
+          </tr>
+          <tr>
+            <td class="name">业务及管理费</td>
+            <td class="num">1.51</td>
+            <td class="num">1.47</td>
+            <td class="num up">+2.7%</td>
+          </tr>
+          <tr>
+            <td class="name">信用减值损失</td>
+            <td class="num">0.42</td>
+            <td class="num">0.55</td>
+            <td class="num down">-23.6%</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 右：待办 + 数据质量 -->
+    <div class="side-stack">
+
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">待办事项</div>
+          <a class="link alt">全部待办 →</a>
+        </div>
+        <ul class="todo">
+          <li>
+            <i class="dot warn"></i>
+            <span class="todo-text">复核二季度信用减值计提口径</span>
+            <span class="todo-st warn">进行中</span>
+          </li>
+          <li>
+            <i class="dot bad"></i>
+            <span class="todo-text">补充理财子公司关联交易披露底稿</span>
+            <span class="todo-st bad">已逾期</span>
+          </li>
+          <li>
+            <i class="dot ok"></i>
+            <span class="todo-text">确认 7 月资金头寸日报已归档</span>
+            <span class="todo-st ok">已完成</span>
+          </li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">数据质量</div>
+          <span class="panel-note">本期报送 · <span class="num">21</span> 项</span>
+        </div>
+        <ul class="dq">
+          <li>
+            <i class="dot ok"></i>
+            <span class="dq-label">通过</span>
+            <span class="dq-count">18</span>
+          </li>
+          <li>
+            <i class="dot warn"></i>
+            <span class="dq-label">部分</span>
+            <span class="dq-count">2</span>
+          </li>
+          <li>
+            <i class="dot bad"></i>
+            <span class="dq-label">缺口</span>
+            <span class="dq-count">1</span>
+          </li>
+        </ul>
+      </div>
+
+    </div>
+
+  </section>
+
+  <!-- ④ 空态示例 -->
+  <div class="empty">暂无券商研报数据 · 来源未更新</div>
+
+</div>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  var btns = document.querySelectorAll('.state-toggle button');
+  btns.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      root.dataset.state = btn.dataset.target;   // 一行翻转：结构不动，只换 token
+      btns.forEach(function (b) {
+        var on = b === btn;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    });
+  });
+})();
+</script>
+</body>
+</html>

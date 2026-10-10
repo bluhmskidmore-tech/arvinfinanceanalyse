@@ -14,6 +14,13 @@ from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 from tests.test_qdb_gl_monthly_analysis_core import _write_month_pair
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_qdb_gl,
+]
+
 QDB_GL_MONTHLY_ANALYSIS_READ_HEADERS = {"X-User-Id": "qdb-gl-read-user", "X-User-Role": "viewer"}
 
 _QDB_GL_MONTHLY_ANALYSIS_READ_CASES: tuple[tuple[str, dict[str, str]], ...] = (
@@ -26,7 +33,6 @@ _QDB_GL_MONTHLY_ANALYSIS_READ_CASES: tuple[tuple[str, dict[str, str]], ...] = (
     ("/ui/qdb-gl-monthly-analysis/manual-adjustments/export", {"report_month": "202602"}),
 )
 
-
 def _qdb_scope_repo(tmp_path, monkeypatch) -> UserScopeRepository:
     sqlite_path = tmp_path / "qdb-gl-monthly-analysis-auth-scope.db"
     dsn = f"sqlite:///{sqlite_path.as_posix()}"
@@ -36,7 +42,6 @@ def _qdb_scope_repo(tmp_path, monkeypatch) -> UserScopeRepository:
     get_settings.cache_clear()
     return UserScopeRepository(dsn)
 
-
 def _grant_qdb_read(tmp_path, monkeypatch) -> None:
     _qdb_scope_repo(tmp_path, monkeypatch).grant_scope(
         user_id="*",
@@ -44,7 +49,6 @@ def _grant_qdb_read(tmp_path, monkeypatch) -> None:
         resource="qdb_gl_monthly_analysis",
         action="read",
     )
-
 
 def _grant_qdb_refresh(tmp_path, monkeypatch) -> None:
     _qdb_scope_repo(tmp_path, monkeypatch).grant_scope(
@@ -54,7 +58,6 @@ def _grant_qdb_refresh(tmp_path, monkeypatch) -> None:
         action="refresh",
     )
 
-
 def _grant_qdb_adjustment_write(tmp_path, monkeypatch):
     _qdb_scope_repo(tmp_path, monkeypatch).grant_scope(
         user_id="*",
@@ -62,7 +65,6 @@ def _grant_qdb_adjustment_write(tmp_path, monkeypatch):
         resource="qdb_gl_monthly_analysis.adjustment",
         action="write",
     )
-
 
 def test_qdb_gl_monthly_analysis_read_surfaces_require_explicit_read_scope(tmp_path, monkeypatch):
     route_module = load_module(
@@ -105,7 +107,6 @@ def test_qdb_gl_monthly_analysis_read_surfaces_require_explicit_read_scope(tmp_p
         response = client.get(path, params=params or None, headers=QDB_GL_MONTHLY_ANALYSIS_READ_HEADERS)
         assert response.status_code == 403, f"{path}: {response.status_code} {response.text}"
 
-
 def test_qdb_gl_monthly_analysis_refresh_requires_explicit_refresh_scope(tmp_path, monkeypatch):
     route_module = load_module(
         "backend.app.api.routes.qdb_gl_monthly_analysis",
@@ -128,7 +129,6 @@ def test_qdb_gl_monthly_analysis_refresh_requires_explicit_refresh_scope(tmp_pat
     )
 
     assert response.status_code == 403
-
 
 def test_api_exposes_dates_and_workbook_payload(tmp_path, monkeypatch):
     source_dir = tmp_path / "data_input" / "pnl_总账对账-日均"
@@ -191,7 +191,6 @@ def test_api_exposes_dates_and_workbook_payload(tmp_path, monkeypatch):
 
     get_settings.cache_clear()
 
-
 def test_api_workbook_payload_includes_segment_scale_compare_when_history_exists(tmp_path, monkeypatch):
     source_dir = tmp_path / "data_input" / "pnl_总账对账-日均"
     source_dir.mkdir(parents=True)
@@ -253,7 +252,6 @@ def test_api_workbook_payload_includes_segment_scale_compare_when_history_exists
 
     get_settings.cache_clear()
 
-
 def test_api_returns_404_for_missing_report_month(tmp_path, monkeypatch):
     source_dir = tmp_path / "data_input" / "pnl_总账对账-日均"
     source_dir.mkdir(parents=True)
@@ -275,7 +273,6 @@ def test_api_returns_404_for_missing_report_month(tmp_path, monkeypatch):
     assert response.status_code == 404
     assert "202603" in response.json()["detail"]
     get_settings.cache_clear()
-
 
 def test_api_exposes_refresh_and_scenario_for_monthly_analysis(tmp_path, monkeypatch):
     source_dir = tmp_path / "data_input" / "pnl_总账对账-日均"
@@ -340,7 +337,6 @@ def test_api_exposes_refresh_and_scenario_for_monthly_analysis(tmp_path, monkeyp
     }
     get_settings.cache_clear()
 
-
 def test_api_refresh_reuses_run_for_same_idempotency_key(tmp_path, monkeypatch):
     source_dir = tmp_path / "data_input" / "pnl_鎬昏处瀵硅处-鏃ュ潎"
     governance_dir = tmp_path / "governance"
@@ -383,7 +379,6 @@ def test_api_refresh_reuses_run_for_same_idempotency_key(tmp_path, monkeypatch):
     assert len(records) == 1
     get_settings.cache_clear()
 
-
 def test_api_refresh_returns_failed_payload_when_requested_month_rebuild_fails(tmp_path, monkeypatch):
     source_dir = tmp_path / "data_input" / "pnl_鎬昏处瀵硅处-鏃ゅ潎"
     governance_dir = tmp_path / "governance"
@@ -425,7 +420,6 @@ def test_api_refresh_returns_failed_payload_when_requested_month_rebuild_fails(t
 
     get_settings.cache_clear()
 
-
 def test_api_refresh_returns_404_when_requested_month_is_missing(tmp_path, monkeypatch):
     source_dir = tmp_path / "data_input" / "pnl_鎬昏处瀵硅处-鏃ゅ潎"
     governance_dir = tmp_path / "governance"
@@ -453,7 +447,6 @@ def test_api_refresh_returns_404_when_requested_month_is_missing(tmp_path, monke
         and record.get("report_date") == "202601"
     ] == []
     get_settings.cache_clear()
-
 
 def test_api_exposes_branch_specific_manual_adjustment_endpoints(tmp_path, monkeypatch):
     governance_dir = tmp_path / "governance"
@@ -496,7 +489,6 @@ def test_api_exposes_branch_specific_manual_adjustment_endpoints(tmp_path, monke
     )
     get_settings.cache_clear()
 
-
 def test_api_rejects_invalid_manual_adjustment_payload(tmp_path, monkeypatch):
     governance_dir = tmp_path / "governance"
     _grant_qdb_read(tmp_path, monkeypatch)
@@ -528,7 +520,6 @@ def test_api_rejects_invalid_manual_adjustment_payload(tmp_path, monkeypatch):
     assert listed.status_code == 200
     assert listed.json()["adjustment_count"] == 0
     get_settings.cache_clear()
-
 
 def test_api_scenario_returns_rebuilt_workbook_payload(tmp_path, monkeypatch):
     source_dir = tmp_path / "data_input" / "pnl_总账对账-日均"
@@ -585,7 +576,6 @@ def test_api_scenario_returns_rebuilt_workbook_payload(tmp_path, monkeypatch):
 
     get_settings.cache_clear()
 
-
 def test_api_workbook_rebuild_applies_approved_monthly_analysis_adjustments(tmp_path, monkeypatch):
     source_dir = tmp_path / "data_input" / "pnl_总账对账-日均"
     governance_dir = tmp_path / "governance"
@@ -631,7 +621,6 @@ def test_api_workbook_rebuild_applies_approved_monthly_analysis_adjustments(tmp_
     assert target_row[level_key] == "manual_override"
 
     get_settings.cache_clear()
-
 
 def test_api_workbook_rebuild_applies_approved_mapping_adjustments(tmp_path, monkeypatch):
     source_dir = tmp_path / "data_input" / "pnl_总账对账-日均"

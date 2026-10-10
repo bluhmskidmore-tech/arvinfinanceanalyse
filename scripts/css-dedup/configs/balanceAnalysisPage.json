@@ -1,0 +1,30 @@
+{
+  "cssPath": "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.css",
+  "tsxFiles": [
+    "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx",
+    "frontend/src/components/page/PagePrimitives.tsx",
+    "frontend/src/layouts/WorkbenchShell.tsx",
+    "frontend/src/features/cross-asset/components/ReferencePanels.tsx"
+  ],
+  "wildcards": [
+    "balance-analysis-mini-value--info", "balance-analysis-mini-value--warning",
+    "balance-analysis-reconciliation__status--aligned", "balance-analysis-reconciliation__status--pending",
+    "balance-analysis-reconciliation__status--unavailable", "balance-analysis-reconciliation__status--watch",
+    "moss-page-v2-kpi-metric",
+    "workbench-shell-grid--cockpit", "workbench-shell-grid--desktop-aligned",
+    "balance-analysis-report-date-empty", "balance-analysis-contract-kpis",
+    "balance-analysis-action-button", "balance-analysis-compact-filter-note", "balance-analysis-control",
+    "balance-analysis-filter-bar",
+    "balance-analysis-hero", "balance-analysis-hero--cockpit", "balance-analysis-hero-actions",
+    "balance-analysis-hero-conclusion", "balance-analysis-hero__identity", "balance-analysis-hero__meta",
+    "balance-analysis-hero__report", "balance-analysis-hero__tab", "balance-analysis-hero__tag",
+    "balance-analysis-hero__title-row",
+    "balance-analysis-inline-icon", "balance-analysis-kpi-unit",
+    "balance-analysis-ledger-meta-row--strong", "balance-analysis-source-badge"
+  ],
+  "evidenceMode": "literal",
+  "finalMarker": "Dashboard-home color alignment",
+  "mockUrl": "http://127.0.0.1:5897/balance-analysis",
+  "realUrl": "http://localhost:5888/balance-analysis",
+  "workDir": null
+}

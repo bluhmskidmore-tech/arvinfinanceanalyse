@@ -1,4 +1,9 @@
-"""V1 损益展示用投资类型 A/T/H 推导（与 MOSS-SYSTEM-V1 pnl_service._infer_invest_type 对齐）。
+"""DORMANT: 无生产调用方（2026-09-02 系统审计复核：``infer_invest_type_v1`` 仅被
+tests/test_caliber_migration_hat_mapping.py 引用；其服务的 V1 ``/api/pnl/data`` 路由也不被任何
+live 页面引用）。接线前必须先确认 V1 ``/api/pnl/data`` 口径是否仍需保留；若不再保留，
+应连同该路由一起下线而不是继续挂在 core_finance 下。
+
+V1 损益展示用投资类型 A/T/H 推导（与 MOSS-SYSTEM-V1 pnl_service._infer_invest_type 对齐）。
 
 非正式风险/久期指标，仅用于 /pnl/data、yield-bench 与 V1 界面口径对齐。
 
@@ -9,7 +14,8 @@ W-migrate-hat-2026-04-21
 ``backend.app.core_finance.config.classification_rules.infer_invest_type``）。
 此次试迁把 ``infer_invest_type_v1`` 改为 canonical 的薄包装：
 
-* 保留模块名 / 函数签名以兼容现有调用方（外部仍按 V1 名字 import）。
+* 保留模块名 / 函数签名（迁移时为兼容 V1 名字的调用方；2026-09-02 复核已无生产调用方，
+  仅 tests/test_caliber_migration_hat_mapping.py 仍按 V1 名字 import）。
 * 行为差异修正：原 v1 对 ``"Trading"`` 大小写敏感（漏匹配 ``"TRADING"``、
   ``"trading"``）；canonical 对 ``"TRADING"`` 不区分大小写。caliber 统一选择
   采用 canonical 行为（同一输入跨页面给出同一答案）。

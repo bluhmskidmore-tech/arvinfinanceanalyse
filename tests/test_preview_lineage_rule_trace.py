@@ -10,7 +10,8 @@ from fastapi.testclient import TestClient
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.source_preview_repo import RULE_VERSION
 from backend.app.repositories.user_scope_repo import UserScopeRepository
-from tests.helpers import ROOT, load_module
+from tests.business_input_fixtures import business_input_bytes
+from tests.helpers import load_module
 
 
 @pytest.fixture(autouse=True)
@@ -138,7 +139,7 @@ def test_materialize_uses_lineage_not_raw_directory_when_building_preview(tmp_pa
 
     data_root.mkdir()
     zqtz_source = data_root / "ZQTZSHOW-20251231.xls"
-    zqtz_source.write_bytes((ROOT / "data_input" / "ZQTZSHOW-20251231.xls").read_bytes())
+    zqtz_source.write_bytes(business_input_bytes("ZQTZSHOW-20251231.xls"))
 
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
     monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
@@ -182,7 +183,7 @@ def test_preview_row_and_trace_apis_return_deterministic_payloads(tmp_path, monk
 
     data_root.mkdir()
     for file_name in ("ZQTZSHOW-20251231.xls", "TYWLSHOW-20251231.xls"):
-        (data_root / file_name).write_bytes((ROOT / "data_input" / file_name).read_bytes())
+        (data_root / file_name).write_bytes(business_input_bytes(file_name))
 
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
     monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
@@ -305,7 +306,7 @@ def test_preview_row_and_trace_apis_pagination_matrix_unknown_batch_and_oob_offs
 
     data_root.mkdir()
     for file_name in ("ZQTZSHOW-20251231.xls", "TYWLSHOW-20251231.xls"):
-        (data_root / file_name).write_bytes((ROOT / "data_input" / file_name).read_bytes())
+        (data_root / file_name).write_bytes(business_input_bytes(file_name))
 
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
     monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
@@ -454,7 +455,7 @@ def test_history_endpoint_lists_multiple_materialized_batches_and_preserves_old_
 
     data_root.mkdir()
     for file_name in ("ZQTZSHOW-20251231.xls", "TYWLSHOW-20251231.xls"):
-        (data_root / file_name).write_bytes((ROOT / "data_input" / file_name).read_bytes())
+        (data_root / file_name).write_bytes(business_input_bytes(file_name))
 
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
     monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
@@ -541,7 +542,7 @@ def test_source_preview_http_surfaces_share_analytical_result_meta_contract(tmp_
 
     data_root.mkdir()
     for file_name in ("ZQTZSHOW-20251231.xls", "TYWLSHOW-20251231.xls"):
-        (data_root / file_name).write_bytes((ROOT / "data_input" / file_name).read_bytes())
+        (data_root / file_name).write_bytes(business_input_bytes(file_name))
 
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
     monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")

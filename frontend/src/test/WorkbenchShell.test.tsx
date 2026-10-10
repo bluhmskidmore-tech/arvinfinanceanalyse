@@ -10,13 +10,24 @@ import {
   primaryWorkbenchNavigation,
   primaryWorkbenchNavigationGroups,
   secondaryWorkbenchNavigation,
-} from "../mocks/navigation";
+} from "../app/navigation";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
+
+const navigationLoads = vi.hoisted(() => ({ portfolio: vi.fn(), balance: vi.fn() }));
+vi.mock("../features/workbench/module-home/PortfolioHomePage", () => {
+  navigationLoads.portfolio();
+  return { default: () => <div>portfolio module body</div> };
+});
+vi.mock("../features/balance-analysis/pages/BalanceAnalysisPage", () => {
+  navigationLoads.balance();
+  return { default: () => <div>balance module body</div> };
+});
 
 const WORKBENCH_INSTITUTIONAL_CONSOLE_CSS_PATH = resolve(
   process.cwd(),
   "src/styles/workbenchInstitutionalConsole.css",
 );
+const WORKBENCH_SHELL_CSS_PATH = resolve(process.cwd(), "src/styles/workbenchShell.css");
 
 function createResultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
   return {
@@ -52,6 +63,8 @@ function renderShellAt(path: string, client?: ApiClient) {
           { path: "performance", element: <div>performance home body</div> },
           { path: "bond-analysis", element: <div>bond-analysis body</div> },
           { path: "cross-asset", element: <div>cross-asset body</div> },
+          { path: "macro-toolkit", element: <div>macro-toolkit body</div> },
+          { path: "macro-observation", element: <div>macro-observation body</div> },
           { path: "stock-analysis", element: <div>stock-analysis body</div> },
           { path: "operations-analysis", element: <div>operations body</div> },
           { path: "balance-analysis", element: <div>balance-analysis body</div> },
@@ -73,6 +86,34 @@ function renderShellAt(path: string, client?: ApiClient) {
 }
 
 describe("WorkbenchShell", () => {
+  it("keeps hovered, focused and pressed navigation targets unloaded until navigation", async () => {
+    renderShellAt("/");
+    const portfolioLink = within(screen.getByTestId("workbench-group-nav"))
+      .getByRole("link", { name: "组合工作台" });
+    expect(navigationLoads.portfolio).not.toHaveBeenCalled();
+
+    fireEvent.pointerOver(portfolioLink.querySelector("span")!);
+    fireEvent.focus(portfolioLink);
+    fireEvent.pointerDown(portfolioLink);
+    await vi.dynamicImportSettled();
+    expect(navigationLoads.portfolio).not.toHaveBeenCalled();
+    expect(screen.getByText("shell body")).toBeInTheDocument();
+    expect(screen.queryByText("portfolio home body")).not.toBeInTheDocument();
+
+    fireEvent.pointerOver(screen.getByText("帮助文档"));
+    expect(navigationLoads.portfolio).not.toHaveBeenCalled();
+  });
+
+  it("keeps a section target unloaded when keyboard focus moves to its link", async () => {
+    renderShellAt("/portfolio");
+    const subnav = await screen.findByTestId("workbench-section-subnav");
+    const balanceLink = within(subnav).getByRole("link", { name: /资产负债分析/ });
+    fireEvent.focus(balanceLink);
+    await vi.dynamicImportSettled();
+    expect(navigationLoads.balance).not.toHaveBeenCalled();
+    expect(screen.getByText("portfolio home body")).toBeInTheDocument();
+  });
+
   it("renders shell chrome and grouped workspace navigation", async () => {
     renderShellAt("/");
 
@@ -95,6 +136,33 @@ describe("WorkbenchShell", () => {
     fireEvent.click(skipLink);
 
     expect(main).toHaveFocus();
+  });
+
+  it("keeps global navigation reachable in the compact drawer and restores focus on Escape", async () => {
+    renderShellAt("/cross-asset");
+
+    expect(await screen.findByText("cross-asset body")).toBeInTheDocument();
+    const toggle = screen.getByRole("button", { name: "打开主导航" });
+    const drawer = screen.getByLabelText("全局工作台导航");
+
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(drawer).toHaveAttribute("data-mobile-nav-open", "false");
+
+    fireEvent.click(toggle);
+
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(drawer).toHaveAttribute("data-mobile-nav-open", "true");
+    await waitFor(() => {
+      expect(within(drawer).getByRole("button", { name: "关闭主导航" })).toHaveFocus();
+    });
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(drawer).toHaveAttribute("data-mobile-nav-open", "false");
+      expect(toggle).toHaveFocus();
+      expect(document.body.style.overflow).toBe("");
+    });
   });
 
   it("applies the institutional console visual scope to the shared shell root", async () => {
@@ -124,6 +192,7 @@ describe("WorkbenchShell", () => {
     renderShellAt("/stock-analysis");
 
     expect(await screen.findByText("stock-analysis body")).toBeInTheDocument();
+    expect(screen.getByTestId("workbench-governance-pill")).toBeInTheDocument();
     const layoutRoot = screen
       .getByTestId("workbench-group-nav")
       .closest(".workbench-shell-root");
@@ -203,14 +272,6 @@ describe("WorkbenchShell", () => {
   it("keeps cross-asset shell compression in the final institutional console layer", () => {
     const css = readFileSync(WORKBENCH_INSTITUTIONAL_CONSOLE_CSS_PATH, "utf8");
     const mobileCss = css.slice(css.indexOf("@media (max-width: 720px)"));
-    const desktopBannerBlock =
-      css.match(
-        /\.workbench-shell-grid--institutional-console\.workbench-shell-grid--cross-asset \[data-testid="workbench-governance-banner"\] \{[\s\S]*?\n  \}/,
-      )?.[0] ?? "";
-    const desktopBannerHintBlock =
-      css.match(
-        /\.workbench-shell-grid--institutional-console\.workbench-shell-grid--cross-asset \[data-testid="workbench-governance-banner"\] \.workbench-notice__hint \{[\s\S]*?\n  \}/,
-      )?.[0] ?? "";
     const desktopTerminalBlock =
       css.match(
         /\.workbench-shell-grid--institutional-console\.workbench-shell-grid--cross-asset \[data-testid="workbench-terminal-bar"\] \{[\s\S]*?\n  \}/,
@@ -247,31 +308,32 @@ describe("WorkbenchShell", () => {
     expect(desktopTickerBlock).toContain("gap: 6px !important;");
     expect(desktopUtilityBlock).toContain("padding: 2px 1px !important;");
     expect(desktopUtilityBlock).toContain("font-size: 11px;");
-    expect(desktopBannerBlock).toContain("grid-template-columns: auto minmax(0, 1fr) minmax(210px, 0.42fr);");
-    expect(desktopBannerBlock).toContain("align-items: center;");
-    expect(desktopBannerBlock).toContain("min-height: 36px;");
-    expect(desktopBannerBlock).toContain("padding: 5px 10px !important;");
-    expect(desktopBannerBlock).toContain("border-color: rgba(184, 138, 45, 0.28) !important;");
-    expect(desktopBannerBlock).toContain("background:");
-    expect(desktopBannerBlock).toContain("rgba(184, 138, 45, 0.07)");
-    expect(desktopBannerHintBlock).toContain("grid-column: auto;");
-    expect(desktopBannerHintBlock).toContain("overflow: hidden;");
-    expect(desktopBannerHintBlock).toContain("text-overflow: ellipsis;");
-    expect(desktopBannerHintBlock).toContain("white-space: nowrap;");
+    // cross-asset 治理横幅的浅色硬编码压缩块已随暗色主题清理移除：
+    // 横幅回落到共享 workbench-notice 样式，不得再出现路由私有覆盖。
+    expect(css).not.toContain(
+      '.workbench-shell-grid--institutional-console.workbench-shell-grid--cross-asset [data-testid="workbench-governance-banner"]',
+    );
     expect(css).toContain(".workbench-section-subnav__header {\n    display: none !important;");
     expect(mobileCss).not.toContain("workbench-shell-grid--cross-asset");
     expect(css).not.toContain(':has([data-testid="cross-asset-drivers-page"])');
     expect(css).not.toMatch(/workbench-shell-grid--cross-asset[\s\S]{0,180}> div/);
   });
 
-  it("keeps ledger pnl shell compression in the final institutional console layer", () => {
+  it("keeps the ledger sample shell frameless with eager shared-gutter geometry", () => {
     const css = readFileSync(WORKBENCH_INSTITUTIONAL_CONSOLE_CSS_PATH, "utf8");
+    const shellCss = readFileSync(WORKBENCH_SHELL_CSS_PATH, "utf8");
     const mobileCss = css.slice(css.indexOf("@media (max-width: 720px)"));
 
-    expect(css).toContain(".workbench-shell-grid--institutional-console.workbench-shell-grid--ledger-pnl .workbench-main-column");
-    expect(css).toContain(
-      '.workbench-shell-grid--institutional-console.workbench-shell-grid--ledger-pnl [data-testid="workbench-section-subnav"]',
+    const sharedMainRule = shellCss.match(
+      /\.workbench-shell-grid\.workbench-shell-grid--desktop-aligned \.workbench-main-column > main \{[^}]+\}/,
+    )?.[0] ?? "";
+    expect(sharedMainRule).toContain("border: 0;");
+    expect(sharedMainRule).toContain("background: transparent;");
+    expect(sharedMainRule).toContain("box-shadow: none;");
+    expect(shellCss).toContain(
+      "padding: var(--moss-space-4) var(--moss-page-gutter) var(--moss-space-6)",
     );
+    expect(css).not.toContain(".workbench-shell-grid--ledger-pnl .workbench-main-column");
     expect(mobileCss).not.toContain("workbench-shell-grid--ledger-pnl");
     expect(css).not.toContain(':has([data-testid="ledger-pnl-page"])');
     expect(css).not.toMatch(/workbench-shell-grid--ledger-pnl[\s\S]{0,180}> div/);
@@ -315,30 +377,24 @@ describe("WorkbenchShell", () => {
     );
   });
 
-  it("shows the Hermes Agent workbench in visible shell navigation", async () => {
+  it("hides the unavailable Agent shortcut from shell navigation", async () => {
     renderShellAt("/");
 
-    const agentNav = await screen.findByTestId("workbench-agent-nav");
-    const agentLink = within(agentNav).getByRole("link", { name: /智能体工作台/ });
-    expect(agentLink).toHaveAttribute("href", "/agent");
-    expect(agentLink).toHaveTextContent("Hermes");
+    await screen.findByTestId("workbench-group-nav");
+    expect(screen.queryByTestId("workbench-agent-nav")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /MOSS Chat/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /智能体对话/ })).not.toBeInTheDocument();
   });
 
-  it("uses stock-analysis shell labels without exposing Agent wording in the rail", async () => {
+  it("uses stock-analysis shell labels without rendering the unavailable Agent shortcut", async () => {
     renderShellAt("/stock-analysis");
 
     expect(await screen.findByText("stock-analysis body")).toBeInTheDocument();
     const layoutRoot = screen.getByTestId("workbench-group-nav").closest(".workbench-shell-grid--stock-analysis");
     expect(layoutRoot).not.toBeNull();
 
-    const agentNav = screen.getByTestId("workbench-agent-nav");
-    const agentLink = within(agentNav).getByRole("link", { name: /复核助手/ });
-    expect(agentLink).toHaveAttribute("href", "/agent");
-    expect(agentNav).toHaveTextContent("复核");
-    expect(agentNav).toHaveTextContent("跨页证据");
-    expect(agentNav).not.toHaveTextContent("Agent");
-    expect(agentNav).not.toHaveTextContent("Hermes");
+    expect(screen.queryByTestId("workbench-agent-nav")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /复核助手/ })).not.toBeInTheDocument();
   });
 
   it("shows current-group section links separately from the workspace groups", async () => {
@@ -348,7 +404,7 @@ describe("WorkbenchShell", () => {
     const hrefs = within(subnav)
       .getAllByRole("link")
       .map((link) => link.getAttribute("href"));
-    expect(hrefs).toEqual(["/platform-config", "/reports", "/cube-query", "/agent"]);
+    expect(hrefs).toEqual(["/platform-config", "/reports", "/cube-query"]);
     expect(hrefs).toContain("/reports");
   });
 
@@ -361,8 +417,73 @@ describe("WorkbenchShell", () => {
     expect(screen.queryByTestId("portfolio-workbench-board")).not.toBeInTheDocument();
 
     const subnav = screen.getByTestId("workbench-section-subnav");
-    expect(subnav).toHaveTextContent("全部已开放页面");
-    expect(within(subnav).getByRole("link", { name: /收益分析/ })).toHaveAttribute("href", "/pnl");
+    expect(within(subnav).getByRole("navigation", { name: "组合工作台页面" })).toBeInTheDocument();
+    expect(subnav).not.toHaveTextContent("全部已开放页面");
+    expect(within(subnav).getByRole("button", { name: /当前页 正式损益/ })).toHaveAttribute(
+      "data-active",
+      "true",
+    );
+  });
+
+  it("keeps the portfolio subnav order stable while the overflow menu carries the active page", async () => {
+    renderShellAt("/pnl");
+
+    const subnav = await screen.findByTestId("workbench-section-subnav");
+    const inlineHrefsBefore = within(subnav)
+      .getAllByRole("link")
+      .map((link) => link.getAttribute("href"));
+
+    const moreToggle = within(subnav).getByRole("button", { name: /当前页 正式损益/ });
+    expect(moreToggle).toHaveAttribute("aria-expanded", "false");
+    expect(moreToggle).toHaveAttribute("data-active", "true");
+    expect(screen.queryByTestId("workbench-section-subnav-more-menu")).not.toBeInTheDocument();
+
+    fireEvent.click(moreToggle);
+
+    expect(moreToggle).toHaveAttribute("aria-expanded", "true");
+    const menu = screen.getByTestId("workbench-section-subnav-more-menu");
+    const menuLinks = within(menu).getAllByRole("link");
+    expect(menuLinks.length).toBeGreaterThan(0);
+    expect(within(menu).getByRole("link", { name: "正式损益" })).toHaveAttribute(
+      "data-active",
+      "true",
+    );
+    const inlineLinks = within(subnav)
+      .getAllByRole("link")
+      .filter((link) => !menu.contains(link));
+    expect(inlineLinks.length + menuLinks.length).toBeGreaterThanOrEqual(10);
+
+    fireEvent.click(within(menu).getByRole("link", { name: "收益归因" }));
+
+    expect(await screen.findByText("pnl-attribution body")).toBeInTheDocument();
+    const inlineHrefsAfter = within(screen.getByTestId("workbench-section-subnav"))
+      .getAllByRole("link")
+      .map((link) => link.getAttribute("href"));
+    expect(inlineHrefsAfter).toEqual(inlineHrefsBefore);
+  });
+
+  it("closes the overflow menu on Escape and returns focus to its toggle", async () => {
+    renderShellAt("/pnl");
+
+    const subnav = await screen.findByTestId("workbench-section-subnav");
+    const moreToggle = within(subnav).getByRole("button", { name: /更多工作台页面/ });
+    fireEvent.click(moreToggle);
+
+    const menu = screen.getByTestId("workbench-section-subnav-more-menu");
+    const menuLink = within(menu).getAllByRole("link")[0];
+    menuLink.focus();
+    expect(menuLink).toHaveFocus();
+
+    fireEvent.keyDown(menuLink, { key: "Escape" });
+
+    expect(screen.queryByTestId("workbench-section-subnav-more-menu")).not.toBeInTheDocument();
+    expect(moreToggle).toHaveAttribute("aria-expanded", "false");
+    expect(moreToggle).toHaveFocus();
+
+    fireEvent.click(moreToggle);
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByTestId("workbench-section-subnav-more-menu")).not.toBeInTheDocument();
+    expect(moreToggle).toHaveAttribute("aria-expanded", "false");
   });
 
   it("keeps live balance-analysis focused on page content without shell guidance", async () => {
@@ -373,7 +494,8 @@ describe("WorkbenchShell", () => {
     expect(screen.queryByTestId("portfolio-workbench-lead")).not.toBeInTheDocument();
     expect(screen.queryByTestId("portfolio-workbench-flow")).not.toBeInTheDocument();
     expect(screen.queryByTestId("portfolio-workbench-board")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("workbench-section-subnav")).not.toBeInTheDocument();
+    // 2026-09-02 铬件统一：导读 / 阅读路径不渲染，但组内子导航与其它组合工作台页面一致。
+    expect(screen.getByTestId("workbench-section-subnav")).toBeInTheDocument();
   });
 
   it("uses the live reports home without old placeholder guidance", async () => {
@@ -384,7 +506,7 @@ describe("WorkbenchShell", () => {
     expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
   });
 
-  it("keeps portfolio page selection while hiding helper chrome on balance-movement-analysis", async () => {
+  it("uses the Figma portfolio rail and hides global shell chrome on balance-movement-analysis", async () => {
     renderShellAt("/balance-movement-analysis");
 
     expect(await screen.findByText("balance-movement body")).toBeInTheDocument();
@@ -392,11 +514,76 @@ describe("WorkbenchShell", () => {
     expect(screen.queryByTestId("portfolio-workbench-lead")).not.toBeInTheDocument();
     expect(screen.queryByTestId("portfolio-workbench-flow")).not.toBeInTheDocument();
     expect(screen.queryByTestId("portfolio-workbench-board")).not.toBeInTheDocument();
-    const subnav = screen.getByTestId("workbench-section-subnav");
-    const hrefs = within(subnav)
-      .getAllByRole("link")
-      .map((link) => link.getAttribute("href"));
-    expect(hrefs).toContain("/balance-movement-analysis");
+    const navigation = screen.getByTestId("workbench-group-nav");
+    const rail = navigation.closest("aside");
+    const layoutRoot = navigation.closest(".workbench-shell-root");
+    const links = within(navigation).getAllByRole("link");
+
+    expect(rail).not.toBeNull();
+    expect(layoutRoot).toHaveClass(
+      "workbench-shell-grid--cockpit",
+      "workbench-shell-grid--balance-movement",
+    );
+    expect(within(rail as HTMLElement).getByText("MOSS")).toBeInTheDocument();
+    expect(links.map((link) => link.querySelector(".workbench-shell-group-label")?.textContent)).toEqual([
+      "经营日报",
+      "组合工作台",
+      "市场工作台",
+      "风险工作台",
+      "绩效工作台",
+      "报表与数据",
+    ]);
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      "/",
+      "/portfolio",
+      "/market-overview",
+      "/risk-overview",
+      "/performance",
+      "/reports",
+    ]);
+    expect(within(navigation).getByRole("link", { name: /组合工作台/ })).toHaveAttribute(
+      "data-active",
+      "true",
+    );
+    expect(links.every((link) => link.textContent?.includes("首页"))).toBe(true);
+    expect(screen.queryByTestId("workbench-agent-nav")).not.toBeInTheDocument();
+    expect(within(screen.getByTestId("workbench-support-nav")).getAllByRole("link").map(
+      (link) => link.textContent,
+    )).toEqual(["报表与数据", "中台配置"]);
+    expect(
+      within(screen.getByTestId("workbench-support-nav")).getByText("帮助文档").closest(
+        '[aria-disabled="true"]',
+      ),
+    ).toHaveTextContent("未接入");
+    expect(screen.queryByTestId("balance-movement-portfolio-rail")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("balance-movement-portfolio-nav")).not.toBeInTheDocument();
+    expect(within(rail as HTMLElement).queryByText("PORTFOLIO CONSOLE")).not.toBeInTheDocument();
+    expect(within(rail as HTMLElement).queryByText("组合总览")).not.toBeInTheDocument();
+    // mock 警示横幅是全局数据可信标识，不属于该页可隐藏的壳层铬件（页内无等价常显警示）。
+    expect(document.getElementById("data-mode-ribbon")).toBeInTheDocument();
+    // 2026-09-02 铬件统一：终端条（面包屑 + 报告日 + 行情带）与组内子导航是全站唯一开场，本页不再抑制。
+    const terminalBar = screen.getByTestId("workbench-terminal-bar");
+    expect(within(terminalBar).getByTestId("workbench-page-context")).toHaveTextContent("组合工作台");
+    expect(within(terminalBar).getByTestId("workbench-page-context")).toHaveTextContent("余额变动分析");
+    expect(screen.getByTestId("workbench-section-subnav")).toBeInTheDocument();
+  });
+
+  it("collapses the balance movement shell to one column and exposes the shared rail as a drawer", () => {
+    const css = readFileSync(WORKBENCH_SHELL_CSS_PATH, "utf8");
+    const responsiveCss = css.slice(css.lastIndexOf("@media (max-width: 1180px)"));
+
+    expect(responsiveCss).toContain(
+      ".workbench-shell-grid.workbench-shell-grid--cockpit.workbench-shell-grid--balance-movement {\n    grid-template-columns: minmax(0, 1fr) !important;",
+    );
+    expect(responsiveCss).toContain(
+      ".workbench-shell-grid.workbench-shell-grid--cockpit.workbench-shell-grid--balance-movement\n    > .workbench-main-column {",
+    );
+    expect(responsiveCss).toContain("grid-column: 1;");
+    expect(responsiveCss).toContain("width: 100%;");
+    expect(responsiveCss).toContain("min-width: 0;");
+    expect(responsiveCss).toContain(".workbench-shell-mobile-nav-bar {");
+    expect(responsiveCss).toContain('[data-mobile-nav-open="true"]');
+    expect(responsiveCss).toContain("transform: translateX(0);");
   });
 
   it("keeps portfolio page selection while hiding helper chrome on liability-analytics", async () => {
@@ -414,16 +601,17 @@ describe("WorkbenchShell", () => {
     expect(hrefs).toContain("/liability-analytics");
   });
 
-  it("suppresses the portfolio decision shell chrome for bond-analysis", async () => {
+  it("suppresses the portfolio decision shell chrome for bond-analysis but keeps the shared opening", async () => {
     renderShellAt("/bond-analysis");
 
     expect(await screen.findByText("bond-analysis body")).toBeInTheDocument();
-    expect(screen.queryByTestId("workbench-governance-banner")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("workbench-terminal-bar")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-governance-pill")).not.toBeInTheDocument();
     expect(screen.queryByTestId("portfolio-workbench-lead")).not.toBeInTheDocument();
     expect(screen.queryByTestId("portfolio-workbench-board")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("workbench-section-subnav")).not.toBeInTheDocument();
     expect(screen.queryByTestId("workbench-sidebar-sections")).not.toBeInTheDocument();
+    // 2026-09-02 铬件统一：决策导读 / 阅读路径仍不渲染，但终端条与组内子导航与其它路由一致。
+    expect(screen.getByTestId("workbench-terminal-bar")).toBeInTheDocument();
+    expect(screen.getByTestId("workbench-section-subnav")).toBeInTheDocument();
   });
 
   it("uses transparent main surface for cross-asset and keeps market workbench subnav", async () => {
@@ -450,27 +638,64 @@ describe("WorkbenchShell", () => {
     expect(subnav).toHaveTextContent("新闻事件");
   });
 
-  it("renders a global terminal bar that separates page context from shell market ticker", async () => {
-    renderShellAt("/cross-asset");
+  it.each(["", "2026-02-28"])("renders the terminal with only an explicit report date: %s", async (reportDate) => {
+    renderShellAt(`/cross-asset${reportDate ? `?report_date=${reportDate}` : ""}`);
 
     expect(await screen.findByText("cross-asset body")).toBeInTheDocument();
 
     const terminalBar = screen.getByTestId("workbench-terminal-bar");
     const pageContext = within(terminalBar).getByTestId("workbench-page-context");
+    await within(terminalBar).findByText("市场快讯");
     const marketTicker = within(terminalBar).getByTestId("workbench-market-ticker");
     const operatorZone = within(terminalBar).getByTestId("workbench-operator-zone");
 
     expect(pageContext).toHaveTextContent("跨资产驱动");
-    expect(pageContext).toHaveTextContent("默认路由");
+    if (reportDate) {
+      expect(pageContext).toHaveTextContent(`报告日 ${reportDate}`);
+    } else {
+      expect(pageContext).not.toHaveTextContent("报告日");
+    }
+    expect(pageContext).not.toHaveTextContent("默认路由");
 
     expect(marketTicker).toHaveTextContent("市场快讯");
-    expect(marketTicker).toHaveTextContent("10年国债");
-    expect(marketTicker).toHaveTextContent("DR007");
-    expect(marketTicker).toHaveTextContent("美元/人民币");
+    await waitFor(() => {
+      expect(marketTicker).toHaveTextContent("10年国债");
+      expect(marketTicker).toHaveTextContent("DR007");
+      expect(marketTicker).toHaveTextContent("美元/人民币");
+    });
 
-    expect(operatorZone).toHaveTextContent("报表中心");
+    expect(operatorZone).toHaveTextContent("报表与数据");
     expect(operatorZone).toHaveTextContent("中台配置");
   });
+
+  it.each(["/macro-toolkit", "/macro-observation"])(
+    "renders the shared terminal bar as a crumb (not a second title) and keeps the market subnav on %s",
+    async (path) => {
+      renderShellAt(path);
+
+      expect(await screen.findByText(`${path.slice(1)} body`)).toBeInTheDocument();
+      // 2026-09-02 铬件统一：终端条不再抑制；页面自带页头仍是唯一大标题，终端条只放「组 › 页」面包屑。
+      const terminalBar = screen.getByTestId("workbench-terminal-bar");
+      const pageContext = within(terminalBar).getByTestId("workbench-page-context");
+      const crumb = pageContext.querySelector('.workbench-page-title-display[data-variant="crumb"]');
+      expect(crumb).not.toBeNull();
+      expect(crumb).toHaveTextContent("市场工作台");
+      expect(within(terminalBar).getByTestId("workbench-operator-zone")).toBeInTheDocument();
+      expect(await within(terminalBar).findByTestId("workbench-market-ticker")).toBeInTheDocument();
+
+      // 组内子导航保留，终端条里的报表中心/中台配置在左栏「支持入口」仍有等价入口。
+      const subnav = screen.getByTestId("workbench-section-subnav");
+      const subnavHrefs = within(subnav)
+        .getAllByRole("link")
+        .map((link) => link.getAttribute("href"));
+      expect(subnavHrefs).toEqual(expect.arrayContaining(["/macro-toolkit", "/macro-observation"]));
+
+      const supportHrefs = within(screen.getByTestId("workbench-support-nav"))
+        .getAllByRole("link")
+        .map((link) => link.getAttribute("href"));
+      expect(supportHrefs).toEqual(expect.arrayContaining(["/reports", "/platform-config"]));
+    },
+  );
 
   it("keeps bond-analysis page-owned by suppressing shell date and ticker endpoints", async () => {
     const client = {
@@ -538,12 +763,17 @@ describe("WorkbenchShell", () => {
     renderShellAt("/bond-analysis", client);
 
     expect(await screen.findByText("bond-analysis body")).toBeInTheDocument();
-    expect(screen.queryByTestId("workbench-terminal-bar")).not.toBeInTheDocument();
+    // 2026-09-02 铬件统一：终端条现在也在 bond-analysis 渲染，行情带读 choice macro latest；
+    // 报告日只在 URL 明确指定时显示，壳层不为它另起 bond analytics dates 请求。
+    expect(screen.getByTestId("workbench-terminal-bar")).toBeInTheDocument();
+    expect(await screen.findByTestId("workbench-market-ticker")).toBeInTheDocument();
     expect(client.getBondAnalyticsDates).not.toHaveBeenCalled();
-    expect(client.getChoiceMacroLatest).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(client.getChoiceMacroLatest).toHaveBeenCalled();
+    });
   });
 
-  it("keeps shell ticker fallback when macro latest payload has no result", async () => {
+  it("shows shell ticker no-data when macro latest payload has no result", async () => {
     const client = {
       ...createApiClient({ mode: "mock" }),
       getChoiceMacroLatest: async () => ({}),
@@ -552,8 +782,9 @@ describe("WorkbenchShell", () => {
     renderShellAt("/cross-asset", client);
 
     const marketTicker = await screen.findByTestId("workbench-market-ticker");
-    expect(marketTicker).toHaveTextContent("10年国债");
-    expect(marketTicker).toHaveTextContent("DR007");
+    expect(await within(marketTicker).findByText("暂无可用行情")).toBeInTheDocument();
+    expect(marketTicker.querySelectorAll(".workbench-market-ticker-item")).toHaveLength(0);
+    expect(within(marketTicker).queryByTestId("workbench-market-ticker-fallback-flag")).not.toBeInTheDocument();
     expect(screen.queryByText("Unexpected Application Error!")).not.toBeInTheDocument();
   });
 
@@ -625,7 +856,7 @@ describe("WorkbenchShell", () => {
   });
 
   it("includes stable series_id aliases for future shell ticker concepts", () => {
-    const items = buildShellTickerItems(
+    const { items } = buildShellTickerItems(
       [
         {
           series_id: "EMM00166502",
@@ -796,11 +1027,13 @@ describe("WorkbenchShell", () => {
 
     expect(platformLink).toHaveAttribute("href", "/platform-config");
     expect(platformLink).toHaveAttribute("data-active", "true");
-    expect(within(supportNav).getByRole("link", { name: /报表中心/ })).toHaveAttribute(
+    expect(within(supportNav).getByRole("link", { name: /报表与数据/ })).toHaveAttribute(
       "href",
       "/reports",
     );
-    expect(within(supportNav).getByRole("link", { name: /帮助文档/ })).toHaveAttribute("href", "/");
+    const helpEntry = within(supportNav).getByText("帮助文档").closest('[aria-disabled="true"]');
+    expect(helpEntry).toHaveTextContent("未接入");
+    expect(within(supportNav).queryByRole("link", { name: /帮助文档/ })).not.toBeInTheDocument();
 
     const operatorZone = screen.getByTestId("workbench-operator-zone");
     const operatorPlatformLink = within(operatorZone).getByRole("link", { name: /中台配置/ });
@@ -835,17 +1068,6 @@ describe("WorkbenchShell", () => {
     expect(screen.queryByText("当前只突出可验证的真实读链路")).not.toBeInTheDocument();
   });
 
-  it("keeps the /agent route reachable from the visible shell shortcuts", async () => {
-    renderShellAt("/agent");
-
-    expect(await screen.findByText("agent body")).toBeInTheDocument();
-    const agentNav = screen.getByTestId("workbench-agent-nav");
-    const agentLink = within(agentNav).getByRole("link", { name: /智能体工作台/ });
-    expect(agentLink).toHaveAttribute("href", "/agent");
-    expect(agentLink).toHaveAttribute("data-active", "true");
-    expect(screen.queryByRole("button", { name: /智能体对话/ })).not.toBeInTheDocument();
-  });
-
   it("lets /dashboard own the cockpit canvas without the group subnav", async () => {
     renderShellAt("/dashboard");
 
@@ -864,13 +1086,32 @@ describe("WorkbenchShell", () => {
     expect(screen.queryByTestId("workbench-terminal-bar")).not.toBeInTheDocument();
   });
 
-  it("shows a governance banner for operations-analysis while it is a temporary exception", async () => {
+  it("shows usage guidance before separately collapsed technical diagnostics", async () => {
     renderShellAt("/operations-analysis");
 
-    const banner = await screen.findByTestId("workbench-governance-banner");
-    expect(banner).toBeInTheDocument();
+    const pill = await screen.findByTestId("workbench-governance-pill");
+    expect(pill).toHaveTextContent("使用说明");
+    expect(pill).not.toHaveTextContent("契约收口中");
+    expect(screen.queryByTestId("workbench-usage-restriction")).not.toBeInTheDocument();
+    expect(within(screen.getByTestId("workbench-operator-zone")).getByTestId("workbench-governance-pill")).toBe(pill);
     expect(screen.getByText("operations body")).toBeInTheDocument();
-    expect(banner).toHaveTextContent(/临时例外/i);
+    // 常态收声：不再渲染整幅横幅，详情默认折叠。
+    expect(screen.queryByTestId("workbench-governance-banner")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-governance-detail")).not.toBeInTheDocument();
+
+    // 使用说明只展示业务内容，开发记录要再展开一次技术诊断。
+    const toggle = within(pill).getByRole("button", { name: /使用说明/ });
+    fireEvent.click(toggle);
+    const detail = screen.getByTestId("workbench-governance-detail");
+    expect(within(detail).getByText("本页使用范围")).toBeVisible();
+    expect(within(detail).getByText(/汇总经营、市场与资产负债信息/)).toBeVisible();
+    const diagnostics = screen.getByTestId("workbench-governance-diagnostics");
+    expect(diagnostics).not.toHaveAttribute("open");
+    expect(within(diagnostics).getByText(/PAGE-OPS-001/)).not.toBeVisible();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByTestId("workbench-governance-detail")).not.toBeInTheDocument();
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle).toHaveFocus();
   });
   it("uses dedicated home routes for primary workspace group links", async () => {
     renderShellAt("/portfolio");
@@ -891,6 +1132,10 @@ describe("WorkbenchShell", () => {
         "/reports",
       ]),
     );
+    const groupBadges = Array.from(
+      navigation.querySelectorAll(".workbench-shell-group-count"),
+    ).map((badge) => badge.textContent);
+    expect(groupBadges).toEqual(["首页", "首页", "首页", "首页", "首页", "首页"]);
     expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
   });
 });

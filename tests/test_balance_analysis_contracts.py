@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from dataclasses import fields
 
+import pytest
+from pydantic import ValidationError
+
 from tests.helpers import load_module
 
 
@@ -82,6 +85,83 @@ def test_balance_analysis_schema_defines_governed_payload_models():
         "description",
     } <= set(metric_definition.model_fields)
     assert "metric_definitions" in overview_payload.model_fields
+
+
+def test_balance_analysis_api_openapi_uses_concrete_response_models():
+    app = load_module("backend.app.main", "backend/app/main.py").app
+    spec = app.openapi()
+
+    expected_json_responses = {
+        ("get", "/ui/balance-analysis/dates"): "BalanceAnalysisDatesEnvelope",
+        ("get", "/ui/balance-analysis"): "BalanceAnalysisDetailEnvelope",
+        ("get", "/ui/balance-analysis/overview"): "BalanceAnalysisOverviewEnvelope",
+        ("get", "/ui/balance-analysis/summary"): "BalanceAnalysisSummaryEnvelope",
+        (
+            "get",
+            "/ui/balance-analysis/summary-by-basis",
+        ): "BalanceAnalysisBasisBreakdownEnvelope",
+        (
+            "get",
+            "/ui/balance-analysis/advanced-attribution",
+        ): "BalanceAnalysisAdvancedAttributionEnvelope",
+        ("get", "/ui/balance-analysis/workbook"): "BalanceAnalysisWorkbookEnvelope",
+        ("get", "/ui/balance-analysis/current-user"): "BalanceAnalysisCurrentUserPayload",
+        (
+            "get",
+            "/ui/balance-analysis/decision-items",
+        ): "BalanceAnalysisDecisionItemsEnvelope",
+        (
+            "post",
+            "/ui/balance-analysis/decision-items/status",
+        ): "BalanceAnalysisDecisionStatusRecord",
+        ("post", "/ui/balance-analysis/refresh"): "BalanceAnalysisRefreshPayload",
+        (
+            "get",
+            "/ui/balance-analysis/refresh-status",
+        ): "BalanceAnalysisRefreshStatusPayload",
+    }
+    for (method, path), component_name in expected_json_responses.items():
+        schema = spec["paths"][path][method]["responses"]["200"]["content"]["application/json"][
+            "schema"
+        ]
+        assert schema == {"$ref": f"#/components/schemas/{component_name}"}
+        assert spec["components"]["schemas"][component_name]["additionalProperties"] is False
+
+    summary_export = spec["paths"]["/ui/balance-analysis/summary/export"]["get"]["responses"]["200"]
+    assert summary_export["content"]["text/csv"]["schema"] == {"type": "string"}
+    workbook_export = spec["paths"]["/ui/balance-analysis/workbook/export"]["get"]["responses"]["200"]
+    workbook_media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    assert workbook_export["content"][workbook_media_type]["schema"] == {
+        "type": "string",
+        "format": "binary",
+    }
+
+
+def test_balance_analysis_api_envelope_rejects_undeclared_service_fields():
+    module = load_module(
+        "backend.app.schemas.balance_analysis",
+        "backend/app/schemas/balance_analysis.py",
+    )
+    payload = {
+        "result_meta": {
+            "trace_id": "tr-balance-contract",
+            "result_kind": "balance-analysis.dates",
+            "source_version": "sv-balance-contract",
+            "rule_version": "rv-balance-contract",
+            "cache_version": "cv-balance-contract",
+            "source_surface": "formal_balance",
+        },
+        "result": {"report_dates": ["2025-12-31"]},
+        "undeclared_service_field": "must fail",
+    }
+
+    with pytest.raises(ValidationError, match="undeclared_service_field"):
+        module.BalanceAnalysisDatesEnvelope.model_validate(payload)
+
+    payload.pop("undeclared_service_field")
+    payload["result"]["undeclared_result_field"] = "must also fail"
+    with pytest.raises(ValidationError, match="undeclared_result_field"):
+        module.BalanceAnalysisDatesEnvelope.model_validate(payload)
 
 
 def test_balance_analysis_core_exports_future_formal_fact_types():

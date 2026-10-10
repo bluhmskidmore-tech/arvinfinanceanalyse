@@ -4,7 +4,14 @@ import type { EChartsInstance } from "echarts-for-react/lib/types";
 import { useEffect, useRef } from "react";
 
 import ReactECharts from "../../lib/echarts";
-import { shellTokens } from "../../theme/tokens";
+import { nocturneChartTheme } from "./chartTheme";
+
+/*
+ * 全部 BaseChart 消费方都在 Nocturne 深色 scope 下（DESIGN.md 结论 1/12）。空态与加载
+ * 遮罩此前沿用 IB 浅色别名（白底 + 2px 圆角），series 一空就在深色面板里弹出白块；
+ * 常规走查看不到，只有数据为空时才暴露（结论 18 点名的非常态界面）。
+ */
+const { emptyStateStyle, loadingMaskStyle } = nocturneChartTheme;
 
 export type BaseChartProps = {
   option: EChartsOption;
@@ -40,32 +47,16 @@ export function BaseChart({ option, height = 320, loading }: BaseChartProps) {
   return (
     <div ref={wrapRef} style={{ position: "relative", width: "100%", minHeight: height }}>
       {loading ? (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: "rgba(251, 252, 254, 0.72)",
-            zIndex: 1,
-          }}
-        >
+        <div style={loadingMaskStyle}>
           <Spin />
         </div>
       ) : null}
       {empty ? (
         <div
+          data-testid="base-chart-empty"
           style={{
+            ...emptyStateStyle,
             height,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: shellTokens.colorTextMuted,
-            fontSize: 13,
-            border: `1px dashed ${shellTokens.colorBorderSoft}`,
-            borderRadius: 12,
-            background: shellTokens.colorBgSurface,
           }}
         >
           暂无数据

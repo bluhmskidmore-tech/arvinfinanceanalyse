@@ -1,6 +1,8 @@
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
+. "$root\scripts\dev-runtime-common.ps1"
+Assert-DevRuntimeAllowed
 Set-Location (Join-Path $root "frontend")
 
 function Test-NodePackageResolvable {
@@ -33,11 +35,14 @@ function Ensure-FrontendOptionalNativeDependencies {
   }
 }
 
-if (-not (Test-Path ".\node_modules")) {
- Write-Host "Installing frontend dependencies..." -ForegroundColor Yellow
-    npm install
+$frontendPlan = Get-DevFrontendPlan
+if ($frontendPlan.mode -eq "dev") {
+  if (-not (Test-Path ".\node_modules")) {
+   Write-Host "Installing frontend dependencies..." -ForegroundColor Yellow
+      npm install
+  }
+  Ensure-FrontendOptionalNativeDependencies
 }
-Ensure-FrontendOptionalNativeDependencies
 
 Write-Host "MOSS frontend: http://127.0.0.1:5888/ (also try http://localhost:5888/)" -ForegroundColor Cyan
 Write-Host "API proxy targets http://127.0.0.1:7888 — start backend with .\scripts\dev-api.ps1" -ForegroundColor Gray
@@ -47,4 +52,7 @@ if (-not $env:VITE_DATA_SOURCE) {
 }
 Write-Host "Frontend data source: $env:VITE_DATA_SOURCE" -ForegroundColor Gray
 
-npm run dev
+$runtimePython = Get-DevRuntimePython
+$nodeExecutable = (Get-Command node -ErrorAction Stop).Source
+& $runtimePython "$root\scripts\dev_runtime_control.py" --repo-root $root frontend-run --node $nodeExecutable
+if ($LASTEXITCODE -ne 0) { throw "Frontend exited with code $LASTEXITCODE" }

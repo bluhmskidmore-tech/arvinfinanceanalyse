@@ -1,0 +1,17 @@
+{
+  "cssPath": "frontend/src/features/workbench/module-home/portfolioHome.module.css",
+  "tsxFiles": [
+    "frontend/src/features/workbench/module-home/PortfolioHomeLayout.tsx",
+    "frontend/src/features/workbench/module-home/PortfolioAttributionWaterfall.tsx",
+    "frontend/src/features/workbench/module-home/PortfolioDistributionPanel.tsx",
+    "frontend/src/features/workbench/module-home/PortfolioStructureChart.tsx",
+    "frontend/src/features/workbench/module-home/PortfolioHoldingsHeroBand.tsx",
+    "frontend/src/features/workbench/module-home/PortfolioStructureTabPanel.tsx",
+    "frontend/src/features/workbench/module-home/PortfolioRiskTickerBar.tsx",
+    "frontend/src/features/workbench/module-home/PortfolioHomePage.tsx"
+  ],
+  "wildcards": ["toneOk", "toneWatch", "toneError", "toneMuted"],
+  "finalMarker": "页面级栅格收口（最终层）",
+  "mockUrl": "http://127.0.0.1:5897/portfolio",
+  "realUrl": "http://localhost:5888/portfolio"
+}

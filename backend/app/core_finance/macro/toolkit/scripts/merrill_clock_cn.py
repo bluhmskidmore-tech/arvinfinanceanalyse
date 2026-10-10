@@ -3,7 +3,7 @@
 ==========================================
 改造要点（vs 经典美林时钟）:
   1. 二分法 → 连续信号: 增长/通胀动量为 -1~+1 的连续值，不做硬切割
-  2. 加入第三维度: 流动性（M2增速 - 名义GDP增速）
+  2. 加入第三维度: 流动性（M2同比 与 社融存量同比 的动量均值）
   3. 多指标合成: 增长不只看工业增加值，通胀不只看CPI
   4. 输出资产偏好得分，而非简单的四象限标签
 
@@ -23,10 +23,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-_PKG = Path(__file__).resolve().parent.parent
-if str(_PKG) not in sys.path:
-    sys.path.insert(0, str(_PKG))
-from paths import OUTPUT_DIR
+if __package__:
+    from backend.app.core_finance.macro.toolkit.paths import OUTPUT_DIR
+else:
+    _PKG = Path(__file__).resolve().parent.parent
+    if str(_PKG) not in sys.path:
+        sys.path.insert(0, str(_PKG))
+    from paths import OUTPUT_DIR
 
 # ============================================================
 # WindPy 兼容接口连接
@@ -35,7 +38,10 @@ from paths import OUTPUT_DIR
 def connect_wind():
     """连接 Choice/Tushare 系统源兼容接口"""
     try:
-        from WindPy import w
+        if __package__:
+            from backend.app.core_finance.macro.toolkit.WindPy import w
+        else:
+            from WindPy import w
         if not w.isconnected():
             ret = w.start()
             if ret.ErrorCode != 0:
@@ -84,7 +90,7 @@ def wind_edb(w, codes: dict, start: str, end: str) -> pd.DataFrame:
 # 指标定义
 # ============================================================
 
-# 增长代理指标（多指标合成）
+# 增长代理指标（多指标合成；系统源未收录的序列由按行权重归一自动降级，见 compute_growth_momentum）
 GROWTH_INDICATORS = {
     'pmi':              'M0017126',   # 制造业PMI
     'industrial_va':    'M0000545',   # 工业增加值:当月同比
@@ -96,7 +102,7 @@ GROWTH_INDICATORS = {
 # 通胀代理指标
 INFLATION_INDICATORS = {
     'cpi_yoy':   'M0000612',   # CPI:当月同比
-    'ppi_yoy':   'M0001227',   # PPI:全部工业品:当月同比
+    'ppi_yoy':   'M0001227',   # PPI:全部工业品:当月同比（无 Choice 序列，别名解析到 tushare.macro.cn_ppi.monthly）
 }
 
 # 流动性代理指标
@@ -146,27 +152,37 @@ def compute_momentum(series: pd.Series, short_window: int = 3,
 
 
 def compute_growth_momentum(df: pd.DataFrame) -> pd.Series:
-    """合成增长动量（多指标加权）"""
+    """合成增长动量（多指标加权，按行有效权重归一化）
+
+    与能力路径 core_finance.macro.merrill_clock 同口径（2026-07-19 审计 C-1/M-1）：
+    系统源对未收录的序列返回全 NaN 列，若按"列存在"归一，缺失指标会被
+    静默当 0，稀释动量幅度且稀释倍数随可用序列数漂移（历史不可比）。
+    改为按行以非 NaN 分量的权重归一化；整行无有效分量时输出 NaN 而不是 0。
+    """
     momentums = {}
-    for name, weight in GROWTH_WEIGHTS.items():
+    for name in GROWTH_WEIGHTS:
         if name in df.columns:
-            m = compute_momentum(df[name])
-            momentums[name] = m * weight
+            momentums[name] = compute_momentum(df[name])
 
     if not momentums:
         return pd.Series(dtype=float)
 
-    # 加权求和
-    result = pd.DataFrame(momentums).sum(axis=1)
-    total_weight = sum(GROWTH_WEIGHTS[k] for k in momentums.keys())
-    if total_weight > 0:
-        result = result / total_weight
-
-    return result
+    momentum_frame = pd.DataFrame(momentums)
+    weights = pd.Series({name: GROWTH_WEIGHTS[name] for name in momentum_frame.columns})
+    numerator = momentum_frame.mul(weights, axis=1).sum(axis=1, min_count=1)
+    available_weight = momentum_frame.notna().mul(weights, axis=1).sum(axis=1)
+    return numerator / available_weight.replace(0, np.nan)
 
 
 def compute_inflation_momentum(df: pd.DataFrame) -> pd.Series:
-    """合成通胀动量: CPI×0.4 + PPI×0.6（中国PPI比CPI更重要）"""
+    """合成通胀动量: CPI×0.4 + PPI×0.6，缺一侧列时退化为另一侧。
+
+    口径裁决（2026-08-12，业务确认）：维持 CPI×0.4 + PPI×0.6 作为正式
+    观察口径。尽调笔记原文为 CPI×0.6 + PPI×0.4，本实现是有记录的中国化
+    调整（中国工业周期中 PPI 对债市/商品定价更敏感），与能力路径
+    core_finance.macro.merrill_clock.compute_inflation_momentum 保持一致；
+    任何后续权重变更需业务重新裁决，且两处必须同步修改。
+    """
     cpi_m = compute_momentum(df['cpi_yoy']) if 'cpi_yoy' in df.columns else None
     ppi_m = compute_momentum(df['ppi_yoy']) if 'ppi_yoy' in df.columns else None
 

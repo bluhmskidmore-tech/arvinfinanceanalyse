@@ -7,8 +7,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 EXECUTIVE_SERVICE = ROOT / "backend" / "app" / "services" / "executive_service.py"
 PNL_BRIDGE_SERVICE = ROOT / "backend" / "app" / "services" / "pnl_bridge_service.py"
+PNL_ATTRIBUTION_SERVICE = ROOT / "backend" / "app" / "services" / "pnl_attribution_service.py"
 ACCOUNTING_MOVEMENT_SERVICE = (
     ROOT / "backend" / "app" / "services" / "accounting_asset_movement_service.py"
+)
+CAMPISI_ATTRIBUTION_SERVICE = (
+    ROOT / "backend" / "app" / "services" / "campisi_attribution_service.py"
+)
+ADB_ANALYSIS_SERVICE = ROOT / "backend" / "app" / "services" / "adb_analysis_service.py"
+MACRO_BOND_LINKAGE_SERVICE = (
+    ROOT / "backend" / "app" / "services" / "macro_bond_linkage_service.py"
 )
 CFFEX_MEMBER_RANK_SERVICE = ROOT / "backend" / "app" / "services" / "cffex_member_rank_service.py"
 TUSHARE_NEWS_INGEST_SERVICE = ROOT / "backend" / "app" / "services" / "tushare_news_ingest_service.py"
@@ -17,6 +25,7 @@ PNL_MATERIALIZE_TASK = ROOT / "backend" / "app" / "tasks" / "pnl_materialize.py"
 ADB_ANALYSIS_ROUTE = ROOT / "backend" / "app" / "api" / "routes" / "adb_analysis.py"
 EXTERNAL_DATA_ROUTE = ROOT / "backend" / "app" / "api" / "routes" / "external_data.py"
 MACRO_TOOLKIT_ROUTE = ROOT / "backend" / "app" / "api" / "routes" / "macro_toolkit.py"
+MACRO_TOOLKIT_ROUTE_SUPPORT = ROOT / "backend" / "app" / "services" / "macro_toolkit_route_support.py"
 MARKET_DATA_LIVERMORE_ROUTE = ROOT / "backend" / "app" / "api" / "routes" / "market_data_livermore.py"
 CHOICE_NEWS_ROUTE = ROOT / "backend" / "app" / "api" / "routes" / "choice_news.py"
 HEALTH_ROUTE = ROOT / "backend" / "app" / "api" / "routes" / "health.py"
@@ -113,6 +122,60 @@ def test_pnl_bridge_service_avoids_storage_bypass():
     _assert_service_avoids_direct_storage_and_formal_sql(PNL_BRIDGE_SERVICE, text)
 
 
+def test_pnl_attribution_service_avoids_storage_bypass():
+    text = _read_source(PNL_ATTRIBUTION_SERVICE)
+    _assert_service_avoids_direct_storage_and_formal_sql(PNL_ATTRIBUTION_SERVICE, text)
+
+
+def test_campisi_attribution_service_avoids_storage_bypass():
+    # W2 迁移完成：decision_grade 取数已按表主人原则迁入 pnl/bond_analytics/
+    # balance_analysis/yield_curve/risk_tensor 各 repo。
+    text = _read_source(CAMPISI_ATTRIBUTION_SERVICE)
+    _assert_service_avoids_direct_storage_and_formal_sql(CAMPISI_ATTRIBUTION_SERVICE, text)
+
+
+def test_adb_analysis_service_avoids_storage_bypass():
+    # W2 迁移完成：formal/snapshot 读取全部经 adb_analysis_repo。
+    text = _read_source(ADB_ANALYSIS_SERVICE)
+    _assert_service_avoids_direct_storage_and_formal_sql(ADB_ANALYSIS_SERVICE, text)
+
+
+def test_macro_bond_linkage_service_avoids_storage_bypass():
+    # W2 迁移完成：宏观/曲线/风险张量读取全部经 macro_bond_linkage_repo。
+    text = _read_source(MACRO_BOND_LINKAGE_SERVICE)
+    _assert_service_avoids_direct_storage_and_formal_sql(MACRO_BOND_LINKAGE_SERVICE, text)
+
+
+# W3 第一小批收敛完成的外围服务：直连均已迁入对应 repositories。
+_W3_CONVERGED_SERVICES = (
+    "market_data_livermore_service.py",
+    "livermore_candidate_history_service.py",
+    "livermore_gate_supplement_compute_service.py",
+    "livermore_stock_detail_service.py",
+    "livermore_sector_rank_series_service.py",
+    "livermore_readiness_probe.py",
+    "market_data_ncd_proxy_service.py",
+    "stock_kline_analysis_service.py",
+    "research_radar_service.py",
+    "dexter_research_context_builder.py",
+    "choice_news_service.py",
+    "external_data_service.py",
+)
+
+
+def test_w3_converged_services_avoid_duckdb_connect():
+    violations: list[str] = []
+    for name in _W3_CONVERGED_SERVICES:
+        path = SERVICES_DIR / name
+        assert path.is_file(), f"Missing converged service module: {path}"
+        if "duckdb.connect(" in _read_source(path):
+            violations.append(name)
+    assert not violations, (
+        "W3-converged services must not regress to duckdb.connect; "
+        "use repositories for storage access: " + ", ".join(violations)
+    )
+
+
 def test_accounting_asset_movement_service_avoids_writable_duckdb_and_low_level_materializer():
     text = _read_source(ACCOUNTING_MOVEMENT_SERVICE)
     assert ACCOUNTING_MOVEMENT_SERVICE.is_file()
@@ -120,6 +183,11 @@ def test_accounting_asset_movement_service_avoids_writable_duckdb_and_low_level_
     assert "duckdb.connect(duckdb_path, read_only=False)" not in text
     assert "materialize_accounting_asset_movement_on_connection" not in text
     assert ".fn(" not in text
+
+
+def test_accounting_asset_movement_service_avoids_storage_bypass():
+    text = _read_source(ACCOUNTING_MOVEMENT_SERVICE)
+    _assert_service_avoids_direct_storage_and_formal_sql(ACCOUNTING_MOVEMENT_SERVICE, text)
 
 
 def test_cffex_member_rank_service_delegates_storage_writes_to_tasks():
@@ -262,32 +330,81 @@ def test_market_data_livermore_route_delegates_choice_stock_readiness_to_service
 
 
 def test_choice_news_reserved_ingest_route_has_no_service_ingest_path():
+    """choice-news ingest 路由刻意先做 ``import`` 作用域 RBAC、再抛保留 503，
+    因此这里不再禁止 ``import`` 作用域本身，而是要求：凡带 ``import`` 检查的 handler
+    必须同时调用 ``_raise_choice_news_reserved_surface``，且路由不得从 services 导入 ingest 符号。
+    顺序由 tests/test_choice_news_routes.py::test_tushare_npr_ingest_requires_import_scope_before_reserved_503 钉住。
+    """
     text = _read_source(CHOICE_NEWS_ROUTE)
     tree = ast.parse(text)
-    import_scopes: set[tuple[str, str]] = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        func_name = ""
-        if isinstance(node.func, ast.Name):
-            func_name = node.func.id
-        elif isinstance(node.func, ast.Attribute):
-            func_name = node.func.attr
-        if func_name != "ensure_user_allowed":
-            continue
+
+    def _called_name(call: ast.Call) -> str:
+        if isinstance(call.func, ast.Name):
+            return call.func.id
+        if isinstance(call.func, ast.Attribute):
+            return call.func.attr
+        return ""
+
+    def _is_import_scope_check(call: ast.Call) -> bool:
+        if _called_name(call) != "ensure_user_allowed":
+            return False
         literals = {
             keyword.arg: keyword.value.value
-            for keyword in node.keywords
+            for keyword in call.keywords
             if keyword.arg in {"resource", "action"}
             and isinstance(keyword.value, ast.Constant)
             and isinstance(keyword.value.value, str)
         }
-        if "resource" in literals and "action" in literals:
-            import_scopes.add((literals["resource"], literals["action"]))
+        return literals.get("action") == "import"
+
+    def _is_route_handler(function: ast.FunctionDef) -> bool:
+        return any(
+            isinstance(decorator, ast.Call)
+            and _called_name(decorator) in {"get", "post", "put", "delete", "patch", "api_route"}
+            for decorator in function.decorator_list
+        )
+
+    functions = [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
+    calls_by_function = {
+        function.name: [node for node in ast.walk(function) if isinstance(node, ast.Call)]
+        for function in functions
+    }
+    route_handlers = {function.name for function in functions if _is_route_handler(function)}
+
+    direct_import_checkers = {
+        name for name, calls in calls_by_function.items() if any(_is_import_scope_check(call) for call in calls)
+    }
+    # handler 直接内联做 import 检查，或经助手间接做，都算带 import 作用域的写入口。
+    import_guarded_handlers = {
+        name
+        for name, calls in calls_by_function.items()
+        if name in route_handlers
+        and (
+            name in direct_import_checkers
+            or any(_called_name(call) in direct_import_checkers for call in calls)
+        )
+    }
 
     assert "ingest_tushare_npr_to_choice_news" not in text
     assert "_tushare_npr_ingest_handler" not in text
-    assert ("choice_news.data", "import") not in import_scopes
+    assert direct_import_checkers, "Expected a helper doing the choice_news import-scope RBAC check"
+    assert import_guarded_handlers, "Expected at least one route handler behind the import-scope RBAC check"
+    for handler_name in sorted(import_guarded_handlers):
+        assert any(
+            _called_name(call) == "_raise_choice_news_reserved_surface"
+            for call in calls_by_function[handler_name]
+        ), f"{handler_name} performs import-scope RBAC but does not raise the reserved 503"
+
+    service_ingest_imports = sorted(
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module is not None
+        and node.module.startswith("backend.app.services")
+        for alias in node.names
+        if "ingest" in alias.name.lower()
+    )
+    assert not service_ingest_imports, f"Route imports ingest symbols from services: {service_ingest_imports}"
 
 
 def test_adb_analysis_route_keeps_duckdb_reads_in_service_layer():
@@ -310,24 +427,30 @@ def test_market_data_livermore_route_keeps_duckdb_errors_in_service_layer():
 
 
 def test_macro_toolkit_commodity_status_keeps_duckdb_reads_in_service_layer():
-    body = _function_source(MACRO_TOOLKIT_ROUTE, "_commodity_futures_status")
+    body = _function_source(MACRO_TOOLKIT_ROUTE_SUPPORT, "_commodity_futures_status")
     assert "macro_toolkit_service.commodity_futures_status(duckdb_path)" in body
     assert "duckdb.connect" not in body
 
 
 def test_macro_toolkit_equity_strategy_context_keeps_duckdb_reads_in_service_layer():
     expectations = {
-        "_load_equity_strategy_price_context": "macro_toolkit_service.load_equity_strategy_price_context(duckdb_path)",
-        "_load_equity_strategy_factor_snapshot": "macro_toolkit_service.load_equity_strategy_factor_snapshot(",
+        "_load_equity_strategy_price_context": (
+            MACRO_TOOLKIT_ROUTE_SUPPORT,
+            "macro_toolkit_service.load_equity_strategy_price_context(duckdb_path)",
+        ),
+        "_load_equity_strategy_factor_snapshot": (
+            MACRO_TOOLKIT_ROUTE,
+            "macro_toolkit_service.load_equity_strategy_factor_snapshot(",
+        ),
     }
-    for function_name, delegated_call in expectations.items():
-        body = _function_source(MACRO_TOOLKIT_ROUTE, function_name)
+    for function_name, (source_path, delegated_call) in expectations.items():
+        body = _function_source(source_path, function_name)
         assert delegated_call in body
         assert "duckdb.connect" not in body
 
 
 def test_macro_toolkit_a_share_risk_context_keeps_duckdb_reads_in_service_layer():
-    body = _function_source(MACRO_TOOLKIT_ROUTE, "_load_a_share_stampede_risk_context")
+    body = _function_source(MACRO_TOOLKIT_ROUTE_SUPPORT, "_load_a_share_stampede_risk_context")
     assert "macro_toolkit_service.load_a_share_stampede_risk_context(duckdb_path)" in body
     assert "duckdb.connect" not in body
 

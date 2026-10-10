@@ -35,12 +35,12 @@ _CAMPISI_ENDPOINTS: list[tuple[str, dict[str, str | int]]] = [
 ]
 
 
-def _assert_formal_envelope(payload: dict[str, Any]) -> None:
+def _assert_formal_envelope(payload: dict[str, Any], *, formal_use_allowed: bool = True) -> None:
     assert "result_meta" in payload
     assert "result" in payload
     meta = payload["result_meta"]
     assert meta.get("basis") == "formal"
-    assert meta.get("formal_use_allowed") is True
+    assert meta.get("formal_use_allowed") is formal_use_allowed
     for key in ("trace_id", "source_version", "rule_version", "result_kind"):
         assert key in meta, f"result_meta missing {key!r}"
         assert meta[key] not in (None, ""), f"result_meta.{key} must be non-empty"
@@ -137,6 +137,37 @@ def test_campisi_attribution_read_surfaces_require_explicit_read_scope(tmp_path,
         assert response.status_code == 403, f"{path}: {response.status_code} {response.text}"
 
 
+def test_campisi_lookback_days_out_of_range_returns_422(monkeypatch) -> None:
+    """lookback_days 越界（含极端大值）必须 422，不得进入 date-timedelta 造成 500。
+
+    边界与同前缀 /api/pnl-attribution/advanced/* 的 lookback_days(ge=1, le=365) 对齐。
+    """
+    route_module = load_module(
+        "backend.app.api.routes.campisi_attribution",
+        "backend/app/api/routes/campisi_attribution.py",
+    )
+
+    def _service_must_not_run():
+        raise AssertionError("campisi service must not run for invalid lookback_days")
+
+    monkeypatch.setattr(route_module, "_svc", _service_must_not_run)
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    for path, _params in _CAMPISI_ENDPOINTS:
+        for bad_value in (0, 366, 10**12):
+            response = client.get(
+                path,
+                params={"end_date": "2026-03-31", "lookback_days": bad_value},
+                headers=PNL_ATTRIBUTION_READ_HEADERS,
+            )
+            assert response.status_code == 422, (
+                f"{path} lookback_days={bad_value}: {response.status_code} {response.text}"
+            )
+            assert "lookback_days" in response.text
+
+
 def test_pnl_attribution_endpoints_empty_duckdb(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "empty_pnl_attr.duckdb"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -147,9 +178,21 @@ def test_pnl_attribution_endpoints_empty_duckdb(tmp_path, monkeypatch) -> None:
         response = client.get(path, params=params)
         assert response.status_code == 200, f"{path} {params} -> {response.status_code}: {response.text}"
         body = response.json()
-        _assert_formal_envelope(body)
+        _assert_formal_envelope(
+            body,
+            formal_use_allowed=path not in {
+                "/api/pnl-attribution/advanced/carry-rolldown",
+                "/api/pnl-attribution/advanced/spread",
+                "/api/pnl-attribution/advanced/krd",
+                "/api/pnl-attribution/advanced/campisi",
+            },
+        )
         assert body["result_meta"].get("quality_flag") == "warning"
         res = body["result"]
+        if path == "/api/pnl-attribution/advanced/krd":
+            assert res["total_duration_effect"]["raw"] is None
+            assert res["calculation_status"] == "unavailable"
+            assert res["max_contribution_tenor"] == ""
         assert "warnings" in res
         assert any("物化" in w for w in res["warnings"])
     get_settings.cache_clear()

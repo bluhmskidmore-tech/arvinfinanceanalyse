@@ -1,9 +1,13 @@
-import { buildMockMeta } from "../mocks/mockApiEnvelope";
+/**
+ * Cube client slice. Mock factory lives in cubeMockClient.ts so mock
+ * composition stays out of the real-mode bundle.
+ */
 import type {
   CubeDimensionsPayload,
   CubeQueryRequest,
   CubeQueryResult,
 } from "./contracts";
+import { ActionRequestError } from "./transport";
 
 export type CubeClientMethods = {
   getCubeDimensions: (factTable: string) => Promise<CubeDimensionsPayload>;
@@ -15,66 +19,9 @@ type CubeClientFactoryOptions = {
   baseUrl: string;
 };
 
-const delay = async () => new Promise((resolve) => setTimeout(resolve, 40));
-
-export function createMockCubeClient(): CubeClientMethods {
-  return {
-    async getCubeDimensions(factTable: string) {
-      await delay();
-      const dimensionMap: Record<string, string[]> = {
-        bond_analytics: [
-          "asset_class_std",
-          "accounting_class",
-          "tenor_bucket",
-          "rating",
-          "bond_type",
-          "issuer_name",
-          "industry_name",
-          "portfolio_name",
-          "cost_center",
-        ],
-        pnl: ["invest_type_std", "accounting_basis", "portfolio_name", "cost_center"],
-        balance: [
-          "asset_class",
-          "invest_type_std",
-          "accounting_basis",
-          "position_scope",
-          "bond_type",
-          "rating",
-        ],
-        product_category: ["category_id", "category_name", "side", "view"],
-      };
-      const fieldMap: Record<string, string[]> = {
-        bond_analytics: ["market_value", "duration"],
-        pnl: ["total_pnl"],
-        balance: ["market_value", "amortized_cost", "accrued_interest"],
-        product_category: ["business_net_income"],
-      };
-      return {
-        fact_table: factTable,
-        dimensions: dimensionMap[factTable] ?? [],
-        measures: ["sum", "avg", "count", "min", "max"],
-        measure_fields: fieldMap[factTable] ?? [],
-      };
-    },
-    async executeCubeQuery(request: CubeQueryRequest) {
-      await delay();
-      return {
-        report_date: request.report_date,
-        fact_table: request.fact_table,
-        measures: request.measures,
-        dimensions: request.dimensions ?? [],
-        rows: [],
-        total_rows: 0,
-        drill_paths: [],
-        result_meta: {
-          ...buildMockMeta("cube.query"),
-          basis: "formal",
-          formal_use_allowed: true,
-        },
-      };
-    },
-  };
+/** RBAC 拒绝（viewer 角色默认拿不到 cube 读权限）要能被页面识别，不能和网络故障混成同一句「稍后重试」。 */
+export function isForbiddenCubeError(error: unknown): boolean {
+  return error instanceof ActionRequestError && error.status === 403;
 }
 
 export function createRealCubeClient({
@@ -90,7 +37,10 @@ export function createRealCubeClient({
         },
       );
       if (!response.ok) {
-        throw new Error(`Request failed: /api/cube/dimensions/${factTable} (${response.status})`);
+        throw new ActionRequestError(
+          `Request failed: /api/cube/dimensions/${factTable} (${response.status})`,
+          { status: response.status },
+        );
       }
       return response.json() as Promise<CubeDimensionsPayload>;
     },
@@ -102,7 +52,16 @@ export function createRealCubeClient({
       });
       if (!response.ok) {
         const text = await response.text().catch(() => "");
-        throw new Error(text || `Cube query failed (${response.status})`);
+        let detail = text;
+        try {
+          const body = JSON.parse(text) as { detail?: unknown };
+          if (typeof body.detail === "string") detail = body.detail;
+        } catch {
+          // Non-JSON transport failures still retain their original message.
+        }
+        throw new ActionRequestError(detail || `Cube query failed (${response.status})`, {
+          status: response.status,
+        });
       }
       return response.json() as Promise<CubeQueryResult>;
     },

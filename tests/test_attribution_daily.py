@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 
 import pytest
 
@@ -81,7 +82,7 @@ def test_output_has_all_required_fields():
 
 
 def test_output_values_are_floats():
-    """Verify all output values are Python floats."""
+    """Verify all output values are Python floats when every input is observed."""
     result = compute_daily_attribution_row(
         POSITION_FVTPL,
         MARKET_START,
@@ -89,6 +90,7 @@ def test_output_values_are_floats():
         PREV_DATE,
         REPORT_DATE,
         total_pnl=5000.0,
+        fx_pnl=250.0,
     )
 
     for field, value in result.items():
@@ -100,7 +102,10 @@ def test_output_values_are_floats():
 # ---------------------------------------------------------------------------
 
 def test_residual_closes_to_total():
-    """Verify residual = total - carry - rolldown - spread - curve - fx."""
+    """Verify residual = total - carry - rolldown - spread - curve - (fx or 0).
+
+    fx_pnl 缺失时 fx_return 发布 None（无观测披露），闭合恒等式按 0 参与。
+    """
     result = compute_daily_attribution_row(
         POSITION_FVTPL,
         MARKET_START,
@@ -110,12 +115,13 @@ def test_residual_closes_to_total():
         total_pnl=5000.0,
     )
 
+    fx_component = result["fx_return"] if result["fx_return"] is not None else 0.0
     reconstructed = (
         result["carry_return"]
         + result["rolldown_return"]
         + result["spread_return"]
         + result["curve_return"]
-        + result["fx_return"]
+        + fx_component
         + result["residual_return"]
     )
     assert reconstructed == pytest.approx(result["total_return"], abs=1e-6)
@@ -143,6 +149,57 @@ def test_residual_closes_to_total_with_fx():
     )
     assert reconstructed == pytest.approx(result["total_return"], abs=1e-6)
     assert result["fx_return"] == pytest.approx(200.0)
+
+
+def test_rolldown_uses_period_end_anchor_duration_and_market_value(monkeypatch):
+    prev_date = date(2026, 3, 1)
+    report_date = date(2026, 3, 31)
+    position = {
+        **POSITION_FVTPL,
+        "market_value_start": 100.0,
+        "market_value_end": 200.0,
+        "face_value_start": 100.0,
+        "maturity_date_start": date(2030, 1, 1),
+    }
+    globals_map = compute_daily_attribution_row.__globals__
+
+    def fake_four_effects(*_args, **_kwargs):
+        return {
+            "income_return": Decimal("0"),
+            "treasury_effect": Decimal("0"),
+            "spread_effect": Decimal("0"),
+            "total_return": Decimal("0"),
+            "mod_duration": Decimal("5"),
+        }
+
+    def fake_years_to_maturity(_maturity, as_of):
+        if as_of == prev_date:
+            return 2.5
+        if as_of == report_date:
+            return 2.0
+        raise AssertionError(f"unexpected anchor date: {as_of}")
+
+    monkeypatch.setitem(globals_map, "compute_bond_four_effects", fake_four_effects)
+    monkeypatch.setitem(globals_map, "_years_to_maturity", fake_years_to_maturity)
+    monkeypatch.setitem(
+        globals_map,
+        "interpolate_treasury_yield_pct",
+        lambda _market, years: float(years) * 10.0,
+    )
+
+    result = compute_daily_attribution_row(
+        position,
+        MARKET_START,
+        MARKET_END,
+        prev_date,
+        report_date,
+        total_pnl=0.0,
+    )
+
+    current_rate = Decimal("2.0") * Decimal("10")
+    rolled_rate = (Decimal("2.0") - Decimal("30") / Decimal("365")) * Decimal("10")
+    expected = ((current_rate - rolled_rate) / Decimal("100")) * Decimal("5") * Decimal("200")
+    assert result["rolldown_return"] == pytest.approx(float(expected), rel=0, abs=1e-12)
 
 
 # ---------------------------------------------------------------------------
@@ -173,6 +230,24 @@ def test_report_date_threads_through_num_days():
 
     # Carry scales with num_days (coupon * face * days / 365)
     assert abs(result_5d["carry_return"]) > abs(result_1d["carry_return"])
+
+
+def test_carry_day_count_is_exclusive_of_start_date():
+    """M-5 冻结：carry 天数口径为 (report_date - prev_date).days，不含头含尾。
+
+    2026-03-01 -> 2026-03-31 为 30 天（不是 31 天）。
+    """
+    result = compute_daily_attribution_row(
+        POSITION_FVTPL,
+        MARKET_START,
+        MARKET_END,
+        date(2026, 3, 1),
+        date(2026, 3, 31),
+        total_pnl=0.0,
+    )
+
+    expected = POSITION_FVTPL["coupon_rate_start"] * POSITION_FVTPL["face_value_start"] * 30 / 365
+    assert result["carry_return"] == pytest.approx(expected, rel=1e-9)
 
 
 def test_same_prev_and_report_date_uses_one_day():
@@ -271,13 +346,13 @@ def test_missing_market_start_does_not_crash():
 
     assert isinstance(result, dict)
     assert result["total_return"] == pytest.approx(5000.0)
-    # Residual identity still holds
+    # Residual identity still holds (fx_pnl 未提供时 fx_return=None，闭合按 0 参与)
     reconstructed = (
         result["carry_return"]
         + result["rolldown_return"]
         + result["spread_return"]
         + result["curve_return"]
-        + result["fx_return"]
+        + (result["fx_return"] if result["fx_return"] is not None else 0.0)
         + result["residual_return"]
     )
     assert reconstructed == pytest.approx(result["total_return"], abs=1e-6)
@@ -395,9 +470,11 @@ def test_multiple_positions_aggregation():
         position_b, MARKET_START, MARKET_END, PREV_DATE, REPORT_DATE, total_pnl=3000.0
     )
 
-    # Aggregate by summing each effect
+    # Aggregate by summing each effect; fx_return=None（无观测）按模块契约以 0 参与闭合，
+    # 接线方聚合时必须像这里一样显式处理 None，不得静默把 None 当 0 落库。
     aggregate = {
-        k: result_a[k] + result_b[k]
+        k: (result_a[k] if result_a[k] is not None else 0.0)
+        + (result_b[k] if result_b[k] is not None else 0.0)
         for k in result_a
     }
 
@@ -412,6 +489,63 @@ def test_multiple_positions_aggregation():
     )
     assert reconstructed == pytest.approx(aggregate["total_return"], abs=1e-6)
     assert aggregate["total_return"] == pytest.approx(5000.0)
+
+
+class TestLargeBatchAggregationPrecision:
+    """Regression guard for the Decimal-domain residual fix in compute_daily_attribution_row.
+
+    `residual_return = total - carry - rolldown - spread - curve - fx` used to be
+    computed entirely in float. This test aggregates 500+ per-bond rows (each with
+    non-binary-friendly fractional amounts) the way a batch caller would, and checks
+    that the aggregate identity still closes within 1 fen (0.01 yuan).
+    """
+
+    def test_500_plus_rows_residual_identity_closes_in_aggregate(self):
+        n = 520
+        aggregate = {
+            "carry_return": 0.0,
+            "rolldown_return": 0.0,
+            "spread_return": 0.0,
+            "curve_return": 0.0,
+            "fx_return": 0.0,
+            "total_return": 0.0,
+            "residual_return": 0.0,
+        }
+        for i in range(n):
+            mv_start = 1_000_000.1 + (i % 71) * 907.03 + (i % 3) * 0.03
+            position = {
+                "bond_code": f"ROW{i:04d}.IB",
+                "asset_class_start": ["国债", "AAA企业债", "AA+企业债", "AA企业债"][i % 4],
+                "market_value_start": mv_start,
+                "market_value_end": mv_start * (1.0006 + (i % 5) * 0.0001),
+                "face_value_start": mv_start,
+                "coupon_rate_start": 0.027 + (i % 9) * 0.0003,
+                "yield_to_maturity_start": 0.031 + (i % 11) * 0.0002,
+                "maturity_date_start": date(2027 + (i % 5), 1 + (i % 12), 1 + (i % 27)),
+                "accrued_interest_start": None,
+                "accrued_interest_end": None,
+            }
+            row = compute_daily_attribution_row(
+                position,
+                MARKET_START,
+                MARKET_END,
+                PREV_DATE,
+                REPORT_DATE,
+                total_pnl=float(i) * 3.03 - 100.1,
+                fx_pnl=0.01 * (i % 7),
+            )
+            for key in aggregate:
+                aggregate[key] += row[key]
+
+        reconstructed = (
+            aggregate["carry_return"]
+            + aggregate["rolldown_return"]
+            + aggregate["spread_return"]
+            + aggregate["curve_return"]
+            + aggregate["fx_return"]
+            + aggregate["residual_return"]
+        )
+        assert reconstructed == pytest.approx(aggregate["total_return"], abs=0.01)
 
 
 def test_multiple_positions_carry_scales_with_face_value():
@@ -448,8 +582,12 @@ def test_multiple_positions_carry_scales_with_face_value():
 # fx_return passthrough
 # ---------------------------------------------------------------------------
 
-def test_fx_return_is_zero_when_not_provided():
-    """Verify fx_return defaults to 0 when fx_pnl is not passed."""
+def test_fx_return_is_none_when_not_provided():
+    """fx_pnl 缺失发布 fx_return=None（无观测），闭合数值行为与历史 fx=0 完全一致。
+
+    2026-08 B8 语义修正：休眠模块接线前先纠正"缺数据发布为 0 观测值"的口径，
+    真实 FX 仍留在 residual（数值不变），但下游能区分缺数据与零观测。
+    """
     result = compute_daily_attribution_row(
         POSITION_FVTPL,
         MARKET_START,
@@ -458,8 +596,20 @@ def test_fx_return_is_zero_when_not_provided():
         REPORT_DATE,
         total_pnl=5000.0,
     )
+    baseline = compute_daily_attribution_row(
+        POSITION_FVTPL,
+        MARKET_START,
+        MARKET_END,
+        PREV_DATE,
+        REPORT_DATE,
+        total_pnl=5000.0,
+        fx_pnl=0.0,
+    )
 
-    assert result["fx_return"] == pytest.approx(0.0)
+    assert result["fx_return"] is None
+    # 除 fx_return 发布语义外，所有数值分量与显式 fx_pnl=0.0 完全一致（行为不变）。
+    for field in ("carry_return", "rolldown_return", "spread_return", "curve_return", "total_return", "residual_return"):
+        assert result[field] == baseline[field], field
 
 
 def test_fx_return_passthrough():

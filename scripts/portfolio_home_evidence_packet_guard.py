@@ -41,6 +41,7 @@ from scripts.portfolio_home_owner_action_packet import (  # noqa: E402
 )
 from scripts.portfolio_home_evidence_snapshot import (  # noqa: E402
     _gate_summary,
+    portable_verification_report,
     verification_scope_summary,
 )
 from scripts.verify_portfolio_home_scorecard_commands import (  # noqa: E402
@@ -576,6 +577,7 @@ def _verification_report_canonical_blockers(
     name: str,
     payload: dict[str, object],
     docs_root: Path,
+    duckdb_path: Path | None = None,
 ) -> list[str]:
     if name != "evidence_snapshot":
         return []
@@ -585,12 +587,24 @@ def _verification_report_canonical_blockers(
     result_count = verification_report.get("result_count")
     if not isinstance(result_count, int):
         return ["evidence_snapshot_verification_report_result_count_missing"]
-    expected_report = build_verification_report(
-        limit=result_count,
-        expected_state=str(verification_report.get("expected_state") or "blocked"),
+    expected_report = portable_verification_report(
+        build_verification_report(
+            limit=result_count,
+            expected_state=str(verification_report.get("expected_state") or "blocked"),
+            docs_root=docs_root,
+            duckdb_path=duckdb_path,
+        ),
+        repo_root=ROOT,
         docs_root=docs_root,
+        duckdb_path=duckdb_path,
     )
-    if verification_report != expected_report:
+    actual_report = portable_verification_report(
+        verification_report,
+        repo_root=ROOT,
+        docs_root=docs_root,
+        duckdb_path=duckdb_path,
+    )
+    if actual_report != expected_report:
         return ["evidence_snapshot_verification_report_canonical_mismatch"]
     return []
 
@@ -1102,6 +1116,7 @@ def _compare_json_artifact(
     expected_owner_action_blocker_closure_matrix: list[object],
     expected_scorecard: dict[str, object],
     expected_boundary: dict[str, object],
+    duckdb_path: Path | None = None,
 ) -> dict[str, object]:
     payload = _json_payload(path)
     if payload is None:
@@ -1149,6 +1164,7 @@ def _compare_json_artifact(
         name=name,
         payload=payload,
         docs_root=docs_root,
+        duckdb_path=duckdb_path,
     ):
         _append_unique(blockers, blocker)
     for blocker in _verification_scope_canonical_blockers(
@@ -1325,6 +1341,7 @@ def _compare_artifact(
     expected_scorecard: dict[str, object],
     owner_input_summary: dict[str, object],
     expected_boundary: dict[str, object],
+    duckdb_path: Path | None = None,
 ) -> dict[str, object]:
     name = str(artifact["name"])
     path = docs_root / artifact["path"]
@@ -1334,6 +1351,7 @@ def _compare_artifact(
             name=name,
             path=path,
             docs_root=docs_root,
+            duckdb_path=duckdb_path,
             expected_summary=expected_summary,
             expected_owner_decision_summary=expected_owner_decision_summary,
             expected_scorecard_owner_gate_summary=expected_scorecard_owner_gate_summary,
@@ -1466,6 +1484,9 @@ def build_report(
         _compare_artifact(
             artifact=artifact,
             docs_root=resolved_docs_root,
+            duckdb_path=(
+                Path(duckdb_path) if Path(duckdb_path).resolve() != DEFAULT_DUCKDB.resolve() else None
+            ),
             expected_summary=artifact_presence_summary,
             expected_owner_decision_summary=expected_owner_decision_summary,
             expected_scorecard_owner_gate_summary=expected_scorecard_owner_gate_summary,

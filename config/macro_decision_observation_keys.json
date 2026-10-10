@@ -1,0 +1,14 @@
+{
+  "observation_keys": [
+    "credit_spread_risk",
+    "cross_market_linkage",
+    "cta_trend_cn",
+    "dcc_garch_cn",
+    "liquidity_stress",
+    "macro_portfolio_impact",
+    "merrill_clock_cn",
+    "rate_turning_point",
+    "risk_parity_cn",
+    "yield_curve_shape"
+  ]
+}

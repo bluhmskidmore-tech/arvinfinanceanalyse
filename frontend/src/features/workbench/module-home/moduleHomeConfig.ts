@@ -39,7 +39,7 @@ export const moduleWorkbenchHomeConfigs: Record<
     kind: "portfolio",
     title: "组合工作台",
     shortTitle: "组合",
-    question: "规模、久期、结构与损益 — 首页读链路汇总",
+    question: "规模、久期、结构与损益：首页读链路汇总",
     summary:
       "首页聚合资产负债、债券总览、风险/收益结构、Basis 分解与损益归因摘要；逐券明细与完整归因瀑布仍进入下钻页。",
     sourceScope: "资产负债 / 债券总览 / 持仓 / 损益归因",
@@ -180,13 +180,8 @@ export const moduleWorkbenchHomeConfigs: Record<
         description: "对已覆盖事实表做维度聚合、筛选和下钻。",
         statusLabel: "正式链路",
       },
-      {
-        key: "reports-center",
-        label: "报表中心规划",
-        path: "/reports",
-        description: "统一报表与导出清单仍在规划；不伪造报表数据。",
-        statusLabel: "规划中",
-      },
+      // 报表中心即本页（/reports），不设指向自身的下钻入口；
+      // 规划状态由读链路状态条的「报表中心：规划中」承载。
     ],
     dataNotes: [
       "没有后端正式接口的报表能力只显示为规划/待接入状态。",

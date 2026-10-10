@@ -1,0 +1,68 @@
+.ca-momentum.ca-momentum,
+.ca-vol-alert.ca-vol-alert,
+.ca-erp-panel.ca-erp-panel {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+  font-size: 13px;
+}
+
+.ca-momentum.ca-momentum > header,
+.ca-vol-alert.ca-vol-alert > header {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  line-height: 1.5;
+  font-size: 14px;
+}
+
+.ca-momentum.ca-momentum > header > strong { margin-left: auto; }
+.ca-vol-alert.ca-vol-alert > header > strong { font-size: 13px; font-weight: 500; }
+.ca-analytics-note.ca-analytics-note {
+  margin: 8px 0;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ca-momentum__chart-scroll,
+.ca-analytics-table-scroll { overflow-x: auto; }
+.ca-momentum__chart { min-width: 500px; }
+.ca-momentum__columns {
+  display: grid;
+  grid-template-columns: 166px minmax(0, 1fr) 80px 52px;
+  padding: 8px 0;
+  color: var(--dh-api-muted);
+  border-bottom: 1px solid var(--dh-api-line);
+  font-size: 12px;
+}
+.ca-analytics-details.ca-analytics-details { margin-top: 8px; border-top: 1px solid var(--dh-api-line); }
+.ca-analytics-details.ca-analytics-details > summary {
+  padding: 10px 0 2px;
+  cursor: pointer;
+  color: var(--dh-api-ink-soft);
+  font-size: 12px;
+}
+.ca-analytics-details > summary > span { margin-left: 8px; color: var(--dh-api-muted); }
+.ca-analytics-details table { width: 100%; border-collapse: collapse; min-width: 280px; }
+.ca-analytics-details th,
+.ca-analytics-details td {
+  padding: 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--dh-api-line);
+  font-size: 12px;
+}
+.ca-analytics-details th { color: var(--dh-api-muted); font-weight: 500; }
+.ca-analytics-details td:nth-child(2) { font-family: var(--moss-font-tabular); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ca-vol-alert__exceptions,
+.ca-vol-alert__elevated { color: var(--dh-api-amber); }
+.ca-erp-panel.ca-erp-panel > span { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.ca-erp-panel.ca-erp-panel > span + span { margin-top: 8px; }
+.ca-erp-panel.ca-erp-panel > p { margin: 8px 0 0; font-size: 12px; line-height: 1.6; color: var(--dh-api-ink-soft); }
+.ca-erp-panel__scale { overflow-x: auto; }
+.ca-erp-panel__chart.ca-erp-panel__chart { height: 112px !important; min-width: 320px; }
+.ca-analytics-loading { min-height: 112px; color: var(--dh-api-muted); }
+.ca-momentum__chart .ca-analytics-loading { min-height: 300px; }

@@ -55,11 +55,13 @@ def test_government_four_effect_golden_sample_closes_on_full_price_basis() -> No
     )
     assert result["spread_effect"] == pytest.approx(Decimal("0"))
     assert result["total_return"] == pytest.approx(Decimal("-10"))
+    # selection 独立手算字面量（原先按 total - income - treasury - spread 回算，
+    # 对残差定义是恒真式，无法捕获分项被静默归零的缺陷）：
+    #   mod_dur = 1/(1+0.05/2) = 40/41
+    #   treasury = -(40/41) × 0.01 × 1000 = -400/41 ≈ -9.7560975610
+    #   selection = -10 - 0 - (-400/41) - 0 = -10/41 ≈ -0.2439024390
     assert result["selection_effect"] == pytest.approx(
-        result["total_return"]
-        - result["income_return"]
-        - result["treasury_effect"]
-        - result["spread_effect"]
+        Decimal("-0.2439024390"), abs=Decimal("1E-6")
     )
     assert result["has_accrued_interest"] is True
     assert result["diagnostics"] == []
@@ -91,11 +93,11 @@ def test_credit_spread_effect_uses_basis_points_as_decimal_delta() -> None:
         -modified_duration * Decimal("0.005") * Decimal("1000")
     )
     assert result["total_return"] == pytest.approx(Decimal("-5"))
+    # selection 独立手算字面量（替换恒真式，推导同上）：
+    #   spread = -(40/41) × 0.005 × 1000 = -200/41 ≈ -4.8780487805
+    #   selection = -5 - 0 - 0 - (-200/41) = -5/41 ≈ -0.1219512195
     assert result["selection_effect"] == pytest.approx(
-        result["total_return"]
-        - result["income_return"]
-        - result["treasury_effect"]
-        - result["spread_effect"]
+        Decimal("-0.1219512195"), abs=Decimal("1E-6")
     )
 
 

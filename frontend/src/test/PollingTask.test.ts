@@ -119,6 +119,72 @@ describe("runPollingTask", () => {
     }
   });
 
+  it("rejects without calling start when the signal is already aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const start = vi.fn(async () => ({
+      status: "queued",
+      run_id: "job:aborted",
+    }));
+    const getStatus = vi.fn();
+
+    await expect(
+      runPollingTask({
+        start,
+        getStatus,
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow("任务轮询已取消");
+    expect(start).not.toHaveBeenCalled();
+    expect(getStatus).not.toHaveBeenCalled();
+  });
+
+  it("stops polling immediately when the signal aborts during the wait interval", async () => {
+    const controller = new AbortController();
+    const start = vi.fn(async () => ({
+      status: "queued",
+      run_id: "job:cancel",
+    }));
+    const getStatus = vi.fn(async () => ({
+      status: "running",
+      run_id: "job:cancel",
+    }));
+
+    const pollingPromise = runPollingTask({
+      start,
+      getStatus,
+      intervalMs: 60_000,
+      maxAttempts: 5,
+      signal: controller.signal,
+    });
+    const guardedPromise = pollingPromise.catch((error: unknown) => error);
+
+    await vi.waitFor(() => expect(getStatus).toHaveBeenCalledTimes(1));
+    controller.abort();
+
+    // 中断发生在 60s 等待间隔内：必须立即 reject，而不是等计时器走完。
+    const settled = await guardedPromise;
+    expect(settled).toBeInstanceOf(Error);
+    expect((settled as Error).message).toBe("任务轮询已取消");
+    expect(getStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("propagates a custom abort reason error", async () => {
+    const controller = new AbortController();
+    controller.abort(new Error("页面已卸载"));
+    const start = vi.fn();
+    const getStatus = vi.fn();
+
+    await expect(
+      runPollingTask({
+        start,
+        getStatus,
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow("页面已卸载");
+    expect(start).not.toHaveBeenCalled();
+  });
+
   it("throws a timeout error that includes the last run id and status", async () => {
     const start = vi.fn(async () => ({
       status: "queued",
@@ -139,4 +205,68 @@ describe("runPollingTask", () => {
     ).rejects.toThrow(/任务轮询超时 \(run_id: job:stuck, 最后状态: running\)/);
     expect(getStatus).toHaveBeenCalled();
   });
+});
+
+
+describe("pending request cancellation", () => {
+  it.each(["start", "status"] as const)("settles locally while %s never responds", async (phase) => {
+    const controller = new AbortController();
+    let settleRequest!: (value: { status: string; run_id: string }) => void;
+    const pending = new Promise<{ status: string; run_id: string }>((resolve) => { settleRequest = resolve; });
+    const start = vi.fn(() => phase === "start" ? pending : Promise.resolve({ status: "queued", run_id: "recoverable" }));
+    const getStatus = vi.fn(() => pending);
+    const onUpdate = vi.fn();
+    let outcome: unknown = "pending";
+    const work = runPollingTask({ start, getStatus, onUpdate, signal: controller.signal }).catch((error: unknown) => { outcome = error; });
+    await vi.waitFor(() => expect(phase === "start" ? start : getStatus).toHaveBeenCalledOnce());
+    const updatesBeforeAbort = onUpdate.mock.calls.length;
+    controller.abort();
+    try {
+      await vi.waitFor(() => expect(outcome).toBeInstanceOf(Error), { timeout: 100 });
+      expect((outcome as Error).message).toBe("任务轮询已取消");
+    } finally {
+      settleRequest({ status: "completed", run_id: "recoverable" });
+      await work;
+    }
+    expect(onUpdate).toHaveBeenCalledTimes(updatesBeforeAbort);
+    expect(getStatus).toHaveBeenCalledTimes(phase === "start" ? 0 : 1);
+  });
+
+  it("does not request status after progress aborts the local wait", async () => {
+    const controller = new AbortController();
+    const getStatus = vi.fn(async () => ({ status: "completed", run_id: "existing" }));
+    await expect(runPollingTask({
+      start: async () => ({ status: "queued", run_id: "existing" }),
+      getStatus,
+      signal: controller.signal,
+      onUpdate: () => controller.abort(),
+    })).rejects.toThrow("任务轮询已取消");
+    expect(getStatus).not.toHaveBeenCalled();
+  });
+});
+
+it("consumes late request errors and detaches abort listeners after cancellation", async () => {
+  const controller = new AbortController();
+  const removeListener = vi.spyOn(controller.signal, "removeEventListener");
+  let rejectRequest!: (error: Error) => void;
+  const request = new Promise<never>((_resolve, reject) => { rejectRequest = reject; });
+  const onUpdate = vi.fn();
+  const work = runPollingTask({ start: () => request, getStatus: vi.fn(), onUpdate, signal: controller.signal }).catch((error: unknown) => error);
+  controller.abort(new Error("left page"));
+  expect(await work).toEqual(new Error("left page"));
+  rejectRequest(new Error("late transport failure"));
+  await Promise.resolve();
+  expect(onUpdate).not.toHaveBeenCalled();
+  expect(removeListener).toHaveBeenCalledWith("abort", expect.any(Function));
+});
+
+it("preserves explicit terminal cancellation and restored run identities", async () => {
+  const getStatus = vi.fn(async (runId: string) => ({ status: "cancelled", run_id: runId }));
+  const result = await runPollingTask({
+    start: async () => ({ status: "queued", run_id: "restored-run" }),
+    getStatus,
+    isTerminal: (status) => ["cancelled", "failed", "completed"].includes(status),
+  });
+  expect(result).toEqual({ status: "cancelled", run_id: "restored-run" });
+  expect(getStatus.mock.calls[0]?.[0]).toBe("restored-run");
 });

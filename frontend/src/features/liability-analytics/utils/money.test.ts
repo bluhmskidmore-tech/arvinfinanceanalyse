@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import type { Numeric } from "../../../api/contracts";
+import { EM_DASH } from "../../../pageModel";
 import { formatRawAsNumeric } from "../../../utils/format";
 import {
   bucketAmountToYi,
   bucketAmountToYiNumeric,
   nameAmountToYi,
   nameAmountToYiNumeric,
+  numericOrDash,
+  numericRaw,
   numericToYi,
   numericToYiNumeric,
   numericYuanRaw,
@@ -23,11 +26,58 @@ function unsupportedUnit(raw: number): Numeric {
 }
 
 describe("liability money helpers", () => {
+  it("delegates numericRaw to pageModel and maps NaN/Infinity to null", () => {
+    const nanNumeric: Numeric = {
+      raw: Number.NaN,
+      unit: "yuan",
+      display: "",
+      precision: 2,
+      sign_aware: false,
+    };
+    const infNumeric: Numeric = {
+      raw: Number.POSITIVE_INFINITY,
+      unit: "yuan",
+      display: "",
+      precision: 2,
+      sign_aware: false,
+    };
+    expect(numericRaw(nanNumeric)).toBeNull();
+    expect(numericRaw(infNumeric)).toBeNull();
+    expect(numericRaw(governed(1.25, "yuan"))).toBe(1.25);
+  });
+
+  it("uses EM_DASH for missing display via numericOrDash", () => {
+    expect(numericOrDash(null)).toBe(EM_DASH);
+    expect(numericOrDash(undefined)).toBe(EM_DASH);
+    expect(numericOrDash(governed(1, "yi"))).toBe(governed(1, "yi").display);
+  });
+
   it("converts yuan numerics to yi numerics without flattening to plain numbers", () => {
     const out = numericToYiNumeric(governed(250_000_000, "yuan"));
 
     expect(out?.unit).toBe("yi");
     expect(out?.raw).toBe(2.5);
+  });
+
+  it.each([
+    ["100499999.99999999999", "1.0049999999999999999", "1.00 亿"],
+    ["100500000.00000000001", "1.0050000000000000001", "1.01 亿"],
+    ["-100499999.99999999999", "-1.0049999999999999999", "-1.00 亿"],
+    ["-100500000.00000000001", "-1.0050000000000000001", "-1.01 亿"],
+  ])("preserves exact yuan text %s through yi conversion", (rawText, scaledText, display) => {
+    const value = { ...governed(Number(rawText), "yuan"), raw_text: rawText };
+    const out = numericToYiNumeric(value);
+
+    expect(out?.raw_text).toBe(scaledText);
+    expect(out?.display).toBe(display);
+    expect(out?.raw).toBe(value.raw! / 1e8);
+    expect(nameAmountToYiNumeric({ amount: value })?.display).toBe(display);
+    expect(bucketAmountToYiNumeric({ amount: value })?.display).toBe(display);
+  });
+
+  it("does not revive null yuan raw from exact text", () => {
+    const value = { ...governed(null, "yuan"), raw_text: "100000000" };
+    expect(numericToYiNumeric(value)).toBeNull();
   });
 
   it("prefers amount_yi when it already exists", () => {

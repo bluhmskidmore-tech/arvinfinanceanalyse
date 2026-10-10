@@ -1,6 +1,6 @@
 ---
 name: moss-page-contract-tieout
-description: Use when implementing, reviewing, or closing a MOSS page contract, page-visible metric, endpoint DTO, loading/empty/stale/fallback state, or browser-visible business workflow.
+description: "【MOSS页面契约核对】用于实现、审查或收口MOSS页面契约、页面指标、接口DTO和可见业务流程。"
 ---
 
 # MOSS Page Contract Tie-Out
@@ -10,8 +10,8 @@ Use this skill when a MOSS page must prove that what users see matches the gover
 ## Workflow
 
 1. Identify the page ID, route, primary business question, and required sections from `docs/page_contracts.md` or `moss-metric-contracts`.
-2. List the endpoint DTOs, metric IDs, golden samples, and state requirements the page depends on.
-3. Verify each displayed metric:
+2. Identify the affected endpoint DTOs, metric IDs, golden samples, and state requirements. Reuse current task evidence; inspect the full page when the task is a full-page acceptance review.
+3. Verify each affected displayed metric:
    - exists in the metric dictionary when it is formal
    - preserves unit, precision, and date semantics
    - exposes `result_meta` meaning where required
@@ -30,4 +30,4 @@ Use this skill when a MOSS page must prove that what users see matches the gover
 
 ## Completion Evidence
 
-Final reporting should include the page/workflow fixed, root cause, changed files, checks run, and any residual contract gaps.
+Use the repository's completion report once and include residual contract gaps. Reuse the same evidence when another applicable skill checks the same path.

@@ -7,7 +7,8 @@ import sys
 import duckdb
 
 from backend.app.governance.settings import get_settings
-from tests.helpers import ROOT, load_module
+from tests.business_input_fixtures import business_input_bytes
+from tests.helpers import load_module
 
 
 def _load_tasks():
@@ -87,7 +88,7 @@ def test_zqtz_rerun_same_batch_no_duplicate_grains(tmp_path, monkeypatch):
     data_root = tmp_path / "data_input"
     data_root.mkdir()
     for file_name in ("ZQTZSHOW-20251231.xls", "TYWLSHOW-20251231.xls"):
-        (data_root / file_name).write_bytes((ROOT / "data_input" / file_name).read_bytes())
+        (data_root / file_name).write_bytes(business_input_bytes(file_name))
 
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
     monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
@@ -146,7 +147,7 @@ def test_mixed_family_scope_zqtz_rerun_leaves_tyw_intact(tmp_path, monkeypatch):
     data_root = tmp_path / "data_input"
     data_root.mkdir()
     for file_name in ("ZQTZSHOW-20251231.xls", "TYWLSHOW-20251231.xls"):
-        (data_root / file_name).write_bytes((ROOT / "data_input" / file_name).read_bytes())
+        (data_root / file_name).write_bytes(business_input_bytes(file_name))
 
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
     monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")

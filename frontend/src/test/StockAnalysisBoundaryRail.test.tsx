@@ -1,9 +1,10 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { StockAnalysisBoundaryRail } from "../features/stock-analysis/components/StockAnalysisBoundaryRail";
 import type {
   StockAnalysisEvidenceStatusItem,
+  StockEndpointEvidenceItem,
   StockDataBoundarySummary,
 } from "../features/stock-analysis/lib/stockAnalysisPageModel";
 import type { LivermoreStrategyPayload } from "../api/contracts";
@@ -50,6 +51,53 @@ const boundarySummary: StockDataBoundarySummary = {
   topMessages: [],
 };
 
+const endpointItems: StockEndpointEvidenceItem[] = [
+  {
+    key: "strategy",
+    label: "主策略快照",
+    statusLabel: "接通",
+    tone: "positive",
+    detail: "证据链已返回，质量可核验",
+    dateLabel: "日期：2026-06-05",
+    traceLabel: "链路：trace-main",
+    issueLabel: "无新增提示",
+    metaLabel: "质量正常",
+  },
+  {
+    key: "candidate-history",
+    label: "策略回溯窗口",
+    statusLabel: "待触发",
+    tone: "neutral",
+    detail: "证据链尚未触发，展开相关复核区后读取",
+    dateLabel: "截至：2026-06-05",
+    traceLabel: "链路待补",
+    issueLabel: "提示待补",
+    metaLabel: "证据待补",
+  },
+  {
+    key: "strategy-score",
+    label: "优先级评分",
+    statusLabel: "读取中",
+    tone: "neutral",
+    detail: "正在读取证据链，暂不纳入复核判断",
+    dateLabel: "日期待补",
+    traceLabel: "链路待补",
+    issueLabel: "提示待补",
+    metaLabel: "证据待补",
+  },
+  {
+    key: "strategy-optimization",
+    label: "策略优化",
+    statusLabel: "读取失败",
+    tone: "negative",
+    detail: "证据读取失败，当前结论不使用该扩展证据",
+    dateLabel: "日期待补",
+    traceLabel: "链路待补",
+    issueLabel: "提示待补",
+    metaLabel: "证据待补",
+  },
+];
+
 const strategyPayload = {
   diagnostics: [
     {
@@ -76,7 +124,7 @@ const strategyPayload = {
 } as LivermoreStrategyPayload;
 
 describe("StockAnalysisBoundaryRail", () => {
-  it("renders compact boundary status and opens the full diagnostic drawer", async () => {
+  it("renders compact boundary status and opens the full diagnostic drawer from the inline action by default", async () => {
     render(
       <StockAnalysisBoundaryRail
         boundaryItems={boundaryItems}
@@ -107,5 +155,87 @@ describe("StockAnalysisBoundaryRail", () => {
     expect(screen.getByText("可用输出")).toBeInTheDocument();
     expect(screen.getByText("阻断输出")).toBeInTheDocument();
     expect(screen.queryByText("warning / Warning")).not.toBeInTheDocument();
+  });
+
+  it("supports controlled drawer state and can hide the inline diagnostics action", async () => {
+    const onOpenDiagnostics = vi.fn();
+    const onCloseDiagnostics = vi.fn();
+    const { rerender } = render(
+      <StockAnalysisBoundaryRail
+        boundaryItems={boundaryItems}
+        boundarySummary={boundarySummary}
+        strategyPayload={strategyPayload}
+        diagnosticsDrawerOpen={false}
+        onOpenDiagnostics={onOpenDiagnostics}
+        onCloseDiagnostics={onCloseDiagnostics}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "查看完整诊断" }));
+    expect(onOpenDiagnostics).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("数据口径诊断")).not.toBeInTheDocument();
+
+    rerender(
+      <StockAnalysisBoundaryRail
+        boundaryItems={boundaryItems}
+        boundarySummary={boundarySummary}
+        strategyPayload={strategyPayload}
+        diagnosticsDrawerOpen
+        onOpenDiagnostics={onOpenDiagnostics}
+        onCloseDiagnostics={onCloseDiagnostics}
+        showInlineDiagnosticsAction={false}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "查看完整诊断" })).not.toBeInTheDocument();
+    expect(await screen.findByText("数据口径诊断")).toBeInTheDocument();
+
+    const closeButton = document.querySelector(".ant-drawer-close");
+    expect(closeButton).not.toBeNull();
+    fireEvent.click(closeButton as Element);
+    expect(onCloseDiagnostics).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows every endpoint in the full diagnostic drawer and exposes a data navigation action", async () => {
+    const onEndpointSelect = vi.fn();
+
+    render(
+      <StockAnalysisBoundaryRail
+        boundaryItems={boundaryItems}
+        boundarySummary={boundarySummary}
+        strategyPayload={strategyPayload}
+        diagnosticsDrawerOpen
+        endpointItems={endpointItems}
+        focusedEndpointKey="candidate-history"
+        onEndpointSelect={onEndpointSelect}
+      />,
+    );
+
+    const endpointList = await screen.findByTestId("stock-analysis-endpoint-diagnostics-list");
+    expect(within(endpointList).getByText("主策略快照")).toBeInTheDocument();
+    expect(within(endpointList).getByText("策略回溯窗口")).toBeInTheDocument();
+    expect(within(endpointList).getByText("待触发")).toBeInTheDocument();
+
+    const candidateRow = within(endpointList).getByTestId(
+      "stock-analysis-endpoint-diagnostic-candidate-history",
+    );
+    expect(within(candidateRow).queryByText("截至：2026-06-05")).not.toBeInTheDocument();
+    expect(within(candidateRow).queryByText("链路待补")).not.toBeInTheDocument();
+    expect(within(candidateRow).queryByText("提示待补")).not.toBeInTheDocument();
+    expect(within(candidateRow).queryByText("证据待补")).not.toBeInTheDocument();
+    expect(candidateRow).toHaveAttribute("data-active", "true");
+
+    for (const key of ["strategy-score", "strategy-optimization"]) {
+      const transientRow = within(endpointList).getByTestId(`stock-analysis-endpoint-diagnostic-${key}`);
+      expect(within(transientRow).queryByText("日期待补")).not.toBeInTheDocument();
+      expect(within(transientRow).queryByText("链路待补")).not.toBeInTheDocument();
+      expect(within(transientRow).queryByText("提示待补")).not.toBeInTheDocument();
+      expect(within(transientRow).queryByText("证据待补")).not.toBeInTheDocument();
+    }
+
+    fireEvent.click(
+      within(candidateRow).getByRole("button", { name: "查看策略回溯窗口数据" }),
+    );
+    expect(onEndpointSelect).toHaveBeenCalledWith("candidate-history");
   });
 });

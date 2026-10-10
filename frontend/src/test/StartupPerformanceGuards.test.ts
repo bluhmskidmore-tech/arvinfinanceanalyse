@@ -21,14 +21,23 @@ const HOME_SNAPSHOT_LIVE_PROFILE_PATH = resolve(
   FRONTEND_ROOT,
   "scripts/profileHomeSnapshotLive.mjs",
 );
+const HOME_RUNTIME_ACCEPTANCE_PATH = resolve(FRONTEND_ROOT, "scripts/homeRuntimeAcceptance.mjs");
 const VITE_CONFIG_PATH = resolve(FRONTEND_ROOT, "vite.config.ts");
 const CLIENT_CONTEXT_PATH = resolve(FRONTEND_ROOT, "src/api/clientContext.ts");
+const CANDIDATE_FINANCIAL_INDICATORS_CLIENT_PATH = resolve(
+  FRONTEND_ROOT,
+  "src/api/candidateFinancialIndicatorsClient.ts",
+);
 const WORKBENCH_SHELL_PATH = resolve(FRONTEND_ROOT, "src/layouts/WorkbenchShell.tsx");
 const WORKBENCH_SHELL_MARKET_TICKER_PATH = resolve(
   FRONTEND_ROOT,
   "src/layouts/WorkbenchShellMarketTicker.tsx",
 );
 const GLOBAL_CSS_PATH = resolve(FRONTEND_ROOT, "src/styles/global.css");
+const DASHBOARD_COCKPIT_CSS_PATH = resolve(
+  FRONTEND_ROOT,
+  "src/styles/dashboardCockpit.css",
+);
 const AGENT_WORKBENCH_PAGE_PATH = resolve(
   FRONTEND_ROOT,
   "src/features/agent/AgentWorkbenchPage.tsx",
@@ -43,7 +52,7 @@ const HOME_MARKET_TICKER_CLIENT_PATH = resolve(
 );
 const HOME_MARKET_TICKER_MOCK_CLIENT_PATH = resolve(
   FRONTEND_ROOT,
-  "src/api/homeMarketTickerMockClient.ts",
+  "src/mocks/homeMarketTickerMockClient.ts",
 );
 const HOME_FIRST_SCREEN_MOCK_VIEW_PATH = resolve(
   FRONTEND_ROOT,
@@ -53,33 +62,21 @@ const DASHBOARD_HOME_PAGE_PATH = resolve(
   FRONTEND_ROOT,
   "src/features/workbench/dashboard-home/DashboardHomePage.tsx",
 );
-const TERMINAL_HOME_FIRST_SCREEN_PATH = resolve(
-  FRONTEND_ROOT,
-  "src/features/workbench/dashboard-home/TerminalHomeFirstScreen.tsx",
-);
 const DASHBOARD_HOME_TOOLBAR_PATH = resolve(
   FRONTEND_ROOT,
   "src/features/workbench/dashboard-home/sections/DashboardHomeToolbar.tsx",
 );
-const DASHBOARD_HOME_DECISION_RAIL_PATH = resolve(
+const DASHBOARD_HOME_OPTION_TWO_LAYOUT_PATH = resolve(
   FRONTEND_ROOT,
-  "src/features/workbench/dashboard-home/sections/DecisionRailSection.tsx",
+  "src/features/workbench/dashboard-home/DashboardHomeOptionTwoLayout.tsx",
 );
-const HOME_SPARKLINE_PATH = resolve(
+const DASHBOARD_HOME_OPTION_TWO_OVERVIEW_PATH = resolve(
   FRONTEND_ROOT,
-  "src/features/workbench/dashboard-home/HomeSparkline.tsx",
+  "src/features/workbench/dashboard-home/DashboardHomeOptionTwoOverview.tsx",
 );
-const TERMINAL_HOME_CONTENT_PATH = resolve(
+const DASHBOARD_HOME_OPTION_TWO_SUPPORT_BAND_PATH = resolve(
   FRONTEND_ROOT,
-  "src/features/workbench/dashboard-home/TerminalHomeContent.tsx",
-);
-const TERMINAL_HOME_WORK_GRID_PATH = resolve(
-  FRONTEND_ROOT,
-  "src/features/workbench/dashboard-home/TerminalHomeWorkGrid.tsx",
-);
-const TERMINAL_HOME_DEFERRED_SECTIONS_PATH = resolve(
-  FRONTEND_ROOT,
-  "src/features/workbench/dashboard-home/TerminalHomeDeferredSections.tsx",
+  "src/features/workbench/dashboard-home/DashboardHomeOptionTwoSupportBand.tsx",
 );
 const DEFERRED_TERMINAL_HOME_CONTENT_PATH = resolve(
   FRONTEND_ROOT,
@@ -101,9 +98,9 @@ const HOME_BODY_DATA_PATH = resolve(
   FRONTEND_ROOT,
   "src/features/workbench/dashboard-home/useDashboardHomeBodyData.ts",
 );
-const DASHBOARD_HOME_VIEW_PATH = resolve(
+const DASHBOARD_HOME_FIRST_SCREEN_VIEW_PATH = resolve(
   FRONTEND_ROOT,
-  "src/features/workbench/dashboard-home/dashboardHomeView.ts",
+  "src/features/workbench/dashboard-home/dashboardHomeFirstScreenView.ts",
 );
 
 function escapeRegExp(value: string): string {
@@ -123,6 +120,31 @@ const DASHBOARD_SNAPSHOT_BOUNDARY_PATH = resolve(
   "src/features/workbench/pages/useDashboardSnapshotBoundary.ts",
 );
 const ROUTES_PATH = resolve(FRONTEND_ROOT, "src/router/routes.tsx");
+const APP_PROVIDERS_PATH = resolve(FRONTEND_ROOT, "src/app/providers.tsx");
+const THEMED_ROUTE_BOUNDARY_PATH = resolve(
+  FRONTEND_ROOT,
+  "src/app/ThemedRouteBoundary.tsx",
+);
+const STOCK_ANALYSIS_PAGE_PATH = resolve(
+  FRONTEND_ROOT,
+  "src/features/stock-analysis/pages/StockAnalysisPageImpl.tsx",
+);
+const STOCK_ANALYSIS_DEEP_ZONE_HEADER_PATH = resolve(
+  FRONTEND_ROOT,
+  "src/features/stock-analysis/components/StockAnalysisDeepZoneHeader.tsx",
+);
+const STOCK_ANALYSIS_DEEP_RESEARCH_ZONE_PATH = resolve(
+  FRONTEND_ROOT,
+  "src/features/stock-analysis/components/StockAnalysisDeepResearchZone.tsx",
+);
+const STOCK_ANALYSIS_DEEP_RESEARCH_PRIMITIVES_PATH = resolve(
+  FRONTEND_ROOT,
+  "src/features/stock-analysis/components/StockAnalysisDeepResearchPrimitives.ts",
+);
+const STOCK_ANALYSIS_WORKBENCH_CLIENT_PATH = resolve(
+  FRONTEND_ROOT,
+  "src/api/stockAnalysisWorkbenchClient.ts",
+);
 
 describe("startup performance guards", () => {
   it("does not block first paint on remote font hosts", () => {
@@ -134,20 +156,29 @@ describe("startup performance guards", () => {
 
   it("keeps home startup methods on deferred fast paths", () => {
     const clientContextSource = readFileSync(CLIENT_CONTEXT_PATH, "utf8");
+    const candidateClientSource = readFileSync(
+      CANDIDATE_FINANCIAL_INDICATORS_CLIENT_PATH,
+      "utf8",
+    );
 
+    expect(clientContextSource).toMatch(
+      /import\(\s*["']\.\/candidateFinancialIndicatorsClient["']\s*\)/,
+    );
     expect(clientContextSource).toContain('import("./homeExecutiveClient")');
     expect(clientContextSource).toContain('import("./homeSupplementalClient")');
     expect(clientContextSource).toContain('import("./homeMarketTickerClient")');
     expect(clientContextSource).toContain("HOME_EXECUTIVE_METHODS");
     expect(clientContextSource).toContain("HOME_SUPPLEMENTAL_METHODS");
     expect(clientContextSource).toContain("HOME_MARKET_TICKER_METHODS");
-    expect(clientContextSource).not.toContain('import("./marketDataClient")');
+    expect(clientContextSource).toContain("CANDIDATE_FINANCIAL_INDICATOR_METHODS");
+    expect(clientContextSource).toContain('import("./marketDataClient")');
     expect(clientContextSource).not.toContain('mode === "real" && HOME_MARKET_TICKER_METHODS');
     expect(clientContextSource).toContain("if (HOME_MARKET_TICKER_METHODS.has(");
     for (const method of [
       "getHomeSnapshot",
       "getHomeResearchReports",
       "getHomeIncomeTrend",
+      "getLedgerPnlCandidateFinancialIndicators",
       "getMarketDataRates",
       "getChoiceNewsEvents",
       "getResearchCalendarEvents",
@@ -171,6 +202,66 @@ describe("startup performance guards", () => {
     ]) {
       expect(clientContextSource).toContain(`"${method}"`);
     }
+    expect(candidateClientSource).toContain(
+      "/api/ledger-pnl/candidate-financial-indicators",
+    );
+    expect(candidateClientSource).not.toContain('import { createApiClient } from "./client"');
+  });
+
+  it("keeps stock analysis off the full API client runtime", () => {
+    const stockAnalysisPageSource = readFileSync(STOCK_ANALYSIS_PAGE_PATH, "utf8");
+
+    expect(stockAnalysisPageSource).toContain("../../../api/clientContext");
+    expect(stockAnalysisPageSource).not.toContain("../../../api/client\"");
+    expect(stockAnalysisPageSource).not.toContain("../../../api/client'");
+  });
+
+  it("keeps the first-screen stock workbench off the full market-data runtime", () => {
+    const clientContextSource = readFileSync(CLIENT_CONTEXT_PATH, "utf8");
+    const stockAnalysisWorkbenchClientSource = readFileSync(
+      STOCK_ANALYSIS_WORKBENCH_CLIENT_PATH,
+      "utf8",
+    );
+    const marketMethodSet = clientContextSource.match(
+      /const STOCK_ANALYSIS_MARKET_DATA_METHODS[\s\S]*?\]\);/,
+    )?.[0];
+
+    expect(clientContextSource).toContain('import("./stockAnalysisWorkbenchClient")');
+    expect(marketMethodSet).toBeDefined();
+    expect(marketMethodSet).not.toContain("getStockAnalysisWorkbench");
+    expect(stockAnalysisWorkbenchClientSource).toContain(
+      "/ui/market-data/stock-analysis/workbench",
+    );
+    expect(stockAnalysisWorkbenchClientSource).not.toContain("marketDataClient");
+  });
+
+  it("keeps deep-research scripts and styles behind the lazy stock-analysis boundary", () => {
+    const stockAnalysisPageSource = readFileSync(STOCK_ANALYSIS_PAGE_PATH, "utf8");
+    const deepResearchZoneSource = readFileSync(STOCK_ANALYSIS_DEEP_RESEARCH_ZONE_PATH, "utf8");
+    const deepZoneHeaderSource = readFileSync(STOCK_ANALYSIS_DEEP_ZONE_HEADER_PATH, "utf8");
+    const deepResearchPrimitivesSource = readFileSync(
+      STOCK_ANALYSIS_DEEP_RESEARCH_PRIMITIVES_PATH,
+      "utf8",
+    );
+
+    expect(stockAnalysisPageSource).toContain('import("../components/StockAnalysisDeepResearchZone")');
+    expect(stockAnalysisPageSource).not.toContain('import("../components/StockAnalysisDeepZoneHeader")');
+    expect(deepResearchZoneSource).toContain('import("./StockAnalysisDeepZoneHeader")');
+    expect(deepResearchZoneSource).toContain('import("./StockAnalysisDeepSelectionOverview")');
+    expect(deepResearchZoneSource).toContain('import("./StockAnalysisDeepResearchPrimitives")');
+    expect(stockAnalysisPageSource).not.toContain("StockAnalysisDeepResearch.css");
+    for (const staticDeepImport of [
+      "../components/StockAnalysisBacktestBoundaryChips",
+      "../components/StockAnalysisCycleRuleSummary",
+      "../components/StockAnalysisTabs",
+      "../components/StrategyModuleCard",
+      "../components/StrategyPanelResultStrip",
+    ]) {
+      expect(stockAnalysisPageSource).not.toContain(staticDeepImport);
+    }
+    expect(deepZoneHeaderSource).toContain('import "../pages/StockAnalysisDeepResearch.css"');
+    expect(deepResearchPrimitivesSource).toContain('export { StrategyModuleCard }');
+    expect(deepResearchPrimitivesSource).toContain('export { StockAnalysisTab, StockAnalysisTabs }');
   });
 
   it("keeps home market ticker methods in a lightweight client", () => {
@@ -181,8 +272,8 @@ describe("startup performance guards", () => {
     expect(homeMarketTickerSource).toContain("createRealHomeMarketTickerClient");
     expect(homeMarketTickerSource).toContain("createMockHomeMarketTickerClient");
     expect(homeMarketTickerSource).not.toContain('import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope"');
-    expect(homeMarketTickerSource).toContain('import("./homeMarketTickerMockClient")');
-    expect(homeMarketTickerMockSource).toContain('import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope"');
+    expect(homeMarketTickerSource).toContain('import("../mocks/homeMarketTickerMockClient")');
+    expect(homeMarketTickerMockSource).toContain('import { buildMockApiEnvelope } from "./mockApiEnvelope"');
     for (const method of [
       "getChoiceMacroLatest",
       "getMarketDataRates",
@@ -230,6 +321,9 @@ describe("startup performance guards", () => {
 
   it("keeps overridden cockpit rail rules from returning to the global startup stylesheet", () => {
     const globalCss = readFileSync(GLOBAL_CSS_PATH, "utf8");
+    const dashboardCockpitCss = readFileSync(DASHBOARD_COCKPIT_CSS_PATH, "utf8");
+
+    expect(globalCss).toContain('@import "./dashboardCockpit.css";');
 
     for (const selector of [
       ".workbench-shell-grid--cockpit .workbench-shell-aside > div:first-child",
@@ -241,105 +335,88 @@ describe("startup performance guards", () => {
       '.workbench-shell-grid--cockpit [data-testid="workbench-group-nav"] a[data-active="true"]',
       '.workbench-shell-grid--cockpit [data-testid="workbench-group-nav"] a[data-active="true"] span:last-child',
     ]) {
-      expect(countCssSelectorLines(globalCss, selector)).toBe(1);
+      expect(countCssSelectorLines(globalCss, selector)).toBe(0);
+      expect(countCssSelectorLines(dashboardCockpitCss, selector)).toBe(1);
     }
 
-    expect(globalCss).toContain('.workbench-shell-grid--cockpit [data-testid="workbench-group-nav"]');
-    expect(globalCss).toContain('.workbench-shell-grid--cockpit [data-testid="workbench-support-nav"]');
-  });
-
-  it("does not statically import ECharts in the terminal home content", () => {
-    const terminalHomeContentSource = readFileSync(TERMINAL_HOME_CONTENT_PATH, "utf8");
-
-    expect(terminalHomeContentSource).not.toMatch(
-      /from\s+["']\.\.\/\.\.\/\.\.\/lib\/echarts["']/,
+    expect(dashboardCockpitCss).toContain(
+      '.workbench-shell-grid--cockpit [data-testid="workbench-group-nav"]',
+    );
+    expect(dashboardCockpitCss).toContain(
+      '.workbench-shell-grid--cockpit [data-testid="workbench-support-nav"]',
     );
   });
 
-  it("keeps the terminal home work grid behind a lazy body split", () => {
-    const terminalHomeContentSource = readFileSync(TERMINAL_HOME_CONTENT_PATH, "utf8");
-
-    expect(terminalHomeContentSource).toContain('import("./TerminalHomeWorkGrid")');
-    expect(terminalHomeContentSource).not.toContain("function HoldingsPanel");
-    expect(terminalHomeContentSource).not.toContain("function IncomeTrendPanel");
-    expect(terminalHomeContentSource).not.toContain("function DistributionPanel");
-    expect(terminalHomeContentSource).not.toContain("buildIncomeTrendOption");
-  });
-
-  it("keeps terminal home secondary sections behind a lazy split", () => {
-    const terminalHomeContentSource = readFileSync(TERMINAL_HOME_CONTENT_PATH, "utf8");
-
-    expect(terminalHomeContentSource).toContain('import("./TerminalHomeDeferredSections")');
-    expect(terminalHomeContentSource).not.toMatch(
-      /import\s+\{\s*BondNewsSection\s*\}\s+from\s+["']\.\/sections\/BondNewsSection["']/,
-    );
-    expect(terminalHomeContentSource).not.toMatch(
-      /import\s+\{\s*ResearchCalendarSection\s*\}\s+from\s+["']\.\/sections\/ResearchCalendarSection["']/,
-    );
-    expect(terminalHomeContentSource).not.toContain("function QuickDrilldowns");
-    expect(terminalHomeContentSource).not.toContain('data-testid="dashboard-home-bottom-grid"');
-    expect(terminalHomeContentSource).not.toContain('data-testid="dashboard-home-research-calendar"');
-  });
-
-  it("keeps deferred terminal home secondary sections off chart and work-grid code", () => {
-    const deferredSectionsSource = readFileSync(TERMINAL_HOME_DEFERRED_SECTIONS_PATH, "utf8");
-
-    expect(deferredSectionsSource).toContain("BondNewsSection");
-    expect(deferredSectionsSource).toContain("ResearchCalendarSection");
-    expect(deferredSectionsSource).toContain("QuickDrilldowns");
-    expect(deferredSectionsSource).not.toContain("TerminalHomeWorkGrid");
-    expect(deferredSectionsSource).not.toContain("../../../lib/echarts");
-    expect(deferredSectionsSource).not.toContain("buildIncomeTrendOption");
-  });
-
-  it("keeps the lazy terminal home work grid scoped to below-fold panels", () => {
-    const workGridSource = readFileSync(TERMINAL_HOME_WORK_GRID_PATH, "utf8");
-
-    expect(workGridSource).toContain('data-testid="dashboard-home-work-grid"');
-    for (const firstScreenOrShellArtifact of [
-      "showFirstScreen",
-      "TerminalKpiStrip",
-      "RiskStrip",
-      "BondNewsSection",
-      "ResearchCalendarSection",
-      "MarketContextPanel",
-      "QuickDrilldowns",
-      "dashboard-home-market-context",
-      "dashboard-home-bottom-grid",
-      "dashboard-home-research-calendar",
-    ]) {
-      expect(workGridSource).not.toContain(firstScreenOrShellArtifact);
-    }
-  });
-
-  it("keeps below-fold terminal home content out of the first-screen module", () => {
+  it("keeps the confirmed option-two body behind the deferred lazy boundary", () => {
     const dashboardHomePageSource = readFileSync(DASHBOARD_HOME_PAGE_PATH, "utf8");
+    const deferredContentSource = readFileSync(
+      DEFERRED_TERMINAL_HOME_CONTENT_PATH,
+      "utf8",
+    );
+    const deferredBodySource = readFileSync(
+      DEFERRED_TERMINAL_HOME_BODY_PATH,
+      "utf8",
+    );
 
-    expect(dashboardHomePageSource).toContain('import { TerminalHomeFirstScreen } from "./TerminalHomeFirstScreen"');
     expect(dashboardHomePageSource).toContain('from "./useDashboardHomeFirstScreenViewModel"');
-    expect(dashboardHomePageSource).toContain('lazy(() =>');
     expect(dashboardHomePageSource).toContain('import("./DeferredTerminalHomeContent")');
+    expect(dashboardHomePageSource).not.toContain("DashboardHomeOptionTwoBody");
     expect(dashboardHomePageSource).not.toContain('from "./useDashboardHomeViewModel"');
     expect(dashboardHomePageSource).not.toContain('from "./dashboardHomeView"');
-    expect(dashboardHomePageSource).not.toMatch(
-      /import\s+\{\s*TerminalHomeContent\s*\}\s+from\s+["']\.\/TerminalHomeContent["']/,
+    expect(deferredContentSource).toContain('import("./DeferredTerminalHomeBody")');
+    expect(deferredContentSource).not.toContain("DashboardHomeOptionTwoLayout");
+    expect(deferredBodySource).toContain(
+      'from "./DashboardHomeOptionTwoLayout"',
     );
+  });
+
+  it("keeps the option-two body source scoped to below-fold modules", () => {
+    const optionTwoLayoutSource = readFileSync(
+      DASHBOARD_HOME_OPTION_TWO_LAYOUT_PATH,
+      "utf8",
+    );
+    const optionTwoSupportSource = readFileSync(
+      DASHBOARD_HOME_OPTION_TWO_SUPPORT_BAND_PATH,
+      "utf8",
+    );
+
+    expect(optionTwoLayoutSource).toContain(
+      'data-testid="dashboard-home-work-grid"',
+    );
+    expect(optionTwoLayoutSource).toContain("BondNewsSection");
+    expect(optionTwoLayoutSource).toContain("ResearchCalendarSection");
+    expect(optionTwoLayoutSource).toContain("DashboardHomeOptionTwoResearchList");
+    expect(optionTwoSupportSource).toContain(
+      'data-testid="dashboard-home-bottom-grid"',
+    );
+    expect(optionTwoLayoutSource).not.toContain("../../../lib/echarts");
+    expect(optionTwoSupportSource).not.toContain("../../../lib/echarts");
   });
 
   it("keeps first-screen home modules off the full dashboard home stylesheet", () => {
+    const optionTwoOverviewSource = readFileSync(
+      DASHBOARD_HOME_OPTION_TWO_OVERVIEW_PATH,
+      "utf8",
+    );
     const firstScreenSources = [
       readFileSync(DASHBOARD_HOME_PAGE_PATH, "utf8"),
-      readFileSync(TERMINAL_HOME_FIRST_SCREEN_PATH, "utf8"),
       readFileSync(DASHBOARD_HOME_TOOLBAR_PATH, "utf8"),
-      readFileSync(DASHBOARD_HOME_DECISION_RAIL_PATH, "utf8"),
-      readFileSync(HOME_SPARKLINE_PATH, "utf8"),
       readFileSync(DEFERRED_TERMINAL_HOME_CONTENT_PATH, "utf8"),
     ];
 
     for (const source of firstScreenSources) {
-      expect(source).toContain("dashboardHomeShell.module.css");
+      // First-screen modules must use a sliced stylesheet (shell, or the
+      // option-two sheet since the 9b02a607 nocturne reskin made it the
+      // page-level sheet); the full dashboardHome.module.css stays banned.
+      expect(source).toMatch(
+        /dashboardHome(?:Shell|OptionTwo)\.module\.css/,
+      );
       expect(source).not.toContain("dashboardHome.module.css");
     }
+    expect(optionTwoOverviewSource).toContain(
+      "dashboardHomeOptionTwo.module.css",
+    );
+    expect(optionTwoOverviewSource).not.toContain("dashboardHome.module.css");
   });
 
   it("keeps below-fold terminal home rendering out of the supplemental data loader", () => {
@@ -358,26 +435,35 @@ describe("startup performance guards", () => {
   it("keeps deferred terminal home body off a second timer after first screen settles", () => {
     const deferredTerminalSource = readFileSync(DEFERRED_TERMINAL_HOME_CONTENT_PATH, "utf8");
 
-    expect(deferredTerminalSource).toContain("requestIdleCallback(markReady");
+    // The shared reveal decision gates both the body and supplemental reads.
+    // Neither consumer may introduce its own second idle/timer window.
+    expect(deferredTerminalSource).toContain("if (!userReachedDeferredContent)");
+    expect(deferredTerminalSource).toContain("enabled: userReachedDeferredContent");
+    expect(deferredTerminalSource).not.toContain("useState");
+    expect(deferredTerminalSource).not.toContain("requestIdleCallback");
+    expect(deferredTerminalSource).not.toContain("setTimeout");
     expect(deferredTerminalSource).not.toContain("BODY_IDLE_MIN_DELAY_MS");
     expect(deferredTerminalSource).not.toContain("delayHandle = window.setTimeout(scheduleBodyLoad");
   });
 
-  it("keeps first-screen supplemental hydration off below-fold home queries", () => {
+  it("reuses home-summary for first-screen hydration and stays off below-fold queries", () => {
     const hydrationSource = readFileSync(HOME_SUPPLEMENTAL_HYDRATION_PATH, "utf8");
     const deferredContentSource = readFileSync(DEFERRED_TERMINAL_HOME_CONTENT_PATH, "utf8");
 
     expect(hydrationSource).not.toContain("useDashboardData");
-    expect(hydrationSource).toContain("getBondDashboardHeadlineKpis");
+    expect(hydrationSource).toContain("apiQueryKeys.bondDashboardHomeSummary");
+    expect(hydrationSource).toContain("getBondDashboardHomeSummary");
+    expect(hydrationSource).toContain("bondHomeSummaryQuery.data?.result.headline");
+    expect(hydrationSource).not.toContain("getBondDashboardHeadlineKpis");
     expect(hydrationSource).toContain("getBondAnalyticsPortfolioHeadlines");
-    expect(hydrationSource).toContain("useFirstScreenHydrationGate");
-    expect(hydrationSource).toContain("FIRST_SCREEN_HYDRATION_IDLE_MIN_DELAY_MS");
     expect(hydrationSource).toContain(
-      "enabled: !useMockFallback && hasDeferredSupplementalReportDate && hasFirstScreenHydrationData",
+      "!useMockFallback && options.enabled && hasSupplementalReportDate",
     );
-    expect(deferredContentSource).toContain("loadFirstScreenHydration");
-    expect(deferredContentSource).toContain("enabled: loadFirstScreenHydration");
-    expect(deferredContentSource).toContain("if (loadBody)");
+    expect(hydrationSource.match(/enabled: supplementalQueriesEnabled/g)).toHaveLength(2);
+    expect(hydrationSource).not.toContain("requestIdleCallback");
+    expect(hydrationSource).not.toContain("setTimeout");
+    expect(deferredContentSource).toContain("enabled: userReachedDeferredContent");
+    expect(deferredContentSource).toContain("if (!userReachedDeferredContent)");
     for (const belowFoldMethod of [
       "getMarketDataRates",
       "getCoreMetrics",
@@ -424,52 +510,40 @@ describe("startup performance guards", () => {
     }
   });
 
-  it("keeps homepage event feeds behind a separate post-snapshot idle gate", () => {
+  it("starts homepage event feeds only for a reached evidence section on the snapshot date", () => {
     const homeViewModelSource = readFileSync(HOME_VIEW_MODEL_PATH, "utf8");
     const bodyDataSource = readFileSync(HOME_BODY_DATA_PATH, "utf8");
 
-    expect(homeViewModelSource).toContain("useBodyStructureDataGate");
-    expect(homeViewModelSource).toContain("BODY_STRUCTURE_IDLE_MIN_DELAY_MS");
-    expect(homeViewModelSource).toContain("hasBodyStructureData");
-    expect(homeViewModelSource).toContain("enabled: hasDeferredSupplementalReportDate && hasBodyDetailData && hasBodyStructureData");
-    expect(homeViewModelSource).toContain("useEventFeedDataGate");
-    expect(homeViewModelSource).toMatch(
-      /const hasEventFeedData = useEventFeedDataGate\(\s*hasDeferredSupplementalReportDate && !options\.eagerEventFeeds\s*\?\s*supplementalReportDate\s*:\s*undefined,\s*\)/,
-    );
-    expect(homeViewModelSource).toContain("const eventFeedsReady = options.eagerEventFeeds || hasEventFeedData");
-    expect(homeViewModelSource).toContain("loadEventFeeds: hasDeferredSupplementalReportDate && eventFeedsReady");
-    expect(homeViewModelSource).toContain("useSecondaryEventFeedDataGate");
-    expect(homeViewModelSource).toContain("loadEventFeeds");
-    expect(homeViewModelSource).toContain("loadSecondaryEventFeeds");
-    expect(homeViewModelSource).toContain("EVENT_FEED_IDLE_MIN_DELAY_MS");
-    expect(homeViewModelSource).toContain("SECONDARY_EVENT_FEED_IDLE_MIN_DELAY_MS");
+    expect(homeViewModelSource).toContain("const hasEvidenceData = hasSupplementalReportDate && sections.evidence");
+    expect(homeViewModelSource).toContain("loadEventFeeds: hasEvidenceData");
+    expect(homeViewModelSource).toContain("loadSecondaryEventFeeds: hasEvidenceData");
+    expect(homeViewModelSource).toContain("loadBondNewsFeeds: hasEvidenceData");
+    expect(homeViewModelSource).toContain("queryKey: apiQueryKeys.bondDashboardHomeSummary(dataClient.mode, supplementalReportDate)");
     expect(bodyDataSource).toContain("loadSecondaryEventFeeds,");
     expect(bodyDataSource).toMatch(
       /const shouldLoadMacroNewsFallback =\s*loadSecondaryEventFeeds &&\s*macroNewsSettled/,
     );
-    expect(bodyDataSource).not.toMatch(/getChoiceNewsEvents[\s\S]{0,300}enabled:\s*loadDetailData/);
-    expect(bodyDataSource).not.toMatch(/useDashboardResearchCalendarQuery[\s\S]{0,120}enabled:\s*loadDetailData/);
+    expect(bodyDataSource).toContain("enabled: loadEventFeeds");
   });
 
-  it("keeps homepage bond news and formal data behind their own gates", () => {
+  it("separates reached evidence and support sections for news and formal data", () => {
     const homeViewModelSource = readFileSync(HOME_VIEW_MODEL_PATH, "utf8");
     const bodyDataSource = readFileSync(HOME_BODY_DATA_PATH, "utf8");
 
-    expect(homeViewModelSource).toContain("useBondNewsFeedDataGate");
-    expect(homeViewModelSource).toContain("useFormalContextDataGate");
-    expect(homeViewModelSource).toContain("loadBondNewsFeeds");
+    expect(homeViewModelSource).toContain("const hasDeferredFormalContext = hasSupplementalReportDate && sections.support");
+    expect(homeViewModelSource).toContain("loadBondNewsFeeds: hasEvidenceData");
     expect(homeViewModelSource).toContain("loadFormalData: hasDeferredFormalContext");
-    expect(homeViewModelSource).not.toContain("heavyBondListsReady");
-    expect(homeViewModelSource).not.toContain("formalContextReportDate");
-    expect(homeViewModelSource).not.toContain("setFormalContextReportDate");
     expect(bodyDataSource).toContain("loadBondNewsFeeds");
     expect(bodyDataSource).toContain("enabled: loadBondNewsFeeds");
     expect(bodyDataSource).toContain("const loadDatedFormalData = loadFormalData && hasSupplementalReportDate");
     expect(bodyDataSource).toContain("enabled: loadDatedFormalData");
   });
 
-  it("keeps the active home view model off retired homepage panel adapters", () => {
-    const dashboardHomeViewSource = readFileSync(DASHBOARD_HOME_VIEW_PATH, "utf8");
+  it("keeps the active home view models off retired homepage panel adapters", () => {
+    const activeHomeViewSources = [
+      readFileSync(DASHBOARD_HOME_FIRST_SCREEN_VIEW_PATH, "utf8"),
+      readFileSync(DASHBOARD_HOME_BODY_VIEW_PATH, "utf8"),
+    ];
 
     for (const retiredRuntimeArtifact of [
       "DASHBOARD_ATTRIBUTION_NOTE_MOCK",
@@ -488,7 +562,9 @@ describe("startup performance guards", () => {
       "mapHomeRiskRadar",
       "mapPortfolioComparisonToExposureRows",
     ]) {
-      expect(dashboardHomeViewSource).not.toContain(retiredRuntimeArtifact);
+      for (const activeHomeViewSource of activeHomeViewSources) {
+        expect(activeHomeViewSource).not.toContain(retiredRuntimeArtifact);
+      }
     }
   });
 
@@ -497,9 +573,8 @@ describe("startup performance guards", () => {
     const bodyPathSources = [
       readFileSync(HOME_VIEW_MODEL_PATH, "utf8"),
       readFileSync(DEFERRED_TERMINAL_HOME_BODY_PATH, "utf8"),
-      readFileSync(TERMINAL_HOME_CONTENT_PATH, "utf8"),
-      readFileSync(TERMINAL_HOME_WORK_GRID_PATH, "utf8"),
-      readFileSync(TERMINAL_HOME_DEFERRED_SECTIONS_PATH, "utf8"),
+      readFileSync(DASHBOARD_HOME_OPTION_TWO_LAYOUT_PATH, "utf8"),
+      readFileSync(DASHBOARD_HOME_OPTION_TWO_SUPPORT_BAND_PATH, "utf8"),
     ];
 
     expect(bodyModelSource).toContain("mapToHomeBodyView");
@@ -548,10 +623,20 @@ describe("startup performance guards", () => {
 
   it("keeps non-home Ant Design theme boundary lazy", () => {
     const routeSource = readFileSync(ROUTES_PATH, "utf8");
+    const appProvidersSource = readFileSync(APP_PROVIDERS_PATH, "utf8");
+    const themedBoundarySource = readFileSync(THEMED_ROUTE_BOUNDARY_PATH, "utf8");
 
     expect(routeSource).toContain('lazy(() => import("../app/ThemedRouteBoundary"))');
     expect(routeSource).toContain("themedRouteElement(<PnlByBusinessPage />)");
-    expect(routeSource).toContain("element: routeElement(<DashboardHomePage />)");
+    expect(routeSource).toContain("themedRouteElement(<CrossAssetPage />)");
+    expect(routeSource).toContain("element: systemReadRouteElement(<DashboardHomePage />, false)");
+    expect(routeSource).toContain("return themed ? themedRouteElement(scoped) : routeElement(scoped)");
+    expect(appProvidersSource).not.toContain('import("antd")');
+    expect(appProvidersSource).not.toContain("ConfigProvider");
+    expect(appProvidersSource).not.toContain("loadAntdTheme");
+    expect(themedBoundarySource).toMatch(/from\s+["']antd["']/);
+    expect(themedBoundarySource).toContain("ConfigProvider");
+    expect(themedBoundarySource).toContain("workbenchTheme");
   });
 
   it("wires the production home startup bundle guard into npm scripts", () => {
@@ -570,8 +655,12 @@ describe("startup performance guards", () => {
     expect(guardSource).toContain("ag-theme-alpine");
     expect(guardSource).toContain("assertNoAgGridImplementation");
     expect(guardSource).toContain("isAntdVendorAsset");
+    expect(guardSource).toMatch(
+      /"DashboardHomePage preload deps",\s*homeRouteAssets,\s*isAntdVendorAsset/,
+    );
     expect(guardSource).toContain("homeSupplementalClient");
     expect(guardSource).toContain("homeMarketTickerClient");
+    expect(guardSource).toContain("candidateFinancialIndicatorsClient");
     expect(guardSource).toContain("isWorkbenchShellMarketTickerAsset");
     expect(guardSource).toContain("workbench shell market ticker chunk");
     expect(guardSource).toContain("isLightweightHomeShellStylesheetContent");
@@ -601,6 +690,11 @@ describe("startup performance guards", () => {
     expect(guardSource).toContain("/assets/dashboardHomeFirstScreenMockView-");
     expect(guardSource).toContain("home should not load the market ticker mock chunk");
     expect(guardSource).toContain("home should not load the first-screen mock view chunk");
+    expect(guardSource).toContain("/assets/antd-vendor-");
+    expect(guardSource).toContain("home should not load the Ant Design vendor chunk");
+    expect(guardSource).toContain(
+      "cross-asset Ant Design vendor chunk should load in the first-screen window",
+    );
     expect(guardSource).toContain("src/layouts/WorkbenchShellMarketTicker.tsx");
     expect(guardSource).toContain("src/layouts/workbenchShellTicker.ts");
     expect(guardSource).toContain("/assets/WorkbenchShellMarketTicker-");
@@ -618,11 +712,14 @@ describe("startup performance guards", () => {
     expect(guardSource).toContain("cross-asset institutional console stylesheet did not load in the first-screen window");
     expect(guardSource).toContain("cross-asset workbench chrome stylesheet did not load in the first-screen window");
     expect(guardSource).toContain("HOME_POST_FIRST_SCREEN_MAX_WAIT_MS");
-    expect(guardSource).toContain("waitForTrackedRequest");
+    expect(guardSource).toContain("collectHomeFullPage");
     expect(guardSource).not.toContain("await page.waitForTimeout(HOME_SETTLE_AFTER_SCROLL_MS);");
     expect(guardSource).toContain("home summary should load after the first-screen window");
     expect(guardSource).toContain("news/calendar should load after the first-screen window");
     expect(guardSource).toContain("income trend should load after the first-screen window");
+    const fullPageSource = readFileSync(HOME_RUNTIME_ACCEPTANCE_PATH, "utf8");
+    expect(fullPageSource).toContain('page.on("requestfinished"');
+    expect(fullPageSource).toContain("home required request did not finish");
     expect(guardSource).toContain("browser.newContext");
     expect(guardSource).toContain("createIsolatedPage");
     expect(guardSource).toContain('context.route("**/*"');
@@ -642,7 +739,7 @@ describe("startup performance guards", () => {
     expect(guardSource).toContain('[data-testid="dashboard-home-hero"]');
     expect(guardSource).toContain("/src/api/client.ts");
     expect(guardSource).toContain("/assets/client-");
-    expect(guardSource).toContain("/src/api/homeMarketTickerMockClient.ts");
+    expect(guardSource).toContain("/src/mocks/homeMarketTickerMockClient.ts");
     expect(guardSource).toContain("/src/mocks/mockApiEnvelope.ts");
     expect(guardSource).toContain("/src/features/workbench/dashboard-home/dashboardHomeFirstScreenMockView.ts");
     expect(guardSource).toContain("market ticker mock should stay out of live real-data home");
@@ -651,6 +748,12 @@ describe("startup performance guards", () => {
     expect(guardSource).toContain("/ui/news/choice-events/latest");
     expect(guardSource).toContain("/ui/calendar/supply-auctions");
     expect(guardSource).toContain("ECharts/zrender should stay out of first-screen window");
+    // Locks the batched news waves and the total request budget: without these,
+    // a regression back to 13 per-topic news requests passes every needle above.
+    expect(guardSource).toContain("/ui/news/choice-events/latest-batch");
+    expect(guardSource).toContain("MAX_UI_REQUESTS");
+    expect(guardSource).toContain("collectHomeFullPage");
+    expect(guardSource).toContain("BALANCE_RISK_REQUEST_PATHS");
   });
 
   it("keeps the live home snapshot profiler source-backed", () => {

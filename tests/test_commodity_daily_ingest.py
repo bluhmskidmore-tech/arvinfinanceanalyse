@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import socket
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -11,6 +12,8 @@ from backend.app.tasks.commodity_daily_ingest import (
     COMMODITY_DAILY_LOCK,
     CommodityProductSpec,
     _estimate_trading_days,
+    _fetch_product_rows,
+    _fetch_with_retry,
     _fetch_tushare_futures_rows,
     _latest_product_observation,
     _normalize_trade_date,
@@ -103,6 +106,66 @@ def test_fetch_tushare_futures_rows_keeps_normalized_trade_date(monkeypatch) -> 
 
     assert rows[0]["trade_date"] == "2024-01-02"
     assert rows[0]["contract_code"] == "RB2405.SHF"
+
+
+def test_fetch_with_retry_retries_only_network_errors(monkeypatch) -> None:
+    sleeps: list[float] = []
+    calls = 0
+
+    def flaky_network_call() -> str:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise socket.timeout("network timeout")
+        return "ok"
+
+    monkeypatch.setattr("backend.app.tasks.commodity_daily_ingest.random.uniform", lambda low, high: 0.123)
+    monkeypatch.setattr("backend.app.tasks.commodity_daily_ingest.time.sleep", sleeps.append)
+
+    assert _fetch_with_retry(flaky_network_call, max_retries=2, base_delay=1.0) == "ok"
+    assert calls == 2
+    assert sleeps == [0.123]
+
+    def broken_business_call() -> str:
+        raise RuntimeError("schema mismatch")
+
+    sleeps.clear()
+    with pytest.raises(RuntimeError, match="schema mismatch"):
+        _fetch_with_retry(broken_business_call, max_retries=3, base_delay=1.0)
+    assert sleeps == []
+
+
+def test_fetch_product_rows_reports_vendor_attempt_errors() -> None:
+    class _BrokenIndexPro:
+        def index_daily(self, **_kwargs: object) -> _FakeFrame:
+            raise RuntimeError("tushare permission denied")
+
+    spec = CommodityProductSpec("NHCI", "南华商品指数", "index", "NH", "NHCI.NH", None)
+
+    rows, vendor, attempts = _fetch_product_rows(
+        spec=spec,
+        pro=_BrokenIndexPro(),
+        start_date="2024-01-01",
+        end_date="2024-01-03",
+    )
+
+    assert rows == []
+    assert vendor == "none"
+    assert attempts == [
+        {
+            "vendor": "tushare",
+            "status": "failed",
+            "row_count": 0,
+            "exception_type": "RuntimeError",
+            "message": "tushare permission denied",
+        },
+        {
+            "vendor": "akshare",
+            "status": "skipped",
+            "row_count": 0,
+            "reason": "symbol_not_configured",
+        },
+    ]
 
 
 def test_normalize_existing_commodity_trade_dates_updates_compact_dates_and_drops_duplicates(tmp_path) -> None:
@@ -348,25 +411,31 @@ def test_completed_ingest_reports_series_id_when_product_has_no_rows(tmp_path, m
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.delenv("MOSS_TUSHARE_TOKEN", raising=False)
 
-    def fetch_no_rows(**kwargs: object) -> tuple[list[dict[str, object]], str]:
+    def fetch_no_rows(**kwargs: object) -> tuple[list[dict[str, object]], str, list[dict[str, object]]]:
         _ = kwargs
-        return [], "none"
+        return [], "none", [{"vendor": "test", "status": "empty", "row_count": 0}]
 
     monkeypatch.setitem(run_commodity_daily_ingest.__globals__, "_fetch_product_rows", fetch_no_rows)
 
     payload = run_commodity_daily_ingest(
         start_date="2024-01-01",
         end_date="2024-01-10",
+        duckdb_path=str(duckdb_path),
         products=("RB",),
         dry_run=False,
     )
 
-    assert payload["status"] == "completed"
+    assert payload["status"] == "failed"
     assert payload["row_count"] == 0
+    assert payload["successful_product_count"] == 0
+    assert payload["product_completion_rate"] == 0.0
+    assert payload["missing_required_products"] == ["RB"]
     product = payload["products"][0]
     assert product["product_code"] == "RB"
     assert product["row_count"] == 0
     assert product["vendor"] == "none"
+    assert product["status"] == "missing"
+    assert product["attempts"] == [{"vendor": "test", "status": "empty", "row_count": 0}]
     assert product["series_id"] == "COMMODITY.RB"
     assert "latest_date" not in product
     assert "latest_value" not in product
@@ -419,22 +488,26 @@ def test_completed_ingest_preserves_unreturned_existing_trade_dates(tmp_path, mo
         },
     ]
 
-    def fetch_sparse_rows(**kwargs: object) -> tuple[list[dict[str, object]], str]:
+    def fetch_sparse_rows(**kwargs: object) -> tuple[list[dict[str, object]], str, list[dict[str, object]]]:
         assert kwargs["start_date"] == "2024-01-02"
         assert kwargs["end_date"] == "2024-01-04"
         assert kwargs["spec"].product_code == "RB"
-        return fetched_rows, "test_vendor"
+        return fetched_rows, "test_vendor", [{"vendor": "test_vendor", "status": "success", "row_count": 2}]
 
     monkeypatch.setitem(run_commodity_daily_ingest.__globals__, "_fetch_product_rows", fetch_sparse_rows)
 
     payload = run_commodity_daily_ingest(
         start_date="2024-01-02",
         end_date="2024-01-04",
+        duckdb_path=str(duckdb_path),
         products=("RB",),
         dry_run=False,
     )
 
     assert payload["row_count"] == 2
+    assert payload["status"] == "completed"
+    assert payload["successful_products"] == ["RB"]
+    assert payload["missing_required_products"] == []
     conn = duckdb.connect(str(duckdb_path), read_only=True)
     try:
         rows = conn.execute(
@@ -453,6 +526,52 @@ def test_completed_ingest_preserves_unreturned_existing_trade_dates(tmp_path, mo
         ("2024-01-03", "RB", 3901.0, "sv_old"),
         ("2024-01-04", "RB", 3912.0, "sv_new"),
     ]
+
+
+def test_ingest_stops_following_products_after_soft_deadline(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.delenv("MOSS_TUSHARE_TOKEN", raising=False)
+    monkeypatch.setattr(
+        "backend.app.tasks.commodity_daily_ingest.COMMODITY_PRODUCT_SOFT_DEADLINE_SECONDS",
+        -1.0,
+    )
+    seen_products: list[str] = []
+
+    def fetch_rows(**kwargs: object) -> tuple[list[dict[str, object]], str, list[dict[str, object]]]:
+        spec = kwargs["spec"]
+        seen_products.append(spec.product_code)
+        return [
+            {
+                "trade_date": "2024-01-02",
+                "product_code": spec.product_code,
+                "contract_code": f"{spec.product_code}0",
+                "exchange": spec.exchange,
+                "close_value": 1.0,
+                "source_version": "sv_new",
+                "vendor_version": "vv_new",
+                "rule_version": "rv_commodity_daily_v1",
+            }
+        ], "test_vendor", [{"vendor": "test_vendor", "status": "success", "row_count": 1}]
+
+    monkeypatch.setitem(run_commodity_daily_ingest.__globals__, "_fetch_product_rows", fetch_rows)
+
+    payload = run_commodity_daily_ingest(
+        start_date="2024-01-02",
+        end_date="2024-01-02",
+        duckdb_path=str(duckdb_path),
+        products=("RB", "CU"),
+        dry_run=False,
+    )
+
+    assert seen_products == ["RB"]
+    assert payload["status"] == "partial"
+    assert payload["successful_products"] == ["RB"]
+    assert payload["missing_required_products"] == ["CU"]
+    assert payload["product_completion_rate"] == 0.5
+    assert payload["products"][0]["deadline_exceeded"] is True
+    assert payload["products"][1]["status"] == "not_attempted"
+    assert "product_soft_deadline_exceeded:RB" in str(payload["products"][1]["reason"])
 
 
 def test_dry_run_rejects_explicit_empty_products(tmp_path, monkeypatch) -> None:

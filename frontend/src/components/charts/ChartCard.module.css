@@ -1,0 +1,118 @@
+/*
+ * ChartCard：全站唯一图表铬件（视觉方案 §7.2）。取色只走 --dh-api-* 语义链，
+ * 面板层级靠背景递进与细线（DESIGN §2.2，不用阴影），圆角统一 --dh-api-radius。
+ */
+.card {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--dh-api-line-soft, var(--ib-hairline));
+  border-radius: var(--dh-api-radius, 8px);
+  background: var(--dh-api-panel-2, var(--ib-surface));
+}
+
+.card[data-flat="true"] {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+/*
+ * 标题行收缩顺序：问题句先收（基准 0）、标题后收、标题至少保 160px 否则动作区整体换到下一行。
+ * 窄列里分段控件 + 单位不能把标题挤没（2026-09-02 债券总览 4-4-4 网格实测）。
+ */
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.titles {
+  display: flex;
+  flex: 1 1 160px;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.title {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  overflow: hidden;
+  color: var(--dh-api-ink, var(--ib-ink));
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.question {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dh-api-muted, var(--ib-ink-muted));
+  font-size: 12px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  color: var(--dh-api-muted, var(--ib-ink-muted));
+  font-family: var(--moss-font-tabular);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.metaDot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dh-api-amber, var(--ib-warn));
+}
+
+.actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.canvas {
+  position: relative;
+  min-width: 0;
+}
+
+/* 画布叠层不拦截 canvas 的悬停与 tooltip；定位由调用方叠层元素自己决定。 */
+.canvasOverlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.below {
+  min-width: 0;
+}
+
+.footnote {
+  margin: 0;
+  overflow: hidden;
+  color: var(--dh-api-muted, var(--ib-ink-muted));
+  font-size: 11px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

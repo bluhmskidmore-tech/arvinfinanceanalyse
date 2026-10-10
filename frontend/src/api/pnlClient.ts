@@ -1,20 +1,29 @@
 /**
  * P&L and Attribution domain — type slice of ApiClient.
  * Imported and re-exported by client.ts for backward compatibility.
+ * Mock factory lives in pnlMockClient.ts so mock payloads stay out of the
+ * real-mode bundle.
  */
-import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
-import { mockCampisiDecisionGrade } from "../mocks/campisiMocks";
 import { readHttpJsonDetail } from "./httpResponseError";
+import {
+  assertApiEnvelopeShape,
+  requestJson as transportRequestJson,
+  type ShapeFieldSpec,
+  type TransportRequestOptions,
+} from "./transport";
 import type {
   ApiEnvelope,
   CampisiDecisionGradePayload,
   PnlByBusinessAnalysisDimension,
   PnlByBusinessAnalysisPayload,
+  PnlByBusinessCandidateInsightsPayload,
+  PnlByBusinessInsightsPayload,
   PnlByBusinessManualAdjustmentListPayload,
   PnlByBusinessManualAdjustmentPayload,
   PnlByBusinessManualAdjustmentRequest,
   PnlByBusinessMonthlyPayload,
   PnlByBusinessPayload,
+  PnlByBusinessPrecomputeStatus,
   PnlByBusinessYtdPayload,
   PnlV1DataPayload,
   PnlYearlyBusinessSummaryPayload,
@@ -28,6 +37,17 @@ type FetchLike = typeof fetch;
 type PnlClientFactoryOptions = {
   fetchImpl: FetchLike;
   baseUrl: string;
+};
+
+export type PnlByBusinessInsightsRequestOptions = Pick<TransportRequestOptions, "signal"> & {
+  generation?: string;
+};
+
+export type PnlByBusinessPrecomputeStatusRequestOptions = Pick<TransportRequestOptions, "signal">;
+
+export type PnlByBusinessPrecomputeRebuildOptions = {
+  includePageDependencies?: boolean;
+  scope?: "selected" | "all_available";
 };
 
 function buildCampisiQuery(options?: {
@@ -49,7 +69,7 @@ function buildCampisiQuery(options?: {
   return query ? `?${query}` : "";
 }
 
-type PnlBusinessClientMethods = {
+export type PnlBusinessClientMethods = {
   getPnlV1Data: (date: string) => Promise<ApiEnvelope<PnlV1DataPayload>>;
   getPnlByBusiness: (reportDate: string) => Promise<ApiEnvelope<PnlByBusinessPayload>>;
   getPnlByBusinessYtd: (year: number, asOfDate?: string) => Promise<ApiEnvelope<PnlByBusinessYtdPayload>>;
@@ -60,6 +80,15 @@ type PnlBusinessClientMethods = {
     businessKey?: string;
     dimension: PnlByBusinessAnalysisDimension;
   }) => Promise<ApiEnvelope<PnlByBusinessAnalysisPayload>>;
+  getPnlByBusinessCandidateInsights: (
+    year: number,
+    asOfDate: string,
+  ) => Promise<ApiEnvelope<PnlByBusinessCandidateInsightsPayload>>;
+  getPnlByBusinessInsights: (
+    year: number,
+    asOfDate: string,
+    options?: PnlByBusinessInsightsRequestOptions,
+  ) => Promise<ApiEnvelope<PnlByBusinessInsightsPayload>>;
   createPnlByBusinessManualAdjustment: (
     payload: PnlByBusinessManualAdjustmentRequest,
   ) => Promise<PnlByBusinessManualAdjustmentPayload>;
@@ -76,6 +105,16 @@ type PnlBusinessClientMethods = {
   getPnlByBusinessManualAdjustments: (
     reportDate: string,
   ) => Promise<PnlByBusinessManualAdjustmentListPayload>;
+  getPnlByBusinessPrecomputeStatus: (
+    year: number,
+    asOfDate?: string,
+    options?: PnlByBusinessPrecomputeStatusRequestOptions,
+  ) => Promise<PnlByBusinessPrecomputeStatus>;
+  rebuildPnlByBusinessPrecompute: (
+    year: number,
+    asOfDate?: string,
+    options?: PnlByBusinessPrecomputeRebuildOptions,
+  ) => Promise<PnlByBusinessPrecomputeStatus>;
   getPnlYearlyBusinessSummary: (year: number) => Promise<ApiEnvelope<PnlYearlyBusinessSummaryPayload>>;
   getPnlCampisiDecisionGrade: (options?: {
     startDate?: string;
@@ -84,196 +123,35 @@ type PnlBusinessClientMethods = {
   }) => Promise<ApiEnvelope<CampisiDecisionGradePayload>>;
 };
 
+/**
+ * Business-critical field sample for `/api/pnl/by-business` — the PnL-by-business
+ * page's primary payload (`PnlByBusinessPayload`). Wired as the Wave1/F06 sample
+ * lane; other `pnlClient.ts` endpoints keep the shell-only envelope check until a
+ * later batch extends this pattern.
+ */
+const PNL_BY_BUSINESS_RESULT_FIELDS: ShapeFieldSpec[] = [
+  { path: "report_date", type: "string" },
+  { path: "rows", type: "array" },
+  { path: "summary", type: "object" },
+  { path: "summary.total_pnl", type: "string" },
+  { path: "summary.interest_income_514", type: "string" },
+  { path: "summary.fair_value_change_516", type: "string" },
+  { path: "summary.capital_gain_517", type: "string" },
+  { path: "summary.pnl_row_count", type: "number" },
+];
+
+/**
+ * `/api/pnl/by-business-insights` has no cache and recomputes the whole year per
+ * call: measured 2026-07-31 at ~52s warm and >60s cold, so the shared transport
+ * default (`DEFAULT_REQUEST_JSON_TIMEOUT_MS`, 60s) must not apply to this endpoint.
+ */
+export const PNL_BY_BUSINESS_INSIGHTS_TIMEOUT_MS = 180_000;
+
 export type PnlClientMethods =
   PnlBusinessClientMethods
   & PnlAttributionClientMethods
   & PnlCoreClientMethods
   & QdbGlMonthlyAnalysisClientMethods;
-
-const delay = async () => new Promise((resolve) => setTimeout(resolve, 40));
-
-export function createMockPnlBusinessClient(): PnlBusinessClientMethods {
-  return {
-    async getPnlV1Data(date: string) {
-      await delay();
-      return buildMockApiEnvelope(
-        "pnl.v1_data",
-        {
-          report_date: date,
-          source_tables: ["data_input/pnl", "data_input/pnl_514", "data_input/pnl_516", "data_input/pnl_517"],
-          rows: [],
-        },
-        { basis: "formal", formal_use_allowed: true },
-      );
-    },
-    async getPnlByBusiness(reportDate: string) {
-      await delay();
-      return buildMockApiEnvelope(
-        "pnl.by_business",
-        {
-          report_date: reportDate,
-          source_tables: ["fact_formal_pnl_fi", "fact_formal_zqtz_balance_daily"],
-          summary: {
-            business_count: 0,
-            total_pnl: "0.00",
-            total_scale_amount: "0.00",
-            traced_pnl_row_count: 0,
-            untraced_pnl_row_count: 0,
-            untraced_breakdown: [],
-          },
-          rows: [],
-        },
-        { basis: "formal", formal_use_allowed: true },
-      );
-    },
-    async getPnlByBusinessYtd(year: number, _asOfDate?: string) {
-      await delay();
-      return buildMockApiEnvelope(
-        "pnl.by_business_ytd",
-        {
-          year,
-          period_type: "yearly",
-          period_label: `${year}年累计`,
-          period_start_date: `${year}-01-01`,
-          period_end_date: _asOfDate ?? `${year}-12-31`,
-          total_pnl: "0.00",
-          source_tables: ["data_input/pnl", "fact_formal_zqtz_balance_daily", "ZQTZ_ASSET_BOND_ROWS"],
-          items: [],
-        },
-        { basis: "formal", formal_use_allowed: true },
-      );
-    },
-    async createPnlByBusinessManualAdjustment(payload) {
-      await delay();
-      return {
-        adjustment_id: "pba-mock-1",
-        event_type: "created",
-        created_at: new Date().toISOString(),
-        stream: "pnl_by_business_adjustments",
-        business_type: payload.business_type ?? "",
-        reason: payload.reason ?? "",
-        ...payload,
-      };
-    },
-    async updatePnlByBusinessManualAdjustment(adjustmentId, payload) {
-      await delay();
-      return {
-        adjustment_id: adjustmentId,
-        event_type: "edited",
-        created_at: new Date().toISOString(),
-        stream: "pnl_by_business_adjustments",
-        business_type: payload.business_type ?? "",
-        reason: payload.reason ?? "",
-        ...payload,
-      };
-    },
-    async revokePnlByBusinessManualAdjustment(adjustmentId) {
-      await delay();
-      return {
-        adjustment_id: adjustmentId,
-        event_type: "revoked",
-        created_at: new Date().toISOString(),
-        stream: "pnl_by_business_adjustments",
-        report_date: "",
-        row_key: "",
-        business_type: "",
-        operator: "DELTA",
-        approval_status: "rejected",
-        manual_adjustment: "0",
-        reason: "",
-      };
-    },
-    async restorePnlByBusinessManualAdjustment(adjustmentId) {
-      await delay();
-      return {
-        adjustment_id: adjustmentId,
-        event_type: "restored",
-        created_at: new Date().toISOString(),
-        stream: "pnl_by_business_adjustments",
-        report_date: "",
-        row_key: "",
-        business_type: "",
-        operator: "DELTA",
-        approval_status: "approved",
-        manual_adjustment: "0",
-        reason: "",
-      };
-    },
-    async getPnlByBusinessManualAdjustments(reportDate) {
-      await delay();
-      return {
-        report_date: reportDate,
-        adjustment_count: 0,
-        event_total: 0,
-        adjustments: [],
-        events: [],
-      };
-    },
-    async getPnlByBusinessMonthly(year: number, _asOfDate?: string) {
-      await delay();
-      return buildMockApiEnvelope(
-        "pnl.by_business_monthly",
-        {
-          year,
-          as_of_date: _asOfDate ?? `${year}-12-31`,
-          source_tables: [
-            "fact_formal_pnl_fi",
-            "fact_nonstd_pnl_bridge",
-            "fact_formal_zqtz_balance_daily",
-            "ZQTZ_ASSET_BOND_ROWS",
-          ],
-          months: [],
-        },
-        { basis: "formal", formal_use_allowed: true },
-      );
-    },
-    async getPnlByBusinessAnalysis(options) {
-      await delay();
-      return buildMockApiEnvelope(
-        "pnl.by_business_analysis",
-        {
-          year: options.year,
-          as_of_date: options.asOfDate ?? `${options.year}-12-31`,
-          business_key: options.businessKey ?? null,
-          dimension: options.dimension,
-          period_start_date: `${options.year}-01-01`,
-          period_end_date: options.asOfDate ?? `${options.year}-12-31`,
-          source_tables: [
-            "fact_formal_pnl_fi",
-            "fact_nonstd_pnl_bridge",
-            "fact_formal_zqtz_balance_daily",
-            "ZQTZ_ASSET_BOND_ROWS",
-          ],
-          rows: [],
-        },
-        { basis: "formal", formal_use_allowed: true },
-      );
-    },
-    async getPnlCampisiDecisionGrade(_options?: {
-      startDate?: string;
-      endDate?: string;
-      lookbackDays?: number;
-    }) {
-      await delay();
-      return buildMockApiEnvelope("campisi.decision_grade", mockCampisiDecisionGrade, {
-        basis: "formal",
-        formal_use_allowed: true,
-      });
-    },
-    async getPnlYearlyBusinessSummary(year: number) {
-      await delay();
-      return buildMockApiEnvelope(
-        "pnl.yearly_summary",
-        {
-          year,
-          source_tables: ["fact_formal_pnl_fi", "fact_formal_zqtz_balance_daily"],
-          rows: [],
-        },
-        { basis: "formal", formal_use_allowed: true },
-      );
-    },
-  };
-}
 
 export function createRealPnlBusinessClient({
   fetchImpl,
@@ -291,6 +169,7 @@ export function createRealPnlBusinessClient({
         fetchImpl,
         baseUrl,
         `/api/pnl/by-business?report_date=${encodeURIComponent(reportDate)}`,
+        PNL_BY_BUSINESS_RESULT_FIELDS,
       ),
     getPnlByBusinessYtd: (year: number, asOfDate?: string) => {
       const query = new URLSearchParams({ year: String(year) });
@@ -301,6 +180,44 @@ export function createRealPnlBusinessClient({
         fetchImpl,
         baseUrl,
         `/api/pnl/by-business-ytd?${query.toString()}`,
+      );
+    },
+    getPnlByBusinessPrecomputeStatus: (
+      year: number,
+      asOfDate?: string,
+      options?: PnlByBusinessPrecomputeStatusRequestOptions,
+    ) => {
+      const query = new URLSearchParams({ year: String(year) });
+      if (asOfDate) {
+        query.set("as_of_date", asOfDate);
+      }
+      return requestActionJson<PnlByBusinessPrecomputeStatus>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl/by-business/precompute-status?${query.toString()}`,
+        { signal: options?.signal },
+      );
+    },
+    rebuildPnlByBusinessPrecompute: (
+      year: number,
+      asOfDate?: string,
+      options?: PnlByBusinessPrecomputeRebuildOptions,
+    ) => {
+      const query = new URLSearchParams({ year: String(year) });
+      if (options?.scope) {
+        query.set("scope", options.scope);
+      }
+      if (asOfDate) {
+        query.set("as_of_date", asOfDate);
+      }
+      if (options?.includePageDependencies) {
+        query.set("include_page_dependencies", "true");
+      }
+      return requestActionJson<PnlByBusinessPrecomputeStatus>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl/by-business/precompute-rebuild?${query.toString()}`,
+        { method: "POST" },
       );
     },
     createPnlByBusinessManualAdjustment: (payload) =>
@@ -365,6 +282,34 @@ export function createRealPnlBusinessClient({
         `/api/pnl/by-business-analysis?${query.toString()}`,
       );
     },
+    getPnlByBusinessCandidateInsights: (year: number, asOfDate: string) => {
+      const query = new URLSearchParams({ year: String(year), as_of_date: asOfDate });
+      return requestJson<PnlByBusinessCandidateInsightsPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl/by-business-candidate-insights?${query.toString()}`,
+      );
+    },
+    getPnlByBusinessInsights: (
+      year: number,
+      asOfDate: string,
+      options?: PnlByBusinessInsightsRequestOptions,
+    ) => {
+      const query = new URLSearchParams({ year: String(year), as_of_date: asOfDate });
+      if (options?.generation) {
+        query.set("generation", options.generation);
+      }
+      return transportRequestJson<PnlByBusinessInsightsPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl/by-business-insights?${query.toString()}`,
+        {
+          timeoutMs: PNL_BY_BUSINESS_INSIGHTS_TIMEOUT_MS,
+          errorDetail: "json-detail",
+          signal: options?.signal,
+        },
+      );
+    },
     getPnlCampisiDecisionGrade: (options) =>
       requestJson<CampisiDecisionGradePayload>(
         fetchImpl,
@@ -384,6 +329,13 @@ async function requestJson<TData>(
   fetchImpl: FetchLike,
   baseUrl: string,
   path: string,
+  /**
+   * Optional business-critical field sample checked against `result`
+   * (see `ShapeFieldSpec` in `./transport`). Omitted for endpoints not yet
+   * wired to field-level validation (shell-only envelope check stays as-is
+   * for those, matching historical behavior).
+   */
+  resultFields?: ShapeFieldSpec[],
 ): Promise<ApiEnvelope<TData>> {
   const response = await fetchImpl(`${baseUrl}${path}`, {
     headers: { Accept: "application/json" },
@@ -392,7 +344,11 @@ async function requestJson<TData>(
     const detail = await readHttpJsonDetail(response);
     throw new Error(detail ?? `Request failed: ${path} (${response.status})`);
   }
-  return (await response.json()) as ApiEnvelope<TData>;
+  const payload: unknown = await response.json();
+  if (resultFields?.length) {
+    assertApiEnvelopeShape(payload, `${baseUrl}${path}`, resultFields);
+  }
+  return payload as ApiEnvelope<TData>;
 }
 
 async function requestActionJson<T>(

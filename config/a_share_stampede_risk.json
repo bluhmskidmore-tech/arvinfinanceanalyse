@@ -3,7 +3,8 @@
     "green": [0, 29],
     "yellow": [30, 49],
     "orange": [50, 69],
-    "red": [70, 100]
+    "red": [70, 100],
+    "red_requires_severe_categories": 2
   },
   "weights": {
     "breadth": 30,

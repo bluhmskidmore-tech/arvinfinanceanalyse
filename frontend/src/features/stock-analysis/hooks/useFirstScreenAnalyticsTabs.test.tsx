@@ -9,9 +9,11 @@ describe("useFirstScreenAnalyticsTabs", () => {
 
     expect(result.current.firstScreenAnalyticsTab).toBe("consensus");
     expect(result.current.firstScreenAnalyticsRequested).toBe(false);
+    expect(result.current.firstScreenPriorityRequested).toBe(false);
+    expect(result.current.firstScreenOptimizationRequested).toBe(false);
   });
 
-  it("marks deferred analytics requested when priority or optimization is opened", () => {
+  it("tracks requested deferred analytics by tab", () => {
     const { result } = renderHook(() => useFirstScreenAnalyticsTabs());
 
     act(() => {
@@ -19,17 +21,23 @@ describe("useFirstScreenAnalyticsTabs", () => {
     });
     expect(result.current.firstScreenAnalyticsTab).toBe("priority");
     expect(result.current.firstScreenAnalyticsRequested).toBe(true);
+    expect(result.current.firstScreenPriorityRequested).toBe(true);
+    expect(result.current.firstScreenOptimizationRequested).toBe(false);
 
     act(() => {
       result.current.handleFirstScreenAnalyticsTabChange("consensus");
     });
     expect(result.current.firstScreenAnalyticsTab).toBe("consensus");
     expect(result.current.firstScreenAnalyticsRequested).toBe(true);
+    expect(result.current.firstScreenPriorityRequested).toBe(true);
+    expect(result.current.firstScreenOptimizationRequested).toBe(false);
 
     act(() => {
       result.current.handleFirstScreenAnalyticsTabChange("optimization");
     });
     expect(result.current.firstScreenAnalyticsTab).toBe("optimization");
     expect(result.current.firstScreenAnalyticsRequested).toBe(true);
+    expect(result.current.firstScreenPriorityRequested).toBe(true);
+    expect(result.current.firstScreenOptimizationRequested).toBe(true);
   });
 });

@@ -1,0 +1,2 @@
+alter table fact_formal_bond_analytics_daily
+add column if not exists interest_payment_frequency_fallback_used boolean

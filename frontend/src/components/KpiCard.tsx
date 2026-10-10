@@ -1,6 +1,7 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { displayTokens } from "../theme/displayTokens";
+import "./KpiCard.css";
 
 export type KpiCardProps = {
   /** @deprecated Prefer `label`; kept for existing call sites. */
@@ -24,19 +25,6 @@ export type KpiCardProps = {
 };
 
 type ToneKey = NonNullable<KpiCardProps["tone"]>;
-
-const TITLE_COLOR = displayTokens.kpi.label;
-const UNIT_COLOR = displayTokens.kpi.unit;
-const DETAIL_COLOR = displayTokens.kpi.detail;
-const CARD_SHADOW = displayTokens.kpi.cardShadow;
-
-const VALUE_COLORS: Record<ToneKey, string> = {
-  default: displayTokens.kpi.valueDefault,
-  positive: displayTokens.kpi.valuePositive,
-  negative: displayTokens.kpi.valueNegative,
-  warning: displayTokens.kpi.valueWarning,
-  error: displayTokens.kpi.valueNegative,
-};
 
 function resolveToneFromHints(props: Pick<KpiCardProps, "status" | "trend">): ToneKey {
   if (props.status === "warning") {
@@ -71,7 +59,7 @@ function MiniSparkline({ data }: { data: number[] }) {
     })
     .join(" ");
   return (
-    <svg width={w} height={h} aria-hidden style={{ flexShrink: 0 }}>
+    <svg width={w} height={h} aria-hidden className="kpi-card__sparkline">
       <polyline
         fill="none"
         stroke={displayTokens.kpi.sparklineStroke}
@@ -82,6 +70,10 @@ function MiniSparkline({ data }: { data: number[] }) {
       />
     </svg>
   );
+}
+
+function cx(...parts: Array<string | false | undefined>) {
+  return parts.filter(Boolean).join(" ");
 }
 
 export function KpiCard({
@@ -103,7 +95,6 @@ export function KpiCard({
 }: KpiCardProps) {
   const heading = title ?? label ?? "";
   const tone = toneProp !== "default" ? toneProp : resolveToneFromHints({ status: _status, trend });
-  const valueColor = VALUE_COLORS[tone];
   const isMetric = valueVariant === "metric";
 
   const trendGlyph =
@@ -114,119 +105,17 @@ export function KpiCard({
       ? `${change > 0 ? "+" : ""}${change.toLocaleString("zh-CN")}`
       : null;
 
-  const iconWrapperStyle = {
-    flexShrink: 0,
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    background: displayTokens.kpi.iconBg,
-    color: displayTokens.kpi.iconFg,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 18,
-  } satisfies CSSProperties;
-
-  const cardStyle = {
-    minHeight: isMetric ? 152 : 132,
-    minWidth: 0,
-    padding: "18px 18px 16px",
-    borderRadius: 12,
-    background: displayTokens.kpi.cardBg,
-    border: displayTokens.kpi.cardBorder,
-    boxShadow: CARD_SHADOW,
-    display: "flex",
-    flexDirection: "column",
-    cursor: onClick ? "pointer" : undefined,
-    overflow: "visible",
-  } satisfies CSSProperties;
-
-  const headerStyle = {
-    display: "flex",
-    alignItems: "flex-start",
-    gap: 10,
-    marginBottom: isMetric ? 12 : 8,
-  } satisfies CSSProperties;
-
-  const titleStyle = {
-    color: TITLE_COLOR,
-    fontSize: 12,
-    fontWeight: 600,
-    lineHeight: 1.35,
-    flex: 1,
-    minWidth: 0,
-    paddingTop: icon ? 2 : 0,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  } satisfies CSSProperties;
-
-  const bodyStyle = {
-    flex: 1,
-    display: "flex",
-    flexDirection: "column",
-    alignItems: isMetric ? "center" : "stretch",
-    textAlign: isMetric ? "center" : "left",
-  } satisfies CSSProperties;
-
-  const valueWrapperStyle = {
-    display: "flex",
-    flexWrap: "wrap",
-    alignItems: "baseline",
-    justifyContent: isMetric ? "center" : "flex-start",
-    gap: "4px 8px",
-    width: "100%",
-  } satisfies CSSProperties;
-
-  const titleTextStyle = {
-    flex: "1 1 auto",
-    minWidth: 0,
-    overflowWrap: "break-word",
-    wordBreak: "break-word",
-  } satisfies CSSProperties;
-
-  const valueStyle = {
-    color: valueColor,
-    fontSize: isMetric ? 24 : 16,
-    fontWeight: 700,
-    letterSpacing: isMetric ? "-0.02em" : "normal",
-    lineHeight: isMetric ? 1.15 : 1.5,
-  };
-
-  const unitStyle = {
-    color: UNIT_COLOR,
-    fontSize: 14,
-    fontWeight: 600,
-  };
-
-  const secondaryTextStyle = {
-    margin: 0,
-    color: DETAIL_COLOR,
-    fontSize: 12,
-    lineHeight: 1.45,
-    textAlign: isMetric ? "center" : "left",
-    width: "100%",
-    overflowWrap: "anywhere",
-    wordBreak: "break-word",
-  } satisfies CSSProperties;
-
-  const changeStyle = {
-    ...secondaryTextStyle,
-    marginTop: 6,
-  };
-
-  const detailStyle = {
-    ...secondaryTextStyle,
-    marginTop: "auto",
-    paddingTop: isMetric ? 10 : 8,
-  };
-
   return (
     <div
       data-testid={testId}
+      data-tone={tone}
       role={onClick ? "button" : undefined}
       tabIndex={onClick ? 0 : undefined}
+      className={cx(
+        "kpi-card",
+        !isMetric && "kpi-card--text",
+        Boolean(onClick) && "kpi-card--clickable",
+      )}
       onClick={onClick}
       onKeyDown={
         onClick
@@ -238,41 +127,42 @@ export function KpiCard({
             }
           : undefined
       }
-      style={cardStyle}
     >
-      <div style={headerStyle}>
+      <div className="kpi-card__header">
         {icon ? (
-          <div aria-hidden style={iconWrapperStyle}>
+          <div aria-hidden className="kpi-card__icon">
             {icon}
           </div>
         ) : null}
-        <div style={titleStyle}>
-          <span style={titleTextStyle}>{heading}</span>
+        <div className={cx("kpi-card__title", Boolean(icon) && "kpi-card__title--with-icon")}>
+          <span className="kpi-card__title-text" title={heading}>
+            {heading}
+          </span>
           {sparklineData && sparklineData.length > 0 ? (
             <MiniSparkline data={sparklineData} />
           ) : null}
         </div>
       </div>
 
-      <div style={bodyStyle}>
-        <div style={valueWrapperStyle}>
-          <span style={valueStyle}>{value}</span>
-          {unit ? <span style={unitStyle}>{unit}</span> : null}
+      <div className="kpi-card__body">
+        <div className="kpi-card__value-row">
+          <span className="kpi-card__value">{value}</span>
+          {unit ? <span className="kpi-card__unit">{unit}</span> : null}
           {trendGlyph ? (
-            <span style={{ fontSize: 14, color: valueColor }} aria-hidden>
+            <span className="kpi-card__trend" aria-hidden>
               {trendGlyph}
             </span>
           ) : null}
         </div>
 
         {changeText || changeLabel ? (
-          <p style={changeStyle}>
+          <p className="kpi-card__secondary kpi-card__change">
             {changeLabel ? `${changeLabel} ` : null}
             {changeText}
           </p>
         ) : null}
 
-        {detail ? <p style={detailStyle}>{detail}</p> : null}
+        {detail ? <p className="kpi-card__secondary kpi-card__detail">{detail}</p> : null}
       </div>
     </div>
   );

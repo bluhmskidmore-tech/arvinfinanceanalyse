@@ -47,7 +47,7 @@ def test_gs_exec_overview_release_contract(
     assert meta["scenario_flag"] is False
     assert meta["source_version"] == "sv_balance_union__sv_exec_dashboard_v1"
     assert meta["rule_version"] == "rv_balance_union__rv_exec_dashboard_v1"
-    assert meta["cache_version"] == "cv_exec_dashboard_v1"
+    assert meta["cache_version"] == "cv_exec_dashboard_nim_percent_points_v2"
     assert meta["filters_applied"]["requested_report_date"] == "2026-02-28"
     assert meta["filters_applied"]["effective_report_dates"] == {
         "balance": "2026-02-28",
@@ -82,7 +82,7 @@ def test_gs_exec_pnl_attr_release_contract(
     assert meta["scenario_flag"] is False
     assert meta["source_version"] == "sv_exec_dashboard_v1__sv_pc_a__sv_pc_b__sv_pc_c"
     assert meta["rule_version"] == "rv_exec_dashboard_v1__rv_pc_a__rv_pc_b__rv_pc_c"
-    assert meta["cache_version"] == "cv_exec_dashboard_v1"
+    assert meta["cache_version"] == "cv_exec_dashboard_nim_percent_points_v2"
     assert meta["filters_applied"]["report_date"] == "2026-02-28"
 
     result = actual["result"]
@@ -114,7 +114,7 @@ def test_gs_exec_summary_release_contract(
     assert meta["scenario_flag"] is False
     assert meta["source_version"] == "sv_summary_requested"
     assert meta["rule_version"] == "rv_summary_requested"
-    assert meta["cache_version"] == "cv_exec_dashboard_v1"
+    assert meta["cache_version"] == "cv_exec_dashboard_nim_percent_points_v2"
 
     result = actual["result"]
     assert result["report_date"] == "2026-02-28"

@@ -129,7 +129,18 @@
     "category": "PMI",
     "importance": "high",
     "source_name": "NBS",
-    "source_url": "https://www.stats.gov.cn/english/PressRelease/ReleaseCalendar/202512/t20251226_1962154.html"
+    "source_url": "https://www.stats.gov.cn/english/PressRelease/ReleaseCalendar/202512/t20251226_1962154.html",
+    "history": {
+      "latest_label": "最近一期",
+      "latest_value": "5月 50.0",
+      "previous_label": "前值",
+      "previous_value": "4月 50.3",
+      "change_label": "较前值",
+      "change_value": "-0.3",
+      "change_tone": "down",
+      "note": "制造业仍在扩张区间，但景气度较上月回落。",
+      "source_label": "NBS 2026-05 PMI 发布稿"
+    }
   },
   {
     "id": "ism-manufacturing-pmi-2026-07",
@@ -140,7 +151,18 @@
     "category": "PMI",
     "importance": "high",
     "source_name": "ISM",
-    "source_url": "https://www.ismworld.org/supply-management-news-and-reports/reports/rob-report-calendar/"
+    "source_url": "https://www.ismworld.org/supply-management-news-and-reports/reports/rob-report-calendar/",
+    "history": {
+      "latest_label": "最近一期",
+      "latest_value": "5月 54.0",
+      "previous_label": "前值",
+      "previous_value": "4月 52.7",
+      "change_label": "较前值",
+      "change_value": "+1.3",
+      "change_tone": "up",
+      "note": "制造业扩张加快，关注新订单与价格分项延续性。",
+      "source_label": "ISM May 2026 Manufacturing ROB"
+    }
   },
   {
     "id": "bls-employment-situation-2026-06",
@@ -151,7 +173,18 @@
     "category": "就业",
     "importance": "high",
     "source_name": "BLS",
-    "source_url": "https://www.bls.gov/schedule/2026/home.htm"
+    "source_url": "https://www.bls.gov/schedule/2026/home.htm",
+    "history": {
+      "latest_label": "最近一期",
+      "latest_value": "5月 +172k / 4.3%",
+      "previous_label": "前值",
+      "previous_value": "4月 +179k / 4.3%",
+      "change_label": "较前值",
+      "change_value": "就业 -7k / 失业率持平",
+      "change_tone": "flat",
+      "note": "新增就业小幅降温，失业率维持不变。",
+      "source_label": "BLS 2026-06-05 Employment Situation"
+    }
   },
   {
     "id": "ism-services-pmi-2026-07",
@@ -162,7 +195,18 @@
     "category": "PMI",
     "importance": "medium",
     "source_name": "ISM",
-    "source_url": "https://www.ismworld.org/supply-management-news-and-reports/reports/rob-report-calendar/"
+    "source_url": "https://www.ismworld.org/supply-management-news-and-reports/reports/rob-report-calendar/",
+    "history": {
+      "latest_label": "最近一期",
+      "latest_value": "5月 54.5",
+      "previous_label": "前值",
+      "previous_value": "4月 53.6",
+      "change_label": "较前值",
+      "change_value": "+0.9",
+      "change_tone": "up",
+      "note": "服务业继续扩张，景气斜率较上月改善。",
+      "source_label": "ISM May 2026 Services ROB"
+    }
   },
   {
     "id": "nbs-cpi-ppi-2026-06",
@@ -173,7 +217,18 @@
     "category": "通胀",
     "importance": "high",
     "source_name": "NBS",
-    "source_url": "https://www.stats.gov.cn/english/PressRelease/ReleaseCalendar/202512/t20251226_1962154.html"
+    "source_url": "https://www.stats.gov.cn/english/PressRelease/ReleaseCalendar/202512/t20251226_1962154.html",
+    "history": {
+      "latest_label": "最近一期",
+      "latest_value": "5月 CPI +1.2% / PPI +3.9%",
+      "previous_label": "前值",
+      "previous_value": "4月 CPI +1.2% / PPI +2.8%",
+      "change_label": "较前值",
+      "change_value": "CPI 持平 / PPI +1.1pct",
+      "change_tone": "up",
+      "note": "消费通胀持平，工业品出厂价格同比升幅扩大。",
+      "source_label": "NBS 2026-05 CPI/PPI 发布稿"
+    }
   },
   {
     "id": "bls-cpi-2026-06",
@@ -184,7 +239,18 @@
     "category": "通胀",
     "importance": "high",
     "source_name": "BLS",
-    "source_url": "https://www.bls.gov/schedule/2026/home.htm"
+    "source_url": "https://www.bls.gov/schedule/2026/home.htm",
+    "history": {
+      "latest_label": "最近一期",
+      "latest_value": "5月 +0.5% MoM / +4.2% YoY",
+      "previous_label": "前值",
+      "previous_value": "4月 +0.6% MoM / +3.8% YoY",
+      "change_label": "较前值",
+      "change_value": "MoM -0.1pct / YoY +0.4pct",
+      "change_tone": "neutral",
+      "note": "环比略降但同比抬升，需同时看核心项与能源项。",
+      "source_label": "BLS 2026-06-10 CPI Release"
+    }
   },
   {
     "id": "nbs-national-economic-performance-2026-h1",
@@ -240,5 +306,467 @@
     "importance": "high",
     "source_name": "NBS",
     "source_url": "https://www.stats.gov.cn/english/PressRelease/ReleaseCalendar/202512/t20251226_1962154.html"
+  },
+  {
+    "id": "bea-gdp-second-2026-q2",
+    "date": "2026-08-26",
+    "time_label": "08:30 ET",
+    "region": "海外",
+    "title": "美国 GDP 二次估算（2026Q2）",
+    "category": "GDP",
+    "importance": "medium",
+    "source_name": "BEA",
+    "source_url": "https://www.bea.gov/news/schedule"
+  },
+  {
+    "id": "nbs-pmi-2026-08",
+    "date": "2026-08-31",
+    "time_label": "09:30 CST",
+    "region": "国内",
+    "title": "中国官方 PMI（2026年8月）",
+    "category": "PMI",
+    "importance": "high",
+    "source_name": "NBS",
+    "source_url": "https://www.stats.gov.cn/xw/tjxw/tzgg/202512/t20251224_1962137.html"
+  },
+  {
+    "id": "ism-manufacturing-pmi-2026-09",
+    "date": "2026-09-01",
+    "time_label": "10:00 ET",
+    "region": "海外",
+    "title": "ISM Manufacturing PMI",
+    "category": "PMI",
+    "importance": "high",
+    "source_name": "ISM",
+    "source_url": "https://www.ismworld.org/supply-management-news-and-reports/reports/rob-report-calendar/"
+  },
+  {
+    "id": "ism-services-pmi-2026-09",
+    "date": "2026-09-03",
+    "time_label": "10:00 ET",
+    "region": "海外",
+    "title": "ISM Services PMI",
+    "category": "PMI",
+    "importance": "medium",
+    "source_name": "ISM",
+    "source_url": "https://www.ismworld.org/supply-management-news-and-reports/reports/rob-report-calendar/"
+  },
+  {
+    "id": "bls-employment-situation-2026-08",
+    "date": "2026-09-04",
+    "time_label": "08:30 ET",
+    "region": "海外",
+    "title": "美国非农就业报告（2026年8月）",
+    "category": "就业",
+    "importance": "high",
+    "source_name": "BLS",
+    "source_url": "https://www.bls.gov/schedule/2026/09_sched_list.htm"
+  },
+  {
+    "id": "nbs-cpi-ppi-2026-08",
+    "date": "2026-09-09",
+    "time_label": "09:30 CST",
+    "region": "国内",
+    "title": "中国 CPI / PPI（2026年8月）",
+    "category": "通胀",
+    "importance": "high",
+    "source_name": "NBS",
+    "source_url": "https://www.stats.gov.cn/xw/tjxw/tzgg/202512/t20251224_1962137.html"
+  },
+  {
+    "id": "bls-ppi-2026-08",
+    "date": "2026-09-10",
+    "time_label": "08:30 ET",
+    "region": "海外",
+    "title": "美国 PPI（2026年8月）",
+    "category": "通胀",
+    "importance": "medium",
+    "source_name": "BLS",
+    "source_url": "https://www.bls.gov/schedule/2026/09_sched_list.htm"
+  },
+  {
+    "id": "bls-cpi-2026-08",
+    "date": "2026-09-11",
+    "time_label": "08:30 ET",
+    "region": "海外",
+    "title": "美国 CPI（2026年8月）",
+    "category": "通胀",
+    "importance": "high",
+    "source_name": "BLS",
+    "source_url": "https://www.bls.gov/schedule/2026/09_sched_list.htm"
+  },
+  {
+    "id": "nbs-national-economic-performance-2026-08",
+    "date": "2026-09-15",
+    "time_label": "10:00 CST",
+    "region": "国内",
+    "title": "中国国民经济运行情况（2026年8月）",
+    "category": "增长",
+    "importance": "high",
+    "source_name": "NBS",
+    "source_url": "https://www.stats.gov.cn/xw/tjxw/tzgg/202512/t20251224_1962137.html"
+  },
+  {
+    "id": "fomc-2026-09",
+    "date": "2026-09-16",
+    "time_label": "9月15-16日",
+    "region": "海外",
+    "title": "FOMC 议息会议（含经济预测）",
+    "category": "货币政策",
+    "importance": "high",
+    "source_name": "Federal Reserve",
+    "source_url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm?os=0"
+  },
+  {
+    "id": "nbs-pmi-2026-09",
+    "date": "2026-09-30",
+    "time_label": "09:30 CST",
+    "region": "国内",
+    "title": "中国官方 PMI（2026年9月）",
+    "category": "PMI",
+    "importance": "high",
+    "source_name": "NBS",
+    "source_url": "https://www.stats.gov.cn/xw/tjxw/tzgg/202512/t20251224_1962137.html"
+  },
+  {
+    "id": "bea-gdp-third-2026-q2",
+    "date": "2026-09-30",
+    "time_label": "08:30 ET",
+    "region": "海外",
+    "title": "美国 GDP 三次估算（2026Q2）",
+    "category": "GDP",
+    "importance": "medium",
+    "source_name": "BEA",
+    "source_url": "https://www.bea.gov/news/schedule"
+  },
+  {
+    "id": "ism-manufacturing-pmi-2026-10",
+    "date": "2026-10-01",
+    "time_label": "10:00 ET",
+    "region": "海外",
+    "title": "ISM Manufacturing PMI",
+    "category": "PMI",
+    "importance": "high",
+    "source_name": "ISM",
+    "source_url": "https://www.ismworld.org/supply-management-news-and-reports/reports/rob-report-calendar/"
+  },
+  {
+    "id": "bls-employment-situation-2026-09",
+    "date": "2026-10-02",
+    "time_label": "08:30 ET",
+    "region": "海外",
+    "title": "美国非农就业报告（2026年9月）",
+    "category": "就业",
+    "importance": "high",
+    "source_name": "BLS",
+    "source_url": "https://www.bls.gov/schedule/2026/10_sched_list.htm"
+  },
+  {
+    "id": "ism-services-pmi-2026-10",
+    "date": "2026-10-05",
+    "time_label": "10:00 ET",
+    "region": "海外",
+    "title": "ISM Services PMI",
+    "category": "PMI",
+    "importance": "medium",
+    "source_name": "ISM",
+    "source_url": "https://www.ismworld.org/supply-management-news-and-reports/reports/rob-report-calendar/"
+  },
+  {
+    "id": "nbs-cpi-ppi-2026-09",
+    "date": "2026-10-14",
+    "time_label": "09:30 CST",
+    "region": "国内",
+    "title": "中国 CPI / PPI（2026年9月）",
+    "category": "通胀",
+    "importance": "high",
+    "source_name": "NBS",
+    "source_url": "https://www.stats.gov.cn/xw/tjxw/tzgg/202512/t20251224_1962137.html"
+  },
+  {
+    "id": "bls-cpi-2026-09",
+    "date": "2026-10-14",
+    "time_label": "08:30 ET",
+    "region": "海外",
+    "title": "美国 CPI（2026年9月）",
+    "category": "通胀",
+    "importance": "high",
+    "source_name": "BLS",
+    "source_url": "https://www.bls.gov/schedule/2026/10_sched_list.htm"
+  },
+  {
+    "id": "bls-ppi-2026-09",
+    "date": "2026-10-15",
+    "time_label": "08:30 ET",
+    "region": "海外",
+    "title": "美国 PPI（2026年9月）",
+    "category": "通胀",
+    "importance": "medium",
+    "source_name": "BLS",
+    "source_url": "https://www.bls.gov/schedule/2026/10_sched_list.htm"
+  },
+  {
+    "id": "nbs-national-economic-performance-2026-q3",
+    "date": "2026-10-19",
+    "time_label": "10:00 CST",
+    "region": "国内",
+    "title": "中国国民经济运行情况（2026年前三季度）",
+    "category": "增长",
+    "importance": "high",
+    "source_name": "NBS",
+    "source_url": "https://www.stats.gov.cn/xw/tjxw/tzgg/202512/t20251224_1962137.html"
+  },
+  {
+    "id": "fomc-2026-10",
+    "date": "2026-10-28",
+    "time_label": "10月27-28日",
+    "region": "海外",
+    "title": "FOMC 议息会议",
+    "category": "货币政策",
+    "importance": "high",
+    "source_name": "Federal Reserve",
+    "source_url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm?os=0"
+  },
+  {
+    "id": "bea-gdp-advance-2026-q3",
+    "date": "2026-10-29",
+    "time_label": "08:30 ET",
+    "region": "海外",
+    "title": "美国 GDP 初值（2026Q3）",
+    "category": "GDP",
+    "importance": "high",
+    "source_name": "BEA",
+    "source_url": "https://www.bea.gov/news/schedule"
+  },
+  {
+    "id": "nbs-pmi-2026-10",
+    "date": "2026-10-31",
+    "time_label": "09:30 CST",
+    "region": "国内",
+    "title": "中国官方 PMI（2026年10月）",
+    "category": "PMI",
+    "importance": "high",
+    "source_name": "NBS",
+    "source_url": "https://www.stats.gov.cn/xw/tjxw/tzgg/202512/t20251224_1962137.html"
+  },
+  {
+    "id": "ism-manufacturing-pmi-2026-11",
+    "date": "2026-11-02",
+    "time_label": "10:00 ET",
+    "region": "海外",
+    "title": "ISM Manufacturing PMI",
+    "category": "PMI",
+    "importance": "high",
+    "source_name": "ISM",
+    "source_url": "https://www.ismworld.org/supply-management-news-and-reports/reports/rob-report-calendar/"
+  },
+  {
+    "id": "ism-services-pmi-2026-11",
+    "date": "2026-11-04",
+    "time_label": "10:00 ET",
+    "region": "海外",
+    "title": "ISM Services PMI",
+    "category": "PMI",
+    "importance": "medium",
+    "source_name": "ISM",
+    "source_url": "https://www.ismworld.org/supply-management-news-and-reports/reports/rob-report-calendar/"
+  },
+  {
+    "id": "bls-employment-situation-2026-10",
+    "date": "2026-11-06",
+    "time_label": "08:30 ET",
+    "region": "海外",
+    "title": "美国非农就业报告（2026年10月）",
+    "category": "就业",
+    "importance": "high",
+    "source_name": "BLS",
+    "source_url": "https://www.bls.gov/schedule/2026/11_sched_list.htm"
+  },
+  {
+    "id": "nbs-cpi-ppi-2026-10",
+    "date": "2026-11-09",
+    "time_label": "09:30 CST",
+    "region": "国内",
+    "title": "中国 CPI / PPI（2026年10月）",
+    "category": "通胀",
+    "importance": "high",
+    "source_name": "NBS",
+    "source_url": "https://www.stats.gov.cn/xw/tjxw/tzgg/202512/t20251224_1962137.html"
+  },
+  {
+    "id": "bls-cpi-2026-10",
+    "date": "2026-11-10",
+    "time_label": "08:30 ET",
+    "region": "海外",
+    "title": "美国 CPI（2026年10月）",
+    "category": "通胀",
+    "importance": "high",
+    "source_name": "BLS",
+    "source_url": "https://www.bls.gov/schedule/2026/11_sched_list.htm"
+  },
+  {
+    "id": "bls-ppi-2026-10",
+    "date": "2026-11-13",
+    "time_label": "08:30 ET",
+    "region": "海外",
+    "title": "美国 PPI（2026年10月）",
+    "category": "通胀",
+    "importance": "medium",
+    "source_name": "BLS",
+    "source_url": "https://www.bls.gov/schedule/2026/11_sched_list.htm"
+  },
+  {
+    "id": "nbs-national-economic-performance-2026-10",
+    "date": "2026-11-16",
+    "time_label": "10:00 CST",
+    "region": "国内",
+    "title": "中国国民经济运行情况（2026年10月）",
+    "category": "增长",
+    "importance": "high",
+    "source_name": "NBS",
+    "source_url": "https://www.stats.gov.cn/xw/tjxw/tzgg/202512/t20251224_1962137.html"
+  },
+  {
+    "id": "bea-gdp-second-2026-q3",
+    "date": "2026-11-25",
+    "time_label": "08:30 ET",
+    "region": "海外",
+    "title": "美国 GDP 二次估算（2026Q3）",
+    "category": "GDP",
+    "importance": "medium",
+    "source_name": "BEA",
+    "source_url": "https://www.bea.gov/news/schedule"
+  },
+  {
+    "id": "nbs-pmi-2026-11",
+    "date": "2026-11-30",
+    "time_label": "09:30 CST",
+    "region": "国内",
+    "title": "中国官方 PMI（2026年11月）",
+    "category": "PMI",
+    "importance": "high",
+    "source_name": "NBS",
+    "source_url": "https://www.stats.gov.cn/xw/tjxw/tzgg/202512/t20251224_1962137.html"
+  },
+  {
+    "id": "ism-manufacturing-pmi-2026-12",
+    "date": "2026-12-01",
+    "time_label": "10:00 ET",
+    "region": "海外",
+    "title": "ISM Manufacturing PMI",
+    "category": "PMI",
+    "importance": "high",
+    "source_name": "ISM",
+    "source_url": "https://www.ismworld.org/supply-management-news-and-reports/reports/rob-report-calendar/"
+  },
+  {
+    "id": "ism-services-pmi-2026-12",
+    "date": "2026-12-03",
+    "time_label": "10:00 ET",
+    "region": "海外",
+    "title": "ISM Services PMI",
+    "category": "PMI",
+    "importance": "medium",
+    "source_name": "ISM",
+    "source_url": "https://www.ismworld.org/supply-management-news-and-reports/reports/rob-report-calendar/"
+  },
+  {
+    "id": "bls-employment-situation-2026-11",
+    "date": "2026-12-04",
+    "time_label": "08:30 ET",
+    "region": "海外",
+    "title": "美国非农就业报告（2026年11月）",
+    "category": "就业",
+    "importance": "high",
+    "source_name": "BLS",
+    "source_url": "https://www.bls.gov/schedule/2026/12_sched_list.htm"
+  },
+  {
+    "id": "nbs-cpi-ppi-2026-11",
+    "date": "2026-12-09",
+    "time_label": "09:30 CST",
+    "region": "国内",
+    "title": "中国 CPI / PPI（2026年11月）",
+    "category": "通胀",
+    "importance": "high",
+    "source_name": "NBS",
+    "source_url": "https://www.stats.gov.cn/xw/tjxw/tzgg/202512/t20251224_1962137.html"
+  },
+  {
+    "id": "fomc-2026-12",
+    "date": "2026-12-09",
+    "time_label": "12月8-9日",
+    "region": "海外",
+    "title": "FOMC 议息会议（含经济预测）",
+    "category": "货币政策",
+    "importance": "high",
+    "source_name": "Federal Reserve",
+    "source_url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm?os=0"
+  },
+  {
+    "id": "bls-cpi-2026-11",
+    "date": "2026-12-10",
+    "time_label": "08:30 ET",
+    "region": "海外",
+    "title": "美国 CPI（2026年11月）",
+    "category": "通胀",
+    "importance": "high",
+    "source_name": "BLS",
+    "source_url": "https://www.bls.gov/schedule/2026/12_sched_list.htm"
+  },
+  {
+    "id": "nbs-national-economic-performance-2026-11",
+    "date": "2026-12-15",
+    "time_label": "10:00 CST",
+    "region": "国内",
+    "title": "中国国民经济运行情况（2026年11月）",
+    "category": "增长",
+    "importance": "high",
+    "source_name": "NBS",
+    "source_url": "https://www.stats.gov.cn/xw/tjxw/tzgg/202512/t20251224_1962137.html"
+  },
+  {
+    "id": "bls-ppi-2026-11",
+    "date": "2026-12-15",
+    "time_label": "08:30 ET",
+    "region": "海外",
+    "title": "美国 PPI（2026年11月）",
+    "category": "通胀",
+    "importance": "medium",
+    "source_name": "BLS",
+    "source_url": "https://www.bls.gov/schedule/2026/12_sched_list.htm"
+  },
+  {
+    "id": "ism-supply-chain-forecast-2026-winter",
+    "date": "2026-12-16",
+    "time_label": "10:00 ET",
+    "region": "海外",
+    "title": "ISM Supply Chain Planning Forecast",
+    "category": "景气",
+    "importance": "medium",
+    "source_name": "ISM",
+    "source_url": "https://www.ismworld.org/supply-management-news-and-reports/reports/rob-report-calendar/"
+  },
+  {
+    "id": "bea-gdp-third-2026-q3",
+    "date": "2026-12-23",
+    "time_label": "08:30 ET",
+    "region": "海外",
+    "title": "美国 GDP 三次估算（2026Q3）",
+    "category": "GDP",
+    "importance": "medium",
+    "source_name": "BEA",
+    "source_url": "https://www.bea.gov/news/schedule"
+  },
+  {
+    "id": "nbs-pmi-2026-12",
+    "date": "2026-12-31",
+    "time_label": "09:30 CST",
+    "region": "国内",
+    "title": "中国官方 PMI（2026年12月）",
+    "category": "PMI",
+    "importance": "high",
+    "source_name": "NBS",
+    "source_url": "https://www.stats.gov.cn/xw/tjxw/tzgg/202512/t20251224_1962137.html"
   }
 ]

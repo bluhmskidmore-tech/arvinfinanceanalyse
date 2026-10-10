@@ -61,3 +61,5 @@ def test_macro_score_golden_snapshot() -> None:
     assert round(snapshot.macro_score, 6) == 0.752917
     assert round(snapshot.credit_impulse_value, 6) == 0.7
     assert snapshot.pmi_value == _GOLDEN_PMI
+    assert snapshot.lineage["credit_impulse"]["series_id"] == "M5525763"
+    assert snapshot.lineage["credit_impulse"]["unit"] == "ppt"

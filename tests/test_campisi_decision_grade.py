@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from types import SimpleNamespace
 
 import duckdb
 import pytest
 
+from backend.app.core_finance.campisi_decision_grade import compute_decision_grade_row
 from backend.app.services import campisi_attribution_service as campisi_svc
 
 
@@ -388,7 +390,9 @@ def test_decision_grade_campisi_closes_formal_pnl_and_separates_valuation_view(
     result = envelope["result"]
     assert envelope["result_meta"]["result_kind"] == "campisi.decision_grade"
     assert result["summary"]["formal_actual_pnl"] == pytest.approx(107.0)
-    assert result["summary"]["explained_pnl"] == pytest.approx(107.0)
+    # explained_pnl 只累加固定因子（不含 selection_proxy=98/residual_noise=0），
+    # 因此 = 107 - 98 = 9，而不再等于 actual（此前的假门禁恒等）。
+    assert result["summary"]["explained_pnl"] == pytest.approx(9.0)
     assert result["summary"]["residual_noise"] == pytest.approx(0.0)
     assert result["formal_pnl_view"]["components"]["carry"] == pytest.approx(17.0)
     assert result["formal_pnl_view"]["components"]["rate_level_effect"] == pytest.approx(-20.0)
@@ -397,6 +401,12 @@ def test_decision_grade_campisi_closes_formal_pnl_and_separates_valuation_view(
     assert result["formal_pnl_view"]["components"]["realized_trading"] == pytest.approx(5.0)
     assert result["formal_pnl_view"]["components"]["manual_adjustment"] == pytest.approx(2.0)
     assert result["formal_pnl_view"]["components"]["selection_proxy"] == pytest.approx(98.0)
+    # 真实闭合：explained(9) 未能解释的缺口 = selection_proxy(98)，闭合差异必须暴露且判为未闭合。
+    closure = result["formal_pnl_view"]["closure"]
+    assert result["formal_pnl_view"]["explained_pnl"] == pytest.approx(9.0)
+    assert closure["difference"] == pytest.approx(98.0)
+    assert closure["status"] != "closed"
+    assert closure["status"] == "error"
     assert result["valuation_oci_view"]["total_valuation_change_516"] == pytest.approx(70.0)
     assert result["valuation_oci_view"]["fvoci_valuation_change_516"] == pytest.approx(50.0)
     assert result["valuation_oci_view"]["fvtpl_valuation_change_516"] == pytest.approx(20.0)
@@ -429,6 +439,66 @@ def test_decision_grade_missing_curve_goes_to_residual_noise_not_selection_proxy
 
     assert result["formal_pnl_view"]["components"]["selection_proxy"] == pytest.approx(0.0)
     assert result["formal_pnl_view"]["components"]["residual_noise"] == pytest.approx(83.0)
-    assert result["summary"]["quality_flag"] == "warning"
+    # 缺曲线导致 83/107 未被固定因子解释：closure=error 必须上抛为 error 级质量信号。
+    assert result["formal_pnl_view"]["closure"]["status"] == "error"
+    assert result["summary"]["quality_flag"] == "error"
     assert result["residual_diagnostics"]["missing_curve_count"] > 0
     assert any("曲线" in warning for warning in result["warnings"])
+
+
+# ---------------------------------------------------------------------------
+# M-3 回归：years_to_maturity 的 0 与缺失不得混淆（0 是有效值，缺失才回退 3Y）
+# ---------------------------------------------------------------------------
+
+# 1Y 点不变、3Y 点 +2pct：短端 tenor shift = 0，3Y tenor shift = 0.02，
+# 平行分量 dy_level = 0.01。用 curve_shape_effect 区分短端 vs 3Y 兜底。
+_M3_TREASURY_START = {"1Y": Decimal("2.0"), "3Y": Decimal("2.0")}
+_M3_TREASURY_END = {"1Y": Decimal("2.0"), "3Y": Decimal("4.0")}
+
+
+def _m3_row(years_to_maturity) -> dict:
+    return {
+        "actual_pnl": 0.0,
+        "carry": 0.0,
+        "realized_trading": 0.0,
+        "manual_adjustment": 0.0,
+        "market_value": 100.0,
+        "modified_duration": 1.0,
+        "convexity": 0.0,
+        "spread_dv01": 0.0,
+        "years_to_maturity": years_to_maturity,
+        "is_credit": False,
+    }
+
+
+def _m3_curve_shape_effect(years_to_maturity) -> Decimal:
+    result = compute_decision_grade_row(
+        _m3_row(years_to_maturity),
+        treasury_start=_M3_TREASURY_START,
+        treasury_end=_M3_TREASURY_END,
+        credit_start_by_rating={},
+        credit_end_by_rating={},
+    )
+    return result["components"]["curve_shape_effect"]
+
+
+def test_decision_grade_zero_years_to_maturity_is_valid_short_end_not_3y_fallback() -> None:
+    """years_to_maturity=0（当日到期）应按短端取值，而不是被 `or` 兜底成 3Y。
+
+    短端（钳到 1Y 点）：dy_tenor=0 → curve_shape = -1*100*(0-0.01) = +1。
+    若误回退 3Y：dy_tenor=0.02 → curve_shape = -1*100*(0.02-0.01) = -1。
+    """
+    assert _m3_curve_shape_effect(0.0) == pytest.approx(1.0)
+
+
+def test_decision_grade_missing_years_to_maturity_still_falls_back_to_3y() -> None:
+    """缺失（None）保持既有 3Y 兜底行为不变，并披露 diagnostics。"""
+    assert _m3_curve_shape_effect(None) == pytest.approx(-1.0)
+    result = compute_decision_grade_row(
+        _m3_row(None),
+        treasury_start=_M3_TREASURY_START,
+        treasury_end=_M3_TREASURY_END,
+        credit_start_by_rating={},
+        credit_end_by_rating={},
+    )
+    assert "years_to_maturity_missing_fallback_3y" in result["diagnostics"]

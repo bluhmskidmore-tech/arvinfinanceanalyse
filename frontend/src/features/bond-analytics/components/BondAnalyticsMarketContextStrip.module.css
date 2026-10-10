@@ -1,0 +1,150 @@
+/* 真值与证据属于次级元信息；保留全部状态，以底线和对齐形成横条。 */
+.contextPanel {
+  min-width: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+/* 证据标题降低为标签层级，主判断保留最高阅读优先级。 */
+.panelHeader {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 2px 12px;
+  min-height: 24px;
+  padding: 0 0 var(--moss-space-1);
+  border-bottom: 0;
+}
+
+.panelTitle {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.leadModule {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  align-items: baseline;
+  min-width: 0;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+.leadModule strong {
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.leadModule span {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+/* 四类证据等宽排布；标签与读数同一基线。 */
+.truthStrip {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+
+.truthCell {
+  display: flex;
+  gap: var(--moss-space-1) var(--moss-space-2);
+  align-content: center;
+  min-width: 0;
+  min-height: 32px;
+  padding: var(--moss-space-1) var(--moss-space-3);
+  border-right: 0;
+  box-sizing: border-box;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+
+.truthCell:last-child {
+  border-right: 0;
+}
+
+.truthLabel {
+  overflow: hidden;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 语义色只落在读数上（§5 色块减负）。 */
+.truthValue {
+  overflow: visible;
+  color: var(--dh-api-ink);
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 18px;
+  white-space: normal;
+}
+
+.truthCell[data-tone="positive"] .truthValue {
+  color: var(--dh-api-green);
+}
+
+.truthCell[data-tone="warning"] .truthValue {
+  color: var(--dh-api-amber);
+}
+
+.truthCell[data-tone="negative"] .truthValue {
+  color: var(--dh-api-red);
+}
+
+@media (max-width: 1180px) {
+  .truthStrip {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .truthCell {
+    border-bottom: 1px solid var(--dh-api-line-soft);
+  }
+
+  .truthCell:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .truthCell:nth-last-child(-n + 2) {
+    border-bottom: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .truthStrip {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .truthCell {
+    border-right: 0;
+  }
+
+  .truthCell:nth-last-child(-n + 2) {
+    border-bottom: 1px solid var(--dh-api-line-soft);
+  }
+
+  .truthCell:last-child {
+    border-bottom: 0;
+  }
+}
+
+.truthCell:first-child { padding-left: 0; }

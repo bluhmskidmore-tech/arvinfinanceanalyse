@@ -9,6 +9,7 @@ from backend.app.repositories.external_data_catalog_repo import (
     ExternalDataCatalogRepository,
     ensure_external_data_catalog_schema,
 )
+from backend.app.repositories.task_write_guard import repository_task_write_scope
 from backend.app.schemas.external_data import ExternalDataCatalogEntry
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from backend.app.services.external_data_query_service import fetch_series_data_page
@@ -56,7 +57,8 @@ def _register_catalog_entry(conn: duckdb.DuckDBPyConnection) -> ExternalDataCata
         catalog_version="research.calendar.v1",
         created_at="2026-04-23T00:00:00+00:00",
     )
-    ExternalDataCatalogRepository(conn=conn).register(entry)
+    with repository_task_write_scope("backend.app.tasks.external_data_catalog_seed_test"):
+        ExternalDataCatalogRepository(conn=conn).register(entry)
     return entry
 
 

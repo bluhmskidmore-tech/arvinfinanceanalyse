@@ -6,6 +6,8 @@ import os
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
 from backend.app.governance.settings import (
     DEV_POSTGRES_DSN,
     Settings,
@@ -28,6 +30,7 @@ def test_settings_defaults(monkeypatch):
     s = Settings(_env_file=None)
     assert s.environment == "development"
     assert s.agent_enabled is False
+    assert s.agent_dev_scope_bypass is False
     assert s.agent_provider == "local"
     assert s.agent_hermes_command == "wsl.exe"
     assert s.agent_hermes_wsl_distro == "HermesUbuntu"
@@ -43,6 +46,9 @@ def test_settings_defaults(monkeypatch):
     assert s.agent_dexter_model == ""
     assert s.agent_dexter_toolsets == ""
     assert s.agent_dexter_timeout_seconds == 180.0
+    assert s.agent_pi_forward_api_key is False
+    assert s.agent_run_queued_timeout_seconds == 600.0
+    assert s.agent_action_token_secret == ""
     assert s.governance_backend == "jsonl"
     assert s.object_store_mode == "local"
     assert s.ftp_rate_pct == Decimal("1.75")
@@ -56,6 +62,7 @@ def test_settings_env_overrides(monkeypatch):
     repo_root = Path(__file__).resolve().parents[1]
     monkeypatch.setenv("MOSS_ENVIRONMENT", "staging")
     monkeypatch.setenv("MOSS_AGENT_ENABLED", "true")
+    monkeypatch.setenv("MOSS_AGENT_DEV_SCOPE_BYPASS", "true")
     monkeypatch.setenv("MOSS_AGENT_PROVIDER", "hermes")
     monkeypatch.setenv("MOSS_AGENT_HERMES_COMMAND", "custom-hermes")
     monkeypatch.setenv("MOSS_AGENT_HERMES_WSL_DISTRO", "CustomUbuntu")
@@ -71,6 +78,9 @@ def test_settings_env_overrides(monkeypatch):
     monkeypatch.setenv("MOSS_AGENT_DEXTER_MODEL", "dexter-test")
     monkeypatch.setenv("MOSS_AGENT_DEXTER_TOOLSETS", "sql,files")
     monkeypatch.setenv("MOSS_AGENT_DEXTER_TIMEOUT_SECONDS", "22.5")
+    monkeypatch.setenv("MOSS_AGENT_PI_FORWARD_API_KEY", "true")
+    monkeypatch.setenv("MOSS_AGENT_RUN_QUEUED_TIMEOUT_SECONDS", "45.5")
+    monkeypatch.setenv("MOSS_AGENT_ACTION_TOKEN_SECRET", "contract-test-secret")
     monkeypatch.setenv("MOSS_GOVERNANCE_BACKEND", "sql-authority")
     monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "minio")
     monkeypatch.setenv("MOSS_FTP_RATE_PCT", "2.5")
@@ -81,6 +91,7 @@ def test_settings_env_overrides(monkeypatch):
     s = Settings(_env_file=None)
     assert s.environment == "staging"
     assert s.agent_enabled is True
+    assert s.agent_dev_scope_bypass is True
     assert s.agent_provider == "hermes"
     assert s.agent_hermes_command == "custom-hermes"
     assert s.agent_hermes_wsl_distro == "CustomUbuntu"
@@ -96,12 +107,105 @@ def test_settings_env_overrides(monkeypatch):
     assert s.agent_dexter_model == "dexter-test"
     assert s.agent_dexter_toolsets == "sql,files"
     assert s.agent_dexter_timeout_seconds == 22.5
+    assert s.agent_pi_forward_api_key is True
+    assert s.agent_run_queued_timeout_seconds == 45.5
+    assert s.agent_action_token_secret == "contract-test-secret"
     assert s.governance_backend == "sql-authority"
     assert s.object_store_mode == "minio"
     assert s.ftp_rate_pct == Decimal("2.5")
     assert s.governance_path == (repo_root / "custom" / "gov").resolve()
     assert s.data_input_root == (repo_root / "custom" / "in").resolve()
     assert s.local_archive_path == (repo_root / "custom" / "archive").resolve()
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {
+            "environment": "development",
+            "agent_provider": "local",
+            "agent_hermes_transport": "cli",
+            "agent_dexter_transport": "cli",
+            "governance_backend": "jsonl",
+            "source_preview_governance_backend": "jsonl",
+            "object_store_mode": "local",
+        },
+        {
+            "environment": "staging",
+            "agent_provider": "hermes",
+            "agent_hermes_transport": "bridge",
+            "agent_dexter_transport": "sidecar",
+            "governance_backend": "sql-authority",
+            "source_preview_governance_backend": "sql-shadow",
+            "object_store_mode": "minio",
+        },
+        {
+            "environment": "test",
+            "agent_provider": "dexter",
+            "agent_hermes_transport": "cli",
+            "agent_dexter_transport": "sidecar",
+            "governance_backend": "jsonl",
+            "source_preview_governance_backend": "jsonl",
+            "object_store_mode": "local",
+        },
+        {
+            "environment": "production",
+            "agent_provider": "hermes",
+            "agent_hermes_transport": "bridge",
+            "agent_dexter_transport": "sidecar",
+            "governance_backend": "sql-authority",
+            "source_preview_governance_backend": "sql-authority",
+            "object_store_mode": "minio",
+        },
+    ],
+)
+def test_settings_accepts_all_known_closed_set_values(monkeypatch, values):
+    _clear_moss_env(monkeypatch)
+
+    settings = Settings(_env_file=None, **values)
+
+    for field_name, expected in values.items():
+        assert getattr(settings, field_name) == expected
+
+
+def test_settings_rejects_unknown_environment_with_legal_values(monkeypatch):
+    _clear_moss_env(monkeypatch)
+
+    with pytest.raises(ValueError) as exc_info:
+        Settings(environment="prodcution", _env_file=None)
+
+    message = str(exc_info.value)
+    for legal_value in ("development", "production", "staging", "test"):
+        assert legal_value in message
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "agent_hermes_max_turns",
+        "agent_hermes_timeout_seconds",
+        "agent_dexter_timeout_seconds",
+        "agent_run_queued_timeout_seconds",
+        "agent_run_stream_retention_days",
+        "choice_timeout_seconds",
+    ],
+)
+def test_settings_rejects_nonpositive_runtime_limits(monkeypatch, field_name):
+    _clear_moss_env(monkeypatch)
+
+    with pytest.raises(ValueError, match="greater than 0"):
+        Settings(_env_file=None, **{field_name: 0})
+
+
+def test_agent_run_queued_timeout_default_matches_run_service_constant(monkeypatch):
+    """防漂移：settings 正式缺省值必须与 run 切片的 getattr 回退常量一致。"""
+    from backend.app.services.agent_run_service import AGENT_RUN_QUEUED_STALE_SECONDS
+
+    _clear_moss_env(monkeypatch)
+
+    assert Settings(_env_file=None).agent_run_queued_timeout_seconds == (
+        AGENT_RUN_QUEUED_STALE_SECONDS
+    )
 
 
 def test_home_snapshot_prewarm_can_be_disabled_by_env(monkeypatch):
@@ -117,7 +221,7 @@ def test_settings_core_storage_paths_resolve_relative_to_repo_root(monkeypatch):
     _clear_moss_env(monkeypatch)
     repo_root = Path(__file__).resolve().parents[1]
 
-    s = Settings()
+    s = Settings(_env_file=None)
 
     assert s.duckdb_path == str((repo_root / "data" / "moss.duckdb").resolve())
     assert s.choice_stock_catalog_file == str((repo_root / "config" / "choice_stock_catalog.json").resolve())
@@ -222,3 +326,82 @@ def test_resolve_data_input_root_path_moss_env_overrides_raw_files_layout(tmp_pa
     resolved = resolve_data_input_root_path(repo_root=repo_root, pydantic_value=Path("explicit_drop"))
 
     assert resolved == explicit.resolve()
+
+
+def test_data_input_root_from_dotenv_file_ranks_highest(tmp_path, monkeypatch):
+    """MOSS_DATA_INPUT_ROOT provided via an .env file (not os.environ) must
+    keep its documented top priority over RAW_FILES_DIR and directory probes."""
+    _clear_moss_env(monkeypatch)
+    repo_root = Path(__file__).resolve().parents[1]
+    monkeypatch.setenv("RAW_FILES_DIR", "v1_env_raw")
+    env_file = tmp_path / ".env"
+    env_file.write_text("MOSS_DATA_INPUT_ROOT=dotenv_in\n", encoding="utf-8")
+
+    s = Settings(_env_file=str(env_file))
+
+    assert s.data_input_root == (repo_root / "dotenv_in").resolve()
+
+
+def test_data_input_root_constructor_arg_ranks_highest(monkeypatch):
+    _clear_moss_env(monkeypatch)
+    repo_root = Path(__file__).resolve().parents[1]
+    monkeypatch.setenv("RAW_FILES_DIR", "v1_env_raw")
+
+    s = Settings(_env_file=None, data_input_root=Path("ctor_in"))
+
+    assert s.data_input_root == (repo_root / "ctor_in").resolve()
+
+
+def test_settings_production_defaults_governance_backends_to_sql_authority(monkeypatch):
+    _clear_moss_env(monkeypatch)
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "production")
+
+    s = Settings(_env_file=None)
+
+    assert s.governance_backend == "sql-authority"
+    assert s.source_preview_governance_backend == "sql-authority"
+
+
+def test_settings_production_rejects_explicit_jsonl_governance_backend(monkeypatch):
+    _clear_moss_env(monkeypatch)
+
+    try:
+        Settings(environment="production", governance_backend="jsonl", _env_file=None)
+    except ValueError as exc:
+        assert "production" in str(exc)
+        assert "governance_backend" in str(exc)
+        assert "jsonl" in str(exc)
+    else:
+        raise AssertionError("production governance backend must reject explicit jsonl")
+
+
+def test_settings_production_rejects_explicit_jsonl_source_preview_backend(monkeypatch):
+    _clear_moss_env(monkeypatch)
+
+    try:
+        Settings(
+            environment="production",
+            source_preview_governance_backend="jsonl",
+            _env_file=None,
+        )
+    except ValueError as exc:
+        assert "production" in str(exc)
+        assert "source_preview_governance_backend" in str(exc)
+        assert "jsonl" in str(exc)
+    else:
+        raise AssertionError("production source preview governance backend must reject explicit jsonl")
+
+
+def test_settings_production_rejects_jsonl_governance_backend_env(monkeypatch):
+    _clear_moss_env(monkeypatch)
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "production")
+    monkeypatch.setenv("MOSS_GOVERNANCE_BACKEND", "jsonl")
+
+    try:
+        Settings(_env_file=None)
+    except ValueError as exc:
+        assert "production" in str(exc)
+        assert "governance_backend" in str(exc)
+        assert "jsonl" in str(exc)
+    else:
+        raise AssertionError("production governance backend env must reject jsonl")

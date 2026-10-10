@@ -1,66 +1,77 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Card, Spin } from "antd";
+import { Alert } from "antd";
 
 import { useApiClient } from "../../../api/client";
-import ReactECharts from "../../../lib/echarts";
-import { bondAnalyticsQueryKeyRoot } from "../lib/bondAnalyticsQueryKeys";
+import type { ApiEnvelope, YieldCurveTermStructurePayload } from "../../../api/contracts";
+import { apiQueryKeys } from "../../../api/queryKeys";
+import { ChartCard } from "../../../components/charts/ChartCard";
+import {
+  formatYieldCurveDateSummary,
+  summarizeYieldCurveDates,
+} from "../../../lib/yieldCurveDateSummary";
+import {
+  BOND_ANALYTICS_COCKPIT_YIELD_CURVE_TYPES,
+  type BundleSectionQuery,
+} from "../lib/bondAnalyticsCockpitBundleQuery";
 import { buildYieldCurveTermStructureChartOption } from "../lib/yieldCurveTermStructureChartOption";
 import styles from "./BondAnalyticsYieldCurveTermStructureChart.module.css";
 
 export type BondAnalyticsYieldCurveTermStructureChartProps = {
   reportDate: string;
+  bundledYieldCurveQuery?: BundleSectionQuery<"yield-curve-term-structure">;
 };
 
 export function BondAnalyticsYieldCurveTermStructureChart({
   reportDate,
+  bundledYieldCurveQuery,
 }: BondAnalyticsYieldCurveTermStructureChartProps) {
   const client = useApiClient();
-  const q = useQuery({
-    queryKey: [
-      ...bondAnalyticsQueryKeyRoot,
-      "yield-curve-term-structure",
+  const hasBundledYieldCurveQuery = bundledYieldCurveQuery !== undefined;
+  const directYieldCurveQ = useQuery<ApiEnvelope<YieldCurveTermStructurePayload>, Error>({
+    queryKey: apiQueryKeys.bondAnalyticsYieldCurveTermStructure(
       client.mode,
       reportDate,
-    ],
+      BOND_ANALYTICS_COCKPIT_YIELD_CURVE_TYPES,
+    ),
     queryFn: () =>
       client.getBondAnalyticsYieldCurveTermStructure(reportDate, {
-        curveTypes: "treasury,cdb",
+        curveTypes: BOND_ANALYTICS_COCKPIT_YIELD_CURVE_TYPES,
       }),
-    enabled: Boolean(reportDate),
+    enabled: !hasBundledYieldCurveQuery && Boolean(reportDate),
     retry: false,
     staleTime: 60_000,
   });
+  const q = bundledYieldCurveQuery ?? directYieldCurveQ;
 
   const option = useMemo(
     () => buildYieldCurveTermStructureChartOption(q.data?.result.curves ?? []),
     [q.data?.result.curves],
   );
 
+  const dateSummary = useMemo(
+    () => summarizeYieldCurveDates(q.data?.result.curves ?? []),
+    [q.data?.result.curves],
+  );
+  const dateLabel = formatYieldCurveDateSummary(dateSummary);
   const meta = q.data?.result_meta;
   const warnings = q.data?.result.warnings ?? [];
   const stale =
     meta?.vendor_status === "vendor_stale" || meta?.fallback_mode === "latest_snapshot";
-  const firstCurve = q.data?.result.curves[0];
-  const resolved = firstCurve?.trade_date_resolved;
-  const requested = firstCurve?.trade_date_requested;
+
 
   return (
-    <Card
-      size="small"
-      title="即期曲线期限结构 (1Y–30Y，正式)"
-      data-testid="bond-analytics-yield-curve-term-structure"
+    <ChartCard
+      title="即期曲线期限结构"
+      question="1Y–30Y，正式"
+      asOf={dateLabel}
+      height={280}
+      option={q.isPending || q.isError ? null : option}
+      state={q.isPending ? "loading" : q.isError ? "error" : stale ? "stale" : undefined}
+      errorMessage={q.error instanceof Error ? q.error.message : "期限结构加载失败"}
+      emptyMessage="暂无正式曲线截面（或全部期限缺失）"
+      testId="bond-analytics-yield-curve-term-structure"
     >
-      <div className={styles.subtitle}>
-        {resolved && requested && resolved !== requested ? (
-          <span>曲线交易日已回退为 {resolved}（请求日 {requested}）。</span>
-        ) : resolved ? (
-          <span>曲线交易日：{resolved}。</span>
-        ) : (
-          <span>曲线交易日：未解析。</span>
-        )}
-        {stale ? <span> 数据可能非当日。</span> : null}
-      </div>
       {warnings.length > 0 ? (
         <div className={styles.warningStack}>
           {warnings.map((w) => (
@@ -68,24 +79,6 @@ export function BondAnalyticsYieldCurveTermStructureChart({
           ))}
         </div>
       ) : null}
-      {q.isError ? (
-        <Alert
-          type="warning"
-          showIcon
-          message="期限结构未就绪"
-          description={q.error instanceof Error ? q.error.message : "加载失败"}
-        />
-      ) : q.isPending ? (
-        <div className={styles.spinWrap}>
-          <Spin />
-        </div>
-      ) : option && (q.data?.result.curves.length ?? 0) > 0 ? (
-        <div className={styles.chart}>
-          <ReactECharts option={option} opts={{ renderer: "canvas" }} />
-        </div>
-      ) : (
-        <div className={styles.empty}>暂无正式曲线截面（或全部期限缺失）</div>
-      )}
-    </Card>
+    </ChartCard>
   );
 }

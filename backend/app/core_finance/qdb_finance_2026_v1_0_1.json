@@ -1,0 +1,3944 @@
+{
+  "metadata": {
+    "rule_version": "qdb-finance-2026-v1.0.1",
+    "schema_version": "1.0",
+    "currency": "CNX",
+    "raw_amount_unit": "元",
+    "output_amount_unit": "亿元",
+    "conversion_divisor": "100000000",
+    "generated_on": "2026-07-11",
+    "derived_from": [
+      {
+        "file": "2026年财务指标表-3月最终(2).xlsx",
+        "sha256": "73d475d77d04a89d9d7eae5b9853ef5b604c413625eb308c1af9fd175aa17aeb",
+        "sheets": [
+          "2026年账",
+          "2026年日均",
+          "2026年营收总量",
+          "分部基础数据（2026）",
+          "非息",
+          "月度分析-总体"
+        ]
+      },
+      {
+        "file": "总账对账202606.xlsx",
+        "sha256": "29717578b92e107cc2fbcd5b66cd7c63191c24e1a7d245c103c94e235331c0b7",
+        "purpose": "2026-06 source validation"
+      },
+      {
+        "file": "日均202606.xlsx",
+        "sha256": "49e9a5b06c30656aaa07ef583d459dfff514ddd478640b0fb6f0b355d9758498",
+        "purpose": "2026-06 source validation"
+      }
+    ],
+    "important_limitations": [
+      "预算、上年同期、年初、上月、子公司营业收入、并表抵销和业绩还原调整不在三份源文件内，必须由references或overrides传入。",
+      "模板若改科目口径，应提升rule_version，不可原地覆盖历史规则。"
+    ]
+  },
+  "source_split_rules": {
+    "ledger": {
+      "file_role": "总账对账",
+      "selected_sheet": "综本",
+      "excluded_sheets": [
+        {
+          "sheet": "人民币",
+          "reason": "CNY子口径，和CNX并用会重复"
+        },
+        {
+          "sheet": "青岛地区综本",
+          "reason": "地区子集，和综本并用会重复"
+        }
+      ],
+      "header_detection": "扫描前50行，找到包含“组合科目代码”的行，不绑定固定行号",
+      "required_fields": [
+        "组合科目代码",
+        "组合科目名称",
+        "币种",
+        "期初余额",
+        "本期借方",
+        "本期贷方",
+        "期末余额"
+      ],
+      "normalized_fields": {
+        "一级科目": "组合科目代码前3位",
+        "二级科目": "组合科目代码前5位",
+        "三级科目": "组合科目代码前7位",
+        "组合科目代码": "完整11位字符串",
+        "amounts": "保留原始正负号，原始单位元"
+      },
+      "currency_filter": "CNX",
+      "period_source": "包含“会计期间”的元数据文本"
+    },
+    "daily": {
+      "file_role": "日均",
+      "sheets": {
+        "年": {
+          "meaning": "年累计日均",
+          "period_rule": "1月1日至当期截止日"
+        },
+        "月": {
+          "meaning": "当月日均",
+          "period_rule": "自然月首日至月末"
+        },
+        "微贷": {
+          "meaning": "微贷年日均、月日均及微贷总账"
+        }
+      },
+      "main_blocks": [
+        {
+          "columns": "A:C",
+          "currency": "CNX",
+          "level": "一级/3位"
+        },
+        {
+          "columns": "E:G",
+          "currency": "CNX",
+          "level": "二级/5位"
+        },
+        {
+          "columns": "I:K",
+          "currency": "CNX",
+          "level": "三级/7位"
+        },
+        {
+          "columns": "M:O",
+          "currency": "CNX",
+          "level": "完整/11位"
+        }
+      ],
+      "ignored_blocks": "Q:AE的CNY块不参与CNX指标计算",
+      "microloan": {
+        "ytd_average": "A:C",
+        "month_average": "E:G",
+        "ledger": "I:O中最后一个“组合科目代码”表头后的汇总块，以期末余额为值",
+        "codes_used_for_loan": [
+          "122",
+          "130"
+        ],
+        "income_codes_used": [
+          "501",
+          "511",
+          "527",
+          "531",
+          "533"
+        ]
+      }
+    },
+    "target_layout_reference": {
+      "2026年账": [
+        "一级科目",
+        "二级科目",
+        "组合科目代码",
+        "组合科目名称",
+        "币种",
+        "期初余额",
+        "本期借方",
+        "本期贷方",
+        "期末余额"
+      ],
+      "2026年日均": "年日均3/5/7/11位 + 微贷年日均/总账 + 月日均3/5/7/11位 + 微贷月日均"
+    }
+  },
+  "scale_rules": [
+    {
+      "id": "balance.deposit.corporate.demand",
+      "name": "公司存款活期",
+      "category": "规模",
+      "unit": "亿元",
+      "available_bases": [
+        "point",
+        "ytd_average",
+        "month_average"
+      ],
+      "notes": "时点按203/204一级科目；日均按20301000001、20401000001精确科目，严格复刻模板。负债输出转正。",
+      "terms_by_basis": {
+        "point": [
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "201",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "203",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "204",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "243",
+            "weight": "-1"
+          }
+        ],
+        "ytd_average": [
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "201",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "full",
+            "code": "20301000001",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "full",
+            "code": "20401000001",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "243",
+            "weight": "-1"
+          }
+        ],
+        "month_average": [
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "201",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "full",
+            "code": "20301000001",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "full",
+            "code": "20401000001",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "243",
+            "weight": "-1"
+          }
+        ]
+      }
+    },
+    {
+      "id": "balance.deposit.corporate.term",
+      "name": "公司存款定期",
+      "category": "规模",
+      "unit": "亿元",
+      "available_bases": [
+        "point",
+        "ytd_average",
+        "month_average"
+      ],
+      "terms": [
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "202",
+          "weight": "-1"
+        },
+        {
+          "source": "main",
+          "level": "l2",
+          "code": "20250",
+          "weight": "1"
+        },
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "205",
+          "weight": "-1"
+        },
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "225",
+          "weight": "-1"
+        },
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "244",
+          "weight": "-1"
+        },
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "251",
+          "weight": "-1"
+        }
+      ],
+      "notes": "202一级科目剔除20250后，与205/225/244/251合并。"
+    },
+    {
+      "id": "balance.deposit.corporate.structured",
+      "name": "公司结构性存款",
+      "category": "规模",
+      "unit": "亿元",
+      "available_bases": [
+        "point",
+        "ytd_average",
+        "month_average"
+      ],
+      "terms": [
+        {
+          "source": "main",
+          "level": "l2",
+          "code": "21601",
+          "weight": "-1"
+        }
+      ]
+    },
+    {
+      "id": "balance.deposit.corporate.total",
+      "name": "公司存款合计",
+      "category": "规模",
+      "unit": "亿元",
+      "available_bases": [
+        "point",
+        "ytd_average",
+        "month_average"
+      ],
+      "notes": "时点按203/204一级科目；日均按精确科目。结构性合计仅取21601020001。",
+      "terms_by_basis": {
+        "point": [
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "201",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "202",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "203",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "204",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "205",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "225",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "243",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "244",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "251",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "l2",
+            "code": "20250",
+            "weight": "1"
+          },
+          {
+            "source": "main",
+            "level": "full",
+            "code": "21601020001",
+            "weight": "-1"
+          }
+        ],
+        "ytd_average": [
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "201",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "202",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "205",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "225",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "243",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "244",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "251",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "full",
+            "code": "20301000001",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "full",
+            "code": "20401000001",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "l2",
+            "code": "20250",
+            "weight": "1"
+          },
+          {
+            "source": "main",
+            "level": "full",
+            "code": "21601020001",
+            "weight": "-1"
+          }
+        ],
+        "month_average": [
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "201",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "202",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "205",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "225",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "243",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "244",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "l1",
+            "code": "251",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "full",
+            "code": "20301000001",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "full",
+            "code": "20401000001",
+            "weight": "-1"
+          },
+          {
+            "source": "main",
+            "level": "l2",
+            "code": "20250",
+            "weight": "1"
+          },
+          {
+            "source": "main",
+            "level": "full",
+            "code": "21601020001",
+            "weight": "-1"
+          }
+        ]
+      }
+    },
+    {
+      "id": "balance.deposit.retail.demand",
+      "name": "储蓄活期",
+      "category": "规模",
+      "unit": "亿元",
+      "available_bases": [
+        "point",
+        "ytd_average",
+        "month_average"
+      ],
+      "terms": [
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "211",
+          "weight": "-1"
+        },
+        {
+          "source": "main",
+          "level": "l2",
+          "code": "21702",
+          "weight": "-1"
+        }
+      ]
+    },
+    {
+      "id": "balance.deposit.retail.term",
+      "name": "储蓄定期",
+      "category": "规模",
+      "unit": "亿元",
+      "available_bases": [
+        "point",
+        "ytd_average",
+        "month_average"
+      ],
+      "terms": [
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "215",
+          "weight": "-1"
+        },
+        {
+          "source": "main",
+          "level": "l2",
+          "code": "20250",
+          "weight": "-1"
+        }
+      ]
+    },
+    {
+      "id": "balance.deposit.retail.structured",
+      "name": "储蓄结构性存款",
+      "category": "规模",
+      "unit": "亿元",
+      "available_bases": [
+        "point",
+        "ytd_average",
+        "month_average"
+      ],
+      "terms": [
+        {
+          "source": "main",
+          "level": "l2",
+          "code": "21602",
+          "weight": "-1"
+        }
+      ]
+    },
+    {
+      "id": "balance.deposit.retail.total",
+      "name": "储蓄存款合计",
+      "category": "规模",
+      "unit": "亿元",
+      "available_bases": [
+        "point",
+        "ytd_average",
+        "month_average"
+      ],
+      "terms": [
+        {
+          "source": "main",
+          "level": "l2",
+          "code": "20250",
+          "weight": "-1"
+        },
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "211",
+          "weight": "-1"
+        },
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "215",
+          "weight": "-1"
+        },
+        {
+          "source": "main",
+          "level": "l2",
+          "code": "21702",
+          "weight": "-1"
+        },
+        {
+          "source": "main",
+          "level": "full",
+          "code": "21602020001",
+          "weight": "-1"
+        }
+      ],
+      "notes": "严格复刻模板口径，结构性存款合计仅取21602020001。"
+    },
+    {
+      "id": "balance.loan.corporate.general",
+      "name": "公司一般贷款",
+      "category": "规模",
+      "unit": "亿元",
+      "available_bases": [
+        "point",
+        "ytd_average",
+        "month_average"
+      ],
+      "terms": [
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "123",
+          "weight": "1"
+        },
+        {
+          "source": "main",
+          "level": "full",
+          "code": "13001000002",
+          "weight": "1"
+        },
+        {
+          "source": "main",
+          "level": "full",
+          "code": "13003000002",
+          "weight": "1"
+        },
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "132",
+          "weight": "1"
+        },
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "136",
+          "weight": "1"
+        },
+        {
+          "source": "main",
+          "level": "l2",
+          "code": "13604",
+          "weight": "-1"
+        }
+      ]
+    },
+    {
+      "id": "balance.loan.corporate.bill",
+      "name": "票据融资",
+      "category": "规模",
+      "unit": "亿元",
+      "available_bases": [
+        "point",
+        "ytd_average",
+        "month_average"
+      ],
+      "terms": [
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "129",
+          "weight": "1"
+        }
+      ]
+    },
+    {
+      "id": "balance.loan.corporate.total",
+      "name": "公司贷款合计",
+      "category": "规模",
+      "unit": "亿元",
+      "available_bases": [
+        "point",
+        "ytd_average",
+        "month_average"
+      ],
+      "terms": [
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "123",
+          "weight": "1"
+        },
+        {
+          "source": "main",
+          "level": "full",
+          "code": "13001000002",
+          "weight": "1"
+        },
+        {
+          "source": "main",
+          "level": "full",
+          "code": "13003000002",
+          "weight": "1"
+        },
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "132",
+          "weight": "1"
+        },
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "136",
+          "weight": "1"
+        },
+        {
+          "source": "main",
+          "level": "l2",
+          "code": "13604",
+          "weight": "-1"
+        },
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "129",
+          "weight": "1"
+        }
+      ]
+    },
+    {
+      "id": "balance.loan.retail.microloan",
+      "name": "微贷中心贷款",
+      "category": "规模",
+      "unit": "亿元",
+      "available_bases": [
+        "point",
+        "ytd_average",
+        "month_average"
+      ],
+      "terms": [
+        {
+          "source": "microloan",
+          "level": "l1",
+          "code": "122",
+          "weight": "1"
+        },
+        {
+          "source": "microloan",
+          "level": "l1",
+          "code": "130",
+          "weight": "1"
+        }
+      ],
+      "notes": "时点取微贷汇总总账期末余额；日均取微贷年/月日均。"
+    },
+    {
+      "id": "balance.loan.retail.branch",
+      "name": "分支行个贷",
+      "category": "规模",
+      "unit": "亿元",
+      "available_bases": [
+        "point",
+        "ytd_average",
+        "month_average"
+      ],
+      "terms": [
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "122",
+          "weight": "1"
+        },
+        {
+          "source": "main",
+          "level": "full",
+          "code": "13001000001",
+          "weight": "1"
+        },
+        {
+          "source": "main",
+          "level": "full",
+          "code": "13003000001",
+          "weight": "1"
+        },
+        {
+          "source": "microloan",
+          "level": "l1",
+          "code": "122",
+          "weight": "-1"
+        },
+        {
+          "source": "microloan",
+          "level": "l1",
+          "code": "130",
+          "weight": "-1"
+        }
+      ]
+    },
+    {
+      "id": "balance.loan.retail.credit_card",
+      "name": "信用卡贷款",
+      "category": "规模",
+      "unit": "亿元",
+      "available_bases": [
+        "point",
+        "ytd_average",
+        "month_average"
+      ],
+      "terms": [
+        {
+          "source": "main",
+          "level": "l2",
+          "code": "13604",
+          "weight": "1"
+        }
+      ]
+    },
+    {
+      "id": "balance.loan.retail.total",
+      "name": "个人贷款合计",
+      "category": "规模",
+      "unit": "亿元",
+      "available_bases": [
+        "point",
+        "ytd_average",
+        "month_average"
+      ],
+      "terms": [
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "122",
+          "weight": "1"
+        },
+        {
+          "source": "main",
+          "level": "full",
+          "code": "13001000001",
+          "weight": "1"
+        },
+        {
+          "source": "main",
+          "level": "full",
+          "code": "13003000001",
+          "weight": "1"
+        },
+        {
+          "source": "main",
+          "level": "l2",
+          "code": "13604",
+          "weight": "1"
+        }
+      ]
+    },
+    {
+      "id": "balance.market.interest_bearing_bonds",
+      "name": "生息债券投资",
+      "category": "规模",
+      "unit": "亿元",
+      "available_bases": [
+        "point",
+        "ytd_average",
+        "month_average"
+      ],
+      "terms": [
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "142",
+          "weight": "1"
+        },
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "143",
+          "weight": "1"
+        },
+        {
+          "source": "main",
+          "level": "full",
+          "code": "14301010001",
+          "weight": "-1"
+        },
+        {
+          "source": "main",
+          "level": "full",
+          "code": "14301010002",
+          "weight": "-1"
+        },
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "144",
+          "weight": "1"
+        }
+      ]
+    },
+    {
+      "id": "balance.market.fvtpl",
+      "name": "FVTPL",
+      "category": "规模",
+      "unit": "亿元",
+      "available_bases": [
+        "point",
+        "ytd_average",
+        "month_average"
+      ],
+      "terms": [
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "141",
+          "weight": "1"
+        }
+      ]
+    },
+    {
+      "id": "balance.market.interbank_assets",
+      "name": "同业资产",
+      "category": "规模",
+      "unit": "亿元",
+      "available_bases": [
+        "point",
+        "ytd_average",
+        "month_average"
+      ],
+      "terms": [
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "120",
+          "weight": "1"
+        },
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "121",
+          "weight": "1"
+        },
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "140",
+          "weight": "1"
+        },
+        {
+          "source": "main",
+          "level": "l2",
+          "code": "14004",
+          "weight": "-1"
+        },
+        {
+          "source": "main",
+          "level": "l2",
+          "code": "14005",
+          "weight": "-1"
+        }
+      ]
+    },
+    {
+      "id": "balance.market.interbank_liabilities",
+      "name": "同业负债",
+      "category": "规模",
+      "unit": "亿元",
+      "available_bases": [
+        "point",
+        "ytd_average",
+        "month_average"
+      ],
+      "terms": [
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "234",
+          "weight": "-1"
+        },
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "235",
+          "weight": "-1"
+        },
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "241",
+          "weight": "-1"
+        },
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "242",
+          "weight": "-1"
+        },
+        {
+          "source": "main",
+          "level": "l1",
+          "code": "255",
+          "weight": "-1"
+        },
+        {
+          "source": "main",
+          "level": "full",
+          "code": "27205000001",
+          "weight": "-1"
+        },
+        {
+          "source": "main",
+          "level": "full",
+          "code": "27206000001",
+          "weight": "-1"
+        }
+      ]
+    }
+  ],
+  "direct_rules": [
+    {
+      "id": "income.interest.loan.corporate",
+      "name": "公司贷款利息收入",
+      "category": "利息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "l1",
+          "code": "501",
+          "weight": "-1"
+        },
+        {
+          "source": "ledger",
+          "level": "l2",
+          "code": "50109",
+          "weight": "1"
+        },
+        {
+          "source": "ledger",
+          "level": "l2",
+          "code": "50110",
+          "weight": "1"
+        },
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "50110000002",
+          "weight": "-1"
+        },
+        {
+          "source": "ledger",
+          "level": "l2",
+          "code": "50206",
+          "weight": "-1"
+        },
+        {
+          "source": "ledger",
+          "level": "l2",
+          "code": "50115",
+          "weight": "1"
+        }
+      ],
+      "notes": "展开模板公式：-(501-50109-50110+50110000002+50206-50115)。"
+    },
+    {
+      "id": "income.interest.loan.personal",
+      "name": "个人贷款利息收入",
+      "category": "利息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "l2",
+          "code": "50109",
+          "weight": "-1"
+        },
+        {
+          "source": "ledger",
+          "level": "l2",
+          "code": "50110",
+          "weight": "-1"
+        },
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "50110000002",
+          "weight": "1"
+        }
+      ]
+    },
+    {
+      "id": "income.interest.loan.discount_unwind",
+      "name": "折现回拨",
+      "category": "利息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "l2",
+          "code": "50115",
+          "weight": "-1"
+        }
+      ]
+    },
+    {
+      "id": "income.interest.loan.total",
+      "name": "贷款利息收入",
+      "category": "利息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "l1",
+          "code": "501",
+          "weight": "-1"
+        },
+        {
+          "source": "ledger",
+          "level": "l2",
+          "code": "50206",
+          "weight": "-1"
+        }
+      ],
+      "notes": "与模板利息净收入拆分核对一致。"
+    },
+    {
+      "id": "income.interest.loan.microloan",
+      "name": "微贷中心贷款利息收入",
+      "category": "利息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "terms": [
+        {
+          "source": "microloan_ledger",
+          "level": "l1",
+          "code": "501",
+          "weight": "-1"
+        }
+      ]
+    },
+    {
+      "id": "income.interest.loan.credit_card",
+      "name": "信用卡贷款利息收入",
+      "category": "利息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "l2",
+          "code": "50110",
+          "weight": "-1"
+        },
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "50110000002",
+          "weight": "1"
+        }
+      ]
+    },
+    {
+      "id": "expense.interest.deposit.corporate",
+      "name": "公司存款利息支出",
+      "category": "利息支出",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "l2",
+          "code": "52101",
+          "weight": "1"
+        },
+        {
+          "source": "ledger",
+          "level": "l2",
+          "code": "52102",
+          "weight": "1"
+        },
+        {
+          "source": "ledger",
+          "level": "l2",
+          "code": "52110",
+          "weight": "1"
+        },
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "52110000001",
+          "weight": "-1"
+        },
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "52105000001",
+          "weight": "1"
+        },
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "52106000002",
+          "weight": "1"
+        }
+      ]
+    },
+    {
+      "id": "expense.interest.deposit.retail",
+      "name": "储蓄存款利息支出",
+      "category": "利息支出",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "l2",
+          "code": "52103",
+          "weight": "1"
+        },
+        {
+          "source": "ledger",
+          "level": "l2",
+          "code": "52104",
+          "weight": "1"
+        },
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "52105000002",
+          "weight": "1"
+        },
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "52106000001",
+          "weight": "1"
+        },
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "52110000001",
+          "weight": "1"
+        }
+      ]
+    },
+    {
+      "id": "expense.interest.deposit.total",
+      "name": "存款利息支出",
+      "category": "利息支出",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "l1",
+          "code": "521",
+          "weight": "1"
+        }
+      ]
+    },
+    {
+      "id": "income.interest.investment",
+      "name": "金融投资利息收入",
+      "category": "利息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "l1",
+          "code": "514",
+          "weight": "-1"
+        }
+      ]
+    },
+    {
+      "id": "income.interest.interbank_net",
+      "name": "同业资产负债利息净收入",
+      "category": "利息净收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "l1",
+          "code": "502",
+          "weight": "-1"
+        },
+        {
+          "source": "ledger",
+          "level": "l2",
+          "code": "50206",
+          "weight": "1"
+        },
+        {
+          "source": "ledger",
+          "level": "l1",
+          "code": "522",
+          "weight": "-1"
+        },
+        {
+          "source": "ledger",
+          "level": "l1",
+          "code": "523",
+          "weight": "-1"
+        }
+      ],
+      "notes": "-(502-50206+522+523)。"
+    },
+    {
+      "id": "income.noninterest.leaf.r007",
+      "name": "债务融资工具承销费",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 7,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51103000010",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D7,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r008",
+      "name": "信用风险缓释凭证手续费",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 8,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51110000023",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D8,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r009",
+      "name": "其他手续费支出-其他承销类业务",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 9,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "52709010005",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D9,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r012",
+      "name": "现金管理服务费收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 12,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51101000017",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D12,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r013",
+      "name": "贸金结算手续费收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 13,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51101000010",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D13,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r014",
+      "name": "其他手续费收入-保理融资",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 14,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51110000005",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D14,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r015",
+      "name": "融资性保函手续费",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 15,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51110000020",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D15,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r016",
+      "name": "非融资性保函手续费",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 16,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51110000021",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D16,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r017",
+      "name": "国际结算手续费支出-境外",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 17,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "52702000007",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D17,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r018",
+      "name": "国际结算手续费支出-境内",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 18,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "52702000008",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D18,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r021",
+      "name": "银行承兑汇票手续费收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 21,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51101000006",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D21,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r022",
+      "name": "敞口风险管理费",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 22,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51110000022",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D22,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r025",
+      "name": "支票手续费收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 25,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51101000007",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D25,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r026",
+      "name": "银团贷款手续费收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 26,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51102000003",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D26,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r027",
+      "name": "担保承诺手续费收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 27,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51110000003",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D27,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r028",
+      "name": "其他手续费收入-验资询证",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 28,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51110000004",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D28,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r029",
+      "name": "代理公司理财手续费收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 29,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51103000013",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D29,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r030",
+      "name": "代理保险业务手续费收入（对公）",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 30,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51103000021",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D30,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r033",
+      "name": "即期",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 33,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51203000001",
+          "weight": "-1"
+        },
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51203000003",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-(SUMIF('2026年账'!C:C,\"51203000001\",'2026年账'!I:I)+SUMIF('2026年账'!C:C,\"51203000003\",'2026年账'!I:I))/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r034",
+      "name": "远期",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 34,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51203010001",
+          "weight": "-1"
+        },
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51203010003",
+          "weight": "-1"
+        },
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51203070001",
+          "weight": "-1"
+        },
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51203070003",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-(SUMIF('2026年账'!C:C,\"51203010001\",'2026年账'!I:I)+SUMIF('2026年账'!C:C,\"51203010003\",'2026年账'!I:I)+SUMIF('2026年账'!C:C,\"51203070001\",'2026年账'!I:I)+SUMIF('2026年账'!C:C,\"51203070003\",'2026年账'!I:I))/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r039",
+      "name": "代理个人理财手续费收入(青银理财）",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 39,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51103000012",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D39,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r040",
+      "name": "代理兴银理财手续费收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 40,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51103000014",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D40,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r041",
+      "name": "代理南银理财手续费收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 41,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51103000015",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D41,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r042",
+      "name": "代理杭银理财手续费收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 42,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51103000017",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D42,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r043",
+      "name": "代理宁银理财手续费收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 43,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51103000018",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D43,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r044",
+      "name": "代理苏银理财手续费收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 44,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51103000019",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D44,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r045",
+      "name": "代理招银理财手续费收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 45,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51103000023",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D45,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r046",
+      "name": "代理中邮理财手续费收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 46,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51103000024",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D46,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r049",
+      "name": "代理基金业务手续费收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 49,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51103000004",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D49,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r050",
+      "name": "代理贵金属业务手续费收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 50,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51103000006",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D50,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r051",
+      "name": "代理保险业务手续费",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 51,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51103000009",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D51,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r052",
+      "name": "代理信托手续费",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 52,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51103000011",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D52,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r055",
+      "name": "代理国债手续费收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 55,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51103000001",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D55,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r056",
+      "name": "代理保管业务收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 56,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51103000007",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D56,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r057",
+      "name": "银行卡手续费收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 57,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51105000001",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D57,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r058",
+      "name": "代理外卡业务手续费收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 58,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51105000002",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D58,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r059",
+      "name": "支付网关手续费",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 59,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51105000007",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D59,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r060",
+      "name": "其他手续费收入-个贷",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 60,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51110000002",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D60,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r061",
+      "name": "直销银行手续费收入账户",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 61,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51110000015",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D61,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r062",
+      "name": "清算服务费",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 62,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51110000017",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D62,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r063",
+      "name": "助农业务手续费支出",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 63,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "52702000012",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D63,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r064",
+      "name": "银行卡手续费支出",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 64,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "52703000002",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D64,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r065",
+      "name": "第三方交易手续费收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 65,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51103000020",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D65,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r066",
+      "name": "银联借记卡发卡手续费收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 66,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51105000020",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D66,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r067",
+      "name": "银联借记卡发卡手续费支出",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 67,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "52703000008",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D67,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r070",
+      "name": "信用卡发卡回佣收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 70,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51105000013",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D70,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r071",
+      "name": "信用卡违约金收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 71,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51105000010",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D71,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r072",
+      "name": "信用卡分期手续费收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 72,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51105000008",
+          "weight": "-1"
+        },
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51105000014",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-(SUMIF('2026年账'!C:C,\"51105000008\",'2026年账'!I:I)+SUMIF('2026年账'!C:C,\"51105000014\",'2026年账'!I:I))/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r073",
+      "name": "信用卡取现手续费收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 73,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51105000009",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D73,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r074",
+      "name": "信用卡其他手续费收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 74,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51105000003",
+          "weight": "-1"
+        },
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51105000011",
+          "weight": "-1"
+        },
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51105000012",
+          "weight": "-1"
+        },
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51105000015",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-(SUMIF('2026年账'!C:C,\"51105000003\",'2026年账'!I:I)+SUMIF('2026年账'!C:C,\"51105000011\",'2026年账'!I:I)+SUMIF('2026年账'!C:C,\"51105000012\",'2026年账'!I:I)+SUMIF('2026年账'!C:C,\"51105000015\",'2026年账'!I:I))/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r075",
+      "name": "信用卡手续费支出",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 75,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "52703000003",
+          "weight": "-1"
+        },
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "52709010003",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-(SUMIF('2026年账'!C:C,\"52703000003\",'2026年账'!I:I)+SUMIF('2026年账'!C:C,\"52709010003\",'2026年账'!I:I))/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r079",
+      "name": "资产证券化手续费收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 79,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51102000004",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D79,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r080",
+      "name": "银团同业借款手续费收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 80,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51102000005",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D80,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r081",
+      "name": "证券买卖手续费收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 81,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51104000001",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D81,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r082",
+      "name": "其他手续费收入-托管费",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 82,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51110000011",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D82,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r083",
+      "name": "其他手续费收入-债券借贷",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 83,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51110000018",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D83,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r086",
+      "name": "资产托管费",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 86,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51110000024",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D86,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r095",
+      "name": "金融投资估值及投资收益",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 95,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "l1",
+          "code": "516",
+          "weight": "-1"
+        },
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51605010002",
+          "weight": "1"
+        },
+        {
+          "source": "ledger",
+          "level": "l1",
+          "code": "517",
+          "weight": "-1"
+        },
+        {
+          "source": "ledger",
+          "level": "l2",
+          "code": "51704",
+          "weight": "1"
+        },
+        {
+          "source": "ledger",
+          "level": "l2",
+          "code": "51705",
+          "weight": "1"
+        },
+        {
+          "source": "ledger",
+          "level": "l2",
+          "code": "51707",
+          "weight": "1"
+        },
+        {
+          "source": "ledger",
+          "level": "l2",
+          "code": "51710",
+          "weight": "1"
+        }
+      ],
+      "template_formula": "-(SUMIF('2026年账'!A:A,\"516\",'2026年账'!I:I)-SUMIF('2026年账'!C:C,\"51605010002\",'2026年账'!I:I)+SUMIF('2026年账'!A:A,\"517\",'2026年账'!I:I)-SUMIF('2026年账'!B:B,\"51704\",'2026年账'!I:I)-SUMIF('2026年账'!B:B,\"51705\",'2026年账'!I:I)-SUMIF('2026年账'!B:B,\"51707\",'2026年账'!I:I)-SUMIF('2026年账'!B:B,\"51710\",'2026年账'!I:I))/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r098",
+      "name": "福费廷价差收益",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 98,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51710030001",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D98,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r101",
+      "name": "票据价差收益",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 101,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51707010001",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!C:C,D101,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r104",
+      "name": "信用联结票据业务",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 104,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51605010002",
+          "weight": "-1"
+        },
+        {
+          "source": "ledger",
+          "level": "full",
+          "code": "51710020002",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-(SUMIF('2026年账'!C:C,\"51605010002\",'2026年账'!I:I)+SUMIF('2026年账'!C:C,\"51710020002\",'2026年账'!I:I))/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r110",
+      "name": "513所有四级科目名称",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 110,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "l1",
+          "code": "513",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!A:A,D110,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r114",
+      "name": "518所有四级科目名称",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 114,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "l1",
+          "code": "518",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!A:A,D114,'2026年账'!I:I)/100000000"
+    },
+    {
+      "id": "income.noninterest.leaf.r118",
+      "name": "519所有四级科目名称",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 118,
+      "terms": [
+        {
+          "source": "ledger",
+          "level": "l1",
+          "code": "519",
+          "weight": "-1"
+        }
+      ],
+      "template_formula": "-SUMIF('2026年账'!A:A,D118,'2026年账'!I:I)/100000000"
+    }
+  ],
+  "manual_metrics": [
+    {
+      "id": "input.adjustment.noninterest.r010",
+      "name": "结果调整",
+      "category": "手工调整",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "default": "0",
+      "manual_required": true,
+      "template_row": 10,
+      "notes": "原模板为业绩还原/结果调整，三份源文件无法自动生成。"
+    },
+    {
+      "id": "input.adjustment.noninterest.r019",
+      "name": "结果调整",
+      "category": "手工调整",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "default": "0",
+      "manual_required": true,
+      "template_row": 19,
+      "notes": "原模板为业绩还原/结果调整，三份源文件无法自动生成。"
+    },
+    {
+      "id": "input.adjustment.noninterest.r023",
+      "name": "结果调整",
+      "category": "手工调整",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "default": "0",
+      "manual_required": true,
+      "template_row": 23,
+      "notes": "原模板为业绩还原/结果调整，三份源文件无法自动生成。"
+    },
+    {
+      "id": "input.adjustment.noninterest.r031",
+      "name": "结果调整",
+      "category": "手工调整",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "default": "0",
+      "manual_required": true,
+      "template_row": 31,
+      "notes": "原模板为业绩还原/结果调整，三份源文件无法自动生成。"
+    },
+    {
+      "id": "input.adjustment.noninterest.r035",
+      "name": "结果调整",
+      "category": "手工调整",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "default": "0",
+      "manual_required": true,
+      "template_row": 35,
+      "notes": "原模板为业绩还原/结果调整，三份源文件无法自动生成。"
+    },
+    {
+      "id": "input.adjustment.noninterest.r047",
+      "name": "结果调整",
+      "category": "手工调整",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "default": "0",
+      "manual_required": true,
+      "template_row": 47,
+      "notes": "原模板为业绩还原/结果调整，三份源文件无法自动生成。"
+    },
+    {
+      "id": "input.adjustment.noninterest.r053",
+      "name": "结果调整",
+      "category": "手工调整",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "default": "0",
+      "manual_required": true,
+      "template_row": 53,
+      "notes": "原模板为业绩还原/结果调整，三份源文件无法自动生成。"
+    },
+    {
+      "id": "input.adjustment.noninterest.r068",
+      "name": "结果调整",
+      "category": "手工调整",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "default": "0",
+      "manual_required": true,
+      "template_row": 68,
+      "notes": "原模板为业绩还原/结果调整，三份源文件无法自动生成。"
+    },
+    {
+      "id": "input.adjustment.noninterest.r076",
+      "name": "结果调整",
+      "category": "手工调整",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "default": "0",
+      "manual_required": true,
+      "template_row": 76,
+      "notes": "原模板为业绩还原/结果调整，三份源文件无法自动生成。"
+    },
+    {
+      "id": "input.adjustment.noninterest.r084",
+      "name": "结果调整",
+      "category": "手工调整",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "default": "0",
+      "manual_required": true,
+      "template_row": 84,
+      "notes": "原模板为业绩还原/结果调整，三份源文件无法自动生成。"
+    },
+    {
+      "id": "input.adjustment.noninterest.r087",
+      "name": "结果调整",
+      "category": "手工调整",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "default": "0",
+      "manual_required": true,
+      "template_row": 87,
+      "notes": "原模板为业绩还原/结果调整，三份源文件无法自动生成。"
+    },
+    {
+      "id": "input.adjustment.noninterest.r091",
+      "name": "结果调整",
+      "category": "手工调整",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "default": "0",
+      "manual_required": true,
+      "template_row": 91,
+      "notes": "原模板为业绩还原/结果调整，三份源文件无法自动生成。"
+    },
+    {
+      "id": "input.adjustment.noninterest.r096",
+      "name": "结果调整",
+      "category": "手工调整",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "default": "0",
+      "manual_required": true,
+      "template_row": 96,
+      "notes": "原模板为业绩还原/结果调整，三份源文件无法自动生成。"
+    },
+    {
+      "id": "input.adjustment.noninterest.r099",
+      "name": "结果调整",
+      "category": "手工调整",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "default": "0",
+      "manual_required": true,
+      "template_row": 99,
+      "notes": "原模板为业绩还原/结果调整，三份源文件无法自动生成。"
+    },
+    {
+      "id": "input.adjustment.noninterest.r102",
+      "name": "结果调整",
+      "category": "手工调整",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "default": "0",
+      "manual_required": true,
+      "template_row": 102,
+      "notes": "原模板为业绩还原/结果调整，三份源文件无法自动生成。"
+    },
+    {
+      "id": "input.adjustment.noninterest.r105",
+      "name": "结果调整",
+      "category": "手工调整",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "default": "0",
+      "manual_required": true,
+      "template_row": 105,
+      "notes": "原模板为业绩还原/结果调整，三份源文件无法自动生成。"
+    },
+    {
+      "id": "input.adjustment.noninterest.r112",
+      "name": "结果调整",
+      "category": "手工调整",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "default": "0",
+      "manual_required": true,
+      "template_row": 112,
+      "notes": "原模板为业绩还原/结果调整，三份源文件无法自动生成。"
+    },
+    {
+      "id": "input.adjustment.noninterest.r116",
+      "name": "结果调整",
+      "category": "手工调整",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "default": "0",
+      "manual_required": true,
+      "template_row": 116,
+      "notes": "原模板为业绩还原/结果调整，三份源文件无法自动生成。"
+    },
+    {
+      "id": "input.adjustment.noninterest.r120",
+      "name": "结果调整",
+      "category": "手工调整",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "default": "0",
+      "manual_required": true,
+      "template_row": 120,
+      "notes": "原模板为业绩还原/结果调整，三份源文件无法自动生成。"
+    }
+  ],
+  "derived_rules": [
+    {
+      "id": "income.fee.company.investment_banking",
+      "name": "投行业务",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 6,
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.noninterest.leaf.r007",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r008",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r009",
+            "weight": "1"
+          },
+          {
+            "metric_id": "input.adjustment.noninterest.r010",
+            "weight": "1"
+          }
+        ]
+      },
+      "template_formula": "SUM(E7:E10)"
+    },
+    {
+      "id": "income.fee.company.trade_finance",
+      "name": "贸金业务",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 11,
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.noninterest.leaf.r012",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r013",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r014",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r015",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r016",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r017",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r018",
+            "weight": "1"
+          },
+          {
+            "metric_id": "input.adjustment.noninterest.r019",
+            "weight": "1"
+          }
+        ]
+      },
+      "template_formula": "SUM(E12:E19)"
+    },
+    {
+      "id": "income.fee.company.bill",
+      "name": "票据业务",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 20,
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.noninterest.leaf.r021",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r022",
+            "weight": "1"
+          },
+          {
+            "metric_id": "input.adjustment.noninterest.r023",
+            "weight": "1"
+          }
+        ]
+      },
+      "template_formula": "SUM(E21:E23)"
+    },
+    {
+      "id": "income.fee.company.other",
+      "name": "公司其他",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 24,
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.noninterest.leaf.r025",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r026",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r027",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r028",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r029",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r030",
+            "weight": "1"
+          },
+          {
+            "metric_id": "input.adjustment.noninterest.r031",
+            "weight": "1"
+          }
+        ]
+      },
+      "template_formula": "SUM(E25:E31)"
+    },
+    {
+      "id": "income.fx.company",
+      "name": "结售汇",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 32,
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.noninterest.leaf.r033",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r034",
+            "weight": "1"
+          },
+          {
+            "metric_id": "input.adjustment.noninterest.r035",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.fx.company.other",
+            "weight": "1"
+          }
+        ]
+      },
+      "template_formula": "SUM(E33:E36)"
+    },
+    {
+      "id": "income.fee.company.total",
+      "name": "1.公司业务小计",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 5,
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.fee.company.investment_banking",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.fee.company.trade_finance",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.fee.company.bill",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.fee.company.other",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.fx.company",
+            "weight": "1"
+          }
+        ]
+      },
+      "template_formula": "+E6+E11+E20+E24+E32"
+    },
+    {
+      "id": "income.fee.retail.agency_wealth_management",
+      "name": "代销理财",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 38,
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.noninterest.leaf.r039",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r040",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r041",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r042",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r043",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r044",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r045",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r046",
+            "weight": "1"
+          },
+          {
+            "metric_id": "input.adjustment.noninterest.r047",
+            "weight": "1"
+          }
+        ]
+      },
+      "template_formula": "SUM(E39:E47)"
+    },
+    {
+      "id": "income.fee.retail.wealth",
+      "name": "财富业务",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 48,
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.noninterest.leaf.r049",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r050",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r051",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r052",
+            "weight": "1"
+          },
+          {
+            "metric_id": "input.adjustment.noninterest.r053",
+            "weight": "1"
+          }
+        ]
+      },
+      "template_formula": "SUM(E49:E53)"
+    },
+    {
+      "id": "income.fee.retail.other",
+      "name": "零售其他",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 54,
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.noninterest.leaf.r055",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r056",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r057",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r058",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r059",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r060",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r061",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r062",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r063",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r064",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r065",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r066",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r067",
+            "weight": "1"
+          },
+          {
+            "metric_id": "input.adjustment.noninterest.r068",
+            "weight": "1"
+          }
+        ]
+      },
+      "template_formula": "SUM(E55:E68)"
+    },
+    {
+      "id": "income.fee.retail.credit_card",
+      "name": "信用卡业务",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 69,
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.noninterest.leaf.r070",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r071",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r072",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r073",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r074",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r075",
+            "weight": "1"
+          },
+          {
+            "metric_id": "input.adjustment.noninterest.r076",
+            "weight": "1"
+          }
+        ]
+      },
+      "template_formula": "SUM(E70:E76)"
+    },
+    {
+      "id": "income.fee.retail.total",
+      "name": "2.零售业务小计",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 37,
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.fee.retail.agency_wealth_management",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.fee.retail.wealth",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.fee.retail.other",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.fee.retail.credit_card",
+            "weight": "1"
+          }
+        ]
+      },
+      "template_formula": "+E38+E48+E54+E69"
+    },
+    {
+      "id": "income.fee.market",
+      "name": "金融市场业务",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 78,
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.noninterest.leaf.r079",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r080",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r081",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r082",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r083",
+            "weight": "1"
+          },
+          {
+            "metric_id": "input.adjustment.noninterest.r084",
+            "weight": "1"
+          }
+        ]
+      },
+      "template_formula": "SUM(E79:E84)"
+    },
+    {
+      "id": "income.fee.custody",
+      "name": "托管业务",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 85,
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.noninterest.leaf.r086",
+            "weight": "1"
+          },
+          {
+            "metric_id": "input.adjustment.noninterest.r087",
+            "weight": "1"
+          }
+        ]
+      },
+      "template_formula": "SUM(E86:E87)"
+    },
+    {
+      "id": "income.fee.unclassified_group",
+      "name": "其他",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 88,
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.fee.unclassified",
+            "weight": "1"
+          },
+          {
+            "metric_id": "input.adjustment.noninterest.r091",
+            "weight": "1"
+          }
+        ]
+      },
+      "template_formula": "SUM(E89:E91)"
+    },
+    {
+      "id": "income.fee.other_business.total",
+      "name": "3.其他业务",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 77,
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.fee.market",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.fee.custody",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.fee.unclassified_group",
+            "weight": "1"
+          }
+        ]
+      },
+      "template_formula": "+E78+E85+E88"
+    },
+    {
+      "id": "income.noninterest.intermediary_total",
+      "name": "一、中间业务净收入合计（含汇兑）",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 4,
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.fee.company.total",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.fee.retail.total",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.fee.other_business.total",
+            "weight": "1"
+          }
+        ]
+      },
+      "template_formula": "+E5+E37+E77"
+    },
+    {
+      "id": "income.valuation.financial_market",
+      "name": "金融市场业务",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 94,
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.noninterest.leaf.r095",
+            "weight": "1"
+          },
+          {
+            "metric_id": "input.adjustment.noninterest.r096",
+            "weight": "1"
+          }
+        ]
+      },
+      "template_formula": "SUM(E95:E96)"
+    },
+    {
+      "id": "income.valuation.forfaiting",
+      "name": "福费廷业务",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 97,
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.noninterest.leaf.r098",
+            "weight": "1"
+          },
+          {
+            "metric_id": "input.adjustment.noninterest.r099",
+            "weight": "1"
+          }
+        ]
+      },
+      "template_formula": "SUM(E98:E99)"
+    },
+    {
+      "id": "income.valuation.bill_sale",
+      "name": "票据卖断业务",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 100,
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.noninterest.leaf.r101",
+            "weight": "1"
+          },
+          {
+            "metric_id": "input.adjustment.noninterest.r102",
+            "weight": "1"
+          }
+        ]
+      },
+      "template_formula": "SUM(E101:E102)"
+    },
+    {
+      "id": "income.valuation.investment_banking",
+      "name": "投资银行业务",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 103,
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.noninterest.leaf.r104",
+            "weight": "1"
+          },
+          {
+            "metric_id": "input.adjustment.noninterest.r105",
+            "weight": "1"
+          }
+        ]
+      },
+      "template_formula": "SUM(E104:E105)"
+    },
+    {
+      "id": "income.valuation.other",
+      "name": "其他",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 106,
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.valuation.other_unclassified",
+            "weight": "1"
+          }
+        ]
+      },
+      "template_formula": "+E107"
+    },
+    {
+      "id": "income.valuation.total",
+      "name": "1.估值及投资收益",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 93,
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.valuation.financial_market",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.valuation.forfaiting",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.valuation.bill_sale",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.valuation.investment_banking",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.valuation.other",
+            "weight": "1"
+          }
+        ]
+      },
+      "template_formula": "+E94+E97+E100+E103+E106"
+    },
+    {
+      "id": "income.other_noninterest.other_operating_income",
+      "name": "其他营业收入",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 109,
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.noninterest.leaf.r110",
+            "weight": "1"
+          },
+          {
+            "metric_id": "input.adjustment.noninterest.r112",
+            "weight": "1"
+          }
+        ]
+      },
+      "template_formula": "SUM(E110:E112)"
+    },
+    {
+      "id": "income.other_noninterest.asset_disposal",
+      "name": "资产处置损益",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 113,
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.noninterest.leaf.r114",
+            "weight": "1"
+          },
+          {
+            "metric_id": "input.adjustment.noninterest.r116",
+            "weight": "1"
+          }
+        ]
+      },
+      "template_formula": "SUM(E114:E116)"
+    },
+    {
+      "id": "income.other_noninterest.other_income",
+      "name": "其他收益",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 117,
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.noninterest.leaf.r118",
+            "weight": "1"
+          },
+          {
+            "metric_id": "input.adjustment.noninterest.r120",
+            "weight": "1"
+          }
+        ]
+      },
+      "template_formula": "SUM(E118:E120)"
+    },
+    {
+      "id": "income.other_noninterest.total",
+      "name": "2.其他业务",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 108,
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.other_noninterest.other_operating_income",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.other_noninterest.asset_disposal",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.other_noninterest.other_income",
+            "weight": "1"
+          }
+        ]
+      },
+      "template_formula": "+E109+E113+E117"
+    },
+    {
+      "id": "income.noninterest.other_total",
+      "name": "二、其他非息净收入合计",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 92,
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.valuation.total",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.other_noninterest.total",
+            "weight": "1"
+          }
+        ]
+      },
+      "template_formula": "+E93+E108"
+    },
+    {
+      "id": "income.noninterest.total",
+      "name": "非息净收入合计",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 3,
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.noninterest.intermediary_total",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.other_total",
+            "weight": "1"
+          }
+        ]
+      },
+      "template_formula": "+E4+E92"
+    },
+    {
+      "id": "income.fx.company.other",
+      "name": "其他",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 36,
+      "calculation": {
+        "type": "linear",
+        "account_terms": [
+          {
+            "source": "ledger",
+            "level": "l1",
+            "code": "512",
+            "weight": "-1"
+          }
+        ],
+        "metric_terms": [
+          {
+            "metric_id": "income.noninterest.leaf.r033",
+            "weight": "-1"
+          },
+          {
+            "metric_id": "income.noninterest.leaf.r034",
+            "weight": "-1"
+          },
+          {
+            "metric_id": "input.adjustment.noninterest.r035",
+            "weight": "-1"
+          }
+        ]
+      },
+      "template_formula": "-SUMIF('2026年账'!A:A,\"512\",'2026年账'!I:I)/100000000-SUM(E33:E35)"
+    },
+    {
+      "id": "income.fee.unclassified",
+      "name": "剩余未归以上类别的四级科目名称",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 89,
+      "calculation": {
+        "type": "linear",
+        "account_terms": [
+          {
+            "source": "ledger",
+            "level": "l1",
+            "code": "511",
+            "weight": "-1"
+          },
+          {
+            "source": "ledger",
+            "level": "l1",
+            "code": "512",
+            "weight": "-1"
+          },
+          {
+            "source": "ledger",
+            "level": "l1",
+            "code": "527",
+            "weight": "-1"
+          }
+        ],
+        "metric_terms": [
+          {
+            "metric_id": "income.fee.custody",
+            "weight": "-1"
+          },
+          {
+            "metric_id": "income.fee.market",
+            "weight": "-1"
+          },
+          {
+            "metric_id": "income.fee.retail.total",
+            "weight": "-1"
+          },
+          {
+            "metric_id": "income.fee.company.total",
+            "weight": "-1"
+          }
+        ]
+      },
+      "template_formula": "-(SUMIF('2026年账'!A:A,\"511\",'2026年账'!I:I)+SUMIF('2026年账'!A:A,\"512\",'2026年账'!I:I)+SUMIF('2026年账'!A:A,\"527\",'2026年账'!I:I))/100000000-E85-E78-E37-E5"
+    },
+    {
+      "id": "income.valuation.other_unclassified",
+      "name": "剩余未归以上类别的四级科目名称",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "template_row": 107,
+      "calculation": {
+        "type": "linear",
+        "account_terms": [
+          {
+            "source": "ledger",
+            "level": "l1",
+            "code": "516",
+            "weight": "-1"
+          },
+          {
+            "source": "ledger",
+            "level": "l1",
+            "code": "517",
+            "weight": "-1"
+          }
+        ],
+        "metric_terms": [
+          {
+            "metric_id": "income.valuation.financial_market",
+            "weight": "-1"
+          },
+          {
+            "metric_id": "income.valuation.forfaiting",
+            "weight": "-1"
+          },
+          {
+            "metric_id": "income.valuation.bill_sale",
+            "weight": "-1"
+          },
+          {
+            "metric_id": "income.valuation.investment_banking",
+            "weight": "-1"
+          }
+        ]
+      },
+      "template_formula": "-(SUMIF('2026年账'!A:A,\"516\",'2026年账'!I:I)+SUMIF('2026年账'!A:A,\"517\",'2026年账'!I:I))/100000000-E94-E97-E100-E103"
+    },
+    {
+      "id": "income.interest.loan.branch_personal",
+      "name": "分支行个贷利息收入",
+      "category": "利息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.interest.loan.personal",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.interest.loan.microloan",
+            "weight": "-1"
+          },
+          {
+            "metric_id": "income.interest.loan.credit_card",
+            "weight": "-1"
+          }
+        ]
+      }
+    },
+    {
+      "id": "income.interest.net",
+      "name": "利息净收入",
+      "category": "利息净收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.interest.loan.total",
+            "weight": "1"
+          },
+          {
+            "metric_id": "expense.interest.deposit.total",
+            "weight": "-1"
+          },
+          {
+            "metric_id": "income.interest.investment",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.interest.interbank_net",
+            "weight": "1"
+          }
+        ]
+      }
+    },
+    {
+      "id": "income.fee.net_total",
+      "name": "手续费净收入（不含汇兑）",
+      "category": "非息收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.noninterest.intermediary_total",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.fx.company",
+            "weight": "-1"
+          }
+        ]
+      }
+    },
+    {
+      "id": "income.operating.mother_bank",
+      "name": "母公司营业收入（可自动口径）",
+      "category": "营业收入",
+      "unit": "亿元",
+      "basis": "cumulative",
+      "calculation": {
+        "type": "linear",
+        "metric_terms": [
+          {
+            "metric_id": "income.interest.net",
+            "weight": "1"
+          },
+          {
+            "metric_id": "income.noninterest.total",
+            "weight": "1"
+          }
+        ]
+      },
+      "notes": "不含三份源文件之外的并表抵销、子公司营业收入及手工调整。"
+    }
+  ],
+  "analysis_rules": [
+    {
+      "id": "analysis.yoy",
+      "name": "同比",
+      "formula": "current_cumulative - prior_year_cumulative",
+      "rate_formula": "delta / abs(prior_year_cumulative)",
+      "zero_denominator": "返回null并附reason=zero_denominator"
+    },
+    {
+      "id": "analysis.vs_year_begin",
+      "name": "较年初",
+      "formula": "current_point - year_begin_point",
+      "rate_formula": "delta / abs(year_begin_point)",
+      "zero_denominator": "返回null"
+    },
+    {
+      "id": "analysis.mom",
+      "name": "环比",
+      "formula": "current_month - previous_month",
+      "rate_formula": "delta / abs(previous_month)",
+      "zero_denominator": "返回null"
+    },
+    {
+      "id": "analysis.budget_progress",
+      "name": "预算完成",
+      "formula": "current_cumulative / annual_budget",
+      "time_progress_formula": "elapsed_days / days_in_year",
+      "gap_formula": "budget_completion - time_progress"
+    },
+    {
+      "id": "analysis.annualized",
+      "name": "年化",
+      "formula": "current_cumulative / elapsed_days * days_in_year"
+    },
+    {
+      "id": "analysis.ytd_yield_cost",
+      "name": "年累计收益率/付息率",
+      "formula": "cumulative_interest / ytd_average_balance / elapsed_days * days_in_year",
+      "units": "decimal rate"
+    },
+    {
+      "id": "analysis.month_yield_cost",
+      "name": "单月收益率/付息率",
+      "formula": "monthly_interest_increment / month_average_balance / days_in_month * days_in_year",
+      "units": "decimal rate"
+    },
+    {
+      "id": "analysis.nim",
+      "name": "净息差",
+      "formula": "annualized_net_interest_income / average_interest_earning_assets"
+    },
+    {
+      "id": "analysis.cost_income",
+      "name": "成本收入比",
+      "formula": "operating_expense / operating_income"
+    },
+    {
+      "id": "analysis.fee_share",
+      "name": "手续费净收入占比",
+      "formula": "net_fee_income / operating_income"
+    },
+    {
+      "id": "analysis.mix",
+      "name": "结构占比",
+      "formula": "component / total",
+      "examples": [
+        "活期/定期/结构性存款占比",
+        "公司/零售存款占比",
+        "公司/个贷/票据占比"
+      ]
+    },
+    {
+      "id": "analysis.volume_rate_decomposition",
+      "name": "量价分解",
+      "volume_effect_formula": "(current_avg_balance-prior_avg_balance)*prior_rate*days/days_in_year",
+      "rate_effect_formula": "current_avg_balance*(current_rate-prior_rate)*days/days_in_year",
+      "cross_effect_formula": "optional: delta_balance*delta_rate*days/days_in_year"
+    }
+  ],
+  "validation_rules": [
+    {
+      "id": "period.same_end_date",
+      "severity": "error",
+      "description": "总账、年日均、月日均、微贷的截止日必须一致。"
+    },
+    {
+      "id": "period.ytd_starts_jan1",
+      "severity": "error",
+      "description": "年日均必须从当年1月1日开始。"
+    },
+    {
+      "id": "period.month_is_calendar_month",
+      "severity": "error",
+      "description": "月日均必须覆盖完整自然月。"
+    },
+    {
+      "id": "currency.cnx_only",
+      "severity": "error",
+      "description": "计算只使用CNX口径，不叠加CNY块。"
+    },
+    {
+      "id": "ledger.balance_identity",
+      "severity": "error",
+      "description": "逐行校验期初余额+本期借方-本期贷方=期末余额，默认容差0.01元。"
+    },
+    {
+      "id": "ledger.duplicate_full_code",
+      "severity": "warning",
+      "description": "组合科目代码重复时汇总但提示，避免来源重复。"
+    },
+    {
+      "id": "rules.missing_accounts",
+      "severity": "warning",
+      "description": "规则引用科目未出现在当期源表时提示；若科目确属零余额可接受。"
+    },
+    {
+      "id": "recon.company_deposit",
+      "severity": "warning",
+      "description": "公司存款合计与活期、定期、结构性分项核对。"
+    },
+    {
+      "id": "recon.retail_deposit",
+      "severity": "warning",
+      "description": "储蓄存款合计与分项核对。"
+    },
+    {
+      "id": "recon.personal_loan",
+      "severity": "warning",
+      "description": "个人贷款合计与分支行个贷、微贷、信用卡核对。"
+    },
+    {
+      "id": "recon.loan_interest",
+      "severity": "warning",
+      "description": "贷款利息收入与公司、个人、折现回拨分项核对。"
+    },
+    {
+      "id": "recon.noninterest",
+      "severity": "warning",
+      "description": "非息总量与511、512、527、513、516、517、518、519及手工调整核对。"
+    }
+  ]
+}

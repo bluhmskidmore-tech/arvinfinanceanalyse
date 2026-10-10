@@ -1,0 +1,12 @@
+{
+  "sample_contract_version": "ledger-pnl-net-interest-golden-v1",
+  "report_month": "202606",
+  "parent_path": "/api/ledger-pnl/candidate-financial-indicators/period-comparison",
+  "component_detail_path": "/api/ledger-pnl/candidate-financial-indicators/period-comparison/component-detail",
+  "component_metric_ids": [
+    "income.interest.loan.total",
+    "expense.interest.deposit.total",
+    "income.interest.investment",
+    "income.interest.interbank_net"
+  ]
+}

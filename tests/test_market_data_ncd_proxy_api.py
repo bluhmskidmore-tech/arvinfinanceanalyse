@@ -8,6 +8,14 @@ from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_market_data,
+]
+
+
 NCD_PROXY_READ_HEADERS = {"X-User-Id": "ncd-proxy-read-user", "X-User-Role": "viewer"}
 
 

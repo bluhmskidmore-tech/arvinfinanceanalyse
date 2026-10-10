@@ -31,10 +31,10 @@ npm run lint
 npm run typecheck
 ```
 
-**后端**：
+**后端**（在仓库根，注意用仓库自己的 `.venv`，不要用裸 `python`——它常被无关 venv 遮蔽）：
 
-```bash
-python -m pytest -q
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
 ```
 
 更全的说明见 [TESTING.md](TESTING.md) 与根 [README.md](../README.md)。

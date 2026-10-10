@@ -1,81 +1,42 @@
-/* Deferred Workbench chrome that the dashboard home first screen does not render. */
+/* Deferred Workbench chrome that the dashboard home first screen does not render.
+   终端条/操作区/行情带/子导航的首帧几何声明（display、gap、padding、font-size、
+   line-height 等）已迁至 workbenchShell.css 随入口 CSS eager 加载，此文件只保留
+   颜色、边框色、阴影、背景等纯装饰声明，避免非首页路由首帧无样式堆叠再收拢产生
+   的布局偏移（CLS）。拆分后的选择器与 workbenchShell.css 对应区块保持一致，
+   同选择器分属两文件时互不重复设置同一属性。 */
 .workbench-terminal-bar {
-  display: grid;
-  gap: 10px;
-  padding: 14px 18px;
-  border-radius: 22px;
-  border: 1px solid var(--moss-shell-terminal-border);
+  border-radius: 0;
+  border: 0;
+  border-bottom: 1px solid var(--moss-shell-terminal-border);
   background: var(--moss-shell-terminal-bg);
-  box-shadow: 0 10px 24px rgba(15, 37, 68, 0.06);
-}
-
-.workbench-terminal-bar-split {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.workbench-page-context-shell {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
+  box-shadow: none;
 }
 
 .workbench-page-title-display {
   color: var(--moss-color-text-primary);
-  font-size: 30px;
-  line-height: 1.02;
-  font-weight: 700;
-  letter-spacing: 0;
+}
+
+/*
+ * 面包屑变体（2026-09-02 铬件统一）：终端条只标「组 › 页」，页标题由页内 h1 承担。
+ * 选择器特异性 (0,3,0) 高于 institutional-console / product-category 的 (0,2,0) 大标题覆盖，
+ * 所有路由同一形态。几何声明（display/align-items/gap/min-width/font-size/line-height/
+ * font-weight/letter-spacing）已迁至 workbenchShell.css，此处只保留 crumb 分隔符/组名的
+ * 颜色装饰。
+ */
+.workbench-shell-grid .workbench-page-title-display[data-variant="crumb"] .workbench-page-crumb-group,
+.workbench-shell-grid .workbench-page-title-display[data-variant="crumb"] .workbench-page-crumb-sep {
+  color: var(--moss-color-text-muted);
+  font-weight: 500;
 }
 
 .workbench-shell-report-chip {
   color: var(--moss-color-text-secondary);
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--moss-shell-terminal-border);
-  background: rgba(255, 255, 255, 0.82);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.workbench-operator-zone-shell {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  min-width: 0;
-}
-
-.workbench-operator-pill-quiet {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--moss-shell-terminal-border);
-  background: rgba(241, 245, 249, 0.88);
-  color: var(--moss-color-text-secondary);
-  font-size: 11px;
-  font-weight: 700;
+  border: 0;
+  background: transparent;
 }
 
 .workbench-terminal-utility-navlink {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 2px;
   color: var(--moss-color-text-secondary);
-  font-size: 12px;
-  font-weight: 600;
   border-bottom: 1px solid transparent;
 }
 
@@ -84,28 +45,26 @@
   border-bottom-color: var(--moss-color-neutral-300);
 }
 
-.workbench-terminal-utility-icon {
-  font-size: 11px;
-}
-
+/* 行情带是终端条内的一行，不再自成一框：只保留与上一行之间的分隔线颜色（宽度在 eager 分册）。 */
 .workbench-market-ticker-shell {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  padding: 7px 10px;
-  border-top: 1px solid rgba(203, 213, 225, 0.54);
-  border-radius: 12px;
-  background: var(--moss-shell-pulse-bg);
+  border-top-color: rgba(203, 213, 225, 0.54);
 }
 
 .workbench-market-ticker-label {
   color: var(--moss-color-text-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* 行情兜底「演示」徽标：与终端条同排、不改变行高，警示色与 up-delta 同域。 */
+.workbench-market-ticker-fallback-flag {
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--moss-color-warning-600) 45%, transparent);
+  border-radius: var(--dh-api-radius, var(--moss-radius-sm));
+  color: var(--moss-color-warning-600);
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-weight: 500;
+  line-height: 1.2;
 }
 
 .workbench-market-ticker-item {
@@ -117,30 +76,43 @@
 
 .workbench-market-ticker-meta {
   color: var(--moss-color-text-muted);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  font-size: 12px;
+  font-weight: 400;
 }
 
 .workbench-market-ticker-strong {
   color: var(--moss-color-text-primary);
+  font-family: var(--moss-font-tabular);
   font-size: 14px;
   line-height: 1;
-  font-weight: 700;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
 .workbench-market-ticker-delta {
-  font-size: 10px;
-  font-weight: 700;
+  font-family: var(--moss-font-tabular);
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }
 
+/*
+ * 行情带是市场利率序列（DESIGN.md 结论 20）：上行=警示琥珀，下行与零值保持中性，
+ * 方向由数值符号表达，不用涨绿跌红盈亏色。down 用比 muted 更亮一档的既有中性色阶，
+ * 保证 11px 读数的对比度；深色壳层取 --dh-api-* 去饱和色阶，
+ * 第二参数仅为无深色路由时的浅色回退；此前直接用 warning-500 / success-500 把浅色
+ * 高饱和色搬进了深色页，且与 /market-data 页内同一组数字的中性着色同屏冲突。
+ */
 .workbench-market-ticker-delta[data-tone="down"] {
-  color: var(--moss-color-success-500);
+  color: var(--dh-api-soft, var(--moss-color-text-secondary));
+}
+
+.workbench-market-ticker-delta[data-tone="neutral"] {
+  color: var(--dh-api-muted, var(--moss-color-text-muted));
 }
 
 .workbench-market-ticker-delta[data-tone="up"] {
-  color: var(--moss-color-warning-500);
+  color: var(--dh-api-amber, var(--moss-color-warning-500));
 }
 
 .workbench-market-ticker-rule {
@@ -149,93 +121,15 @@
   background: var(--moss-shell-pulse-border);
 }
 
-.workbench-shell-grid--desktop-aligned [data-testid="workbench-terminal-bar"] {
-  display: flex !important;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--moss-space-2) !important;
-  padding: 10px 12px !important;
-  border-color: var(--moss-shell-terminal-border) !important;
-  border-radius: var(--moss-radius-sm) !important;
-  background: var(--moss-shell-terminal-bg) !important;
-  box-shadow: 0 8px 18px rgba(15, 37, 68, 0.05) !important;
+.workbench-shell-grid.workbench-shell-grid [data-testid="workbench-terminal-bar"] {
+  border-color: var(--moss-shell-terminal-border);
+  border-width: 0 0 1px;
+  border-radius: 0;
+  background: var(--moss-shell-terminal-bg);
+  box-shadow: none;
 }
 
-.workbench-shell-grid--desktop-aligned [data-testid="workbench-terminal-bar"] > div:first-child {
-  display: contents !important;
-}
-
-.workbench-shell-grid--desktop-aligned [data-testid="workbench-page-context"] {
-  order: 1;
-  flex: 0 0 auto;
-  gap: var(--moss-space-2) !important;
-}
-
-.workbench-shell-grid--desktop-aligned [data-testid="workbench-page-context"] > div:first-child {
-  font-size: 29px !important;
-  font-weight: 800 !important;
-  line-height: 1 !important;
-}
-
-.workbench-shell-grid--desktop-aligned [data-testid="workbench-operator-zone"] {
-  order: 3;
-  flex: 0 0 auto;
-  gap: var(--moss-space-2) !important;
-}
-
-.workbench-shell-grid--desktop-aligned [data-testid="workbench-market-ticker"] {
-  order: 2;
-  flex: 1 1 420px;
-  gap: var(--moss-space-2) !important;
-  min-width: 320px;
-  padding-top: 0 !important;
-}
-
-.workbench-shell-grid--desktop-aligned [data-testid="workbench-market-ticker"] strong {
-  font-size: 14px !important;
-}
-
-.workbench-shell-grid--desktop-aligned [data-testid="workbench-section-subnav"] {
-  gap: var(--moss-space-2) !important;
-  padding-bottom: var(--moss-space-3) !important;
-}
-
-.workbench-shell-grid--desktop-aligned [data-testid="workbench-section-subnav"] > div:first-child {
-  display: flex !important;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--moss-space-3);
-  min-width: 0;
-}
-
-.workbench-shell-grid--desktop-aligned [data-testid="workbench-section-subnav"] > div:first-child span {
-  font-size: 10px !important;
-  letter-spacing: 0 !important;
-}
-
-.workbench-shell-grid--desktop-aligned [data-testid="workbench-section-subnav"] > div:first-child div {
-  font-size: 18px !important;
-  line-height: 1.15 !important;
-}
-
-.workbench-shell-grid--desktop-aligned [data-testid="workbench-section-subnav"] > div:last-child {
-  flex-wrap: wrap !important;
-  gap: var(--moss-space-2) !important;
-  overflow-x: visible;
-  padding-bottom: 0;
-}
-
-.workbench-shell-grid--desktop-aligned [data-testid="workbench-section-subnav"] > div:last-child a {
-  flex: 0 0 auto;
-  min-height: 32px;
-  padding: 7px 10px !important;
-  border-radius: var(--moss-radius-sm) !important;
-  white-space: nowrap;
-}
-
-.workbench-shell-grid--desktop-aligned [data-testid="workbench-readiness-banner"],
-.workbench-shell-grid--desktop-aligned [data-testid="workbench-governance-banner"] {
+.workbench-shell-grid--desktop-aligned [data-testid="workbench-readiness-banner"] {
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: var(--moss-space-1) var(--moss-space-4) !important;
@@ -243,13 +137,11 @@
   border-radius: var(--moss-radius-sm) !important;
 }
 
-.workbench-shell-grid--desktop-aligned [data-testid="workbench-readiness-banner"] > div:first-child,
-.workbench-shell-grid--desktop-aligned [data-testid="workbench-governance-banner"] > div:first-child {
+.workbench-shell-grid--desktop-aligned [data-testid="workbench-readiness-banner"] > div:first-child {
   font-size: 15px;
 }
 
-.workbench-shell-grid--desktop-aligned [data-testid="workbench-readiness-banner"] > div:nth-child(3),
-.workbench-shell-grid--desktop-aligned [data-testid="workbench-governance-banner"] > div:nth-child(3) {
+.workbench-shell-grid--desktop-aligned [data-testid="workbench-readiness-banner"] > div:nth-child(3) {
   grid-column: 2;
   font-size: 12px !important;
 }
@@ -275,12 +167,12 @@
 
 .workbench-workspace-hero[data-hero-density="compact"] {
   padding: 12px 18px;
-  border-radius: 18px;
+  border-radius: 8px;
 }
 
 .workbench-workspace-hero[data-hero-density="comfortable"] {
   padding: 18px 22px;
-  border-radius: 24px;
+  border-radius: 8px;
 }
 
 .portfolio-workbench-light-hint {
@@ -295,7 +187,7 @@
 .portfolio-workbench-light-hint__eyebrow {
   color: var(--moss-color-text-muted);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -347,7 +239,7 @@
 .workbench-shell-status-summary__title {
   color: var(--moss-color-text-primary);
   font-size: 22px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .workbench-shell-status-summary__description {
@@ -363,10 +255,10 @@
 }
 
 .workbench-shell-status-meta__badge {
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   padding: 6px 12px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .workbench-shell-status-meta__note {
@@ -390,7 +282,7 @@
   gap: 14px;
   padding: 18px 18px 16px;
   border: 1px solid #e4e9f0;
-  border-radius: 24px;
+  border-radius: 8px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.88) 0%, rgba(245, 247, 244, 0.92) 100%);
 }
@@ -439,14 +331,14 @@
 
 .portfolio-workbench-board__section-title {
   flex: 1;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .portfolio-workbench-board__section-badge {
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   padding: 2px 8px;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .portfolio-workbench-board__section-description {
@@ -455,72 +347,431 @@
   line-height: 1.6;
 }
 
+/*
+ * 组内子导航只保留内联页签与「更多」下拉；工作台名称由终端面包屑表达。
+ */
 .workbench-section-subnav {
-  display: grid;
-  gap: 12px;
-  padding-bottom: 18px;
   border-bottom: 1px solid #e4e9f0;
-}
-
-.workbench-section-subnav__header {
-  display: grid;
-  gap: 4px;
-}
-
-.workbench-section-subnav__eyebrow {
-  color: var(--moss-color-text-muted);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.workbench-section-subnav__title {
-  color: var(--moss-color-text-primary);
-  font-size: 18px;
-  font-weight: 700;
 }
 
 .workbench-section-subnav__links {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+  flex: 0 1 auto;
+  min-width: 0;
+  flex-wrap: nowrap;
+  gap: var(--moss-space-5);
 }
 
+/* 页签保持纯文字；当前位置用底线，hover 只提高文字和底线的对比度。 */
 .workbench-section-subnav__link {
+  box-sizing: border-box;
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border: 1px solid #e4e9f0;
-  border-radius: 14px;
-  background: var(--moss-color-card-bg);
+  gap: 6px;
+  min-height: 36px;
+  padding: var(--moss-space-2) 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--moss-color-text-secondary);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
   transition:
     background-color 160ms ease,
     color 160ms ease,
     border-color 160ms ease,
     box-shadow 160ms ease;
+  border-bottom: 2px solid transparent;
+}
+
+.workbench-section-subnav__link:hover {
+  color: var(--moss-color-text-primary);
 }
 
 .workbench-section-subnav__link[data-active="true"] {
-  border-color: var(--moss-color-neutral-300);
-  background: var(--moss-color-primary-50);
+  border-color: var(--moss-color-primary-500);
+  background: transparent;
   color: var(--moss-color-text-primary);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.64);
 }
 
 .workbench-section-subnav__icon {
   font-size: 14px;
 }
 
+.workbench-section-subnav__more {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.workbench-section-subnav__more-toggle {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  padding: var(--moss-space-2) 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--moss-color-text-muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    border-color 160ms ease;
+}
+
+.workbench-section-subnav__more-toggle:hover,
+.workbench-section-subnav__more-toggle[aria-expanded="true"],
+.workbench-section-subnav__more-toggle[data-active="true"] {
+  border-bottom-color: var(--dh-api-blue, var(--moss-color-primary-500));
+  color: var(--moss-color-text-primary);
+}
+
+.workbench-section-subnav__more-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  display: grid;
+  gap: 2px;
+  min-width: 200px;
+  padding: 6px;
+  border: 1px solid var(--moss-color-border-default);
+  border-radius: 8px;
+  background: var(--moss-color-card-bg);
+  box-shadow: var(--moss-shadow-popover);
+}
+
+.workbench-section-subnav__more-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  color: var(--moss-color-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+.workbench-section-subnav__more-link:hover {
+  background: color-mix(in srgb, var(--moss-color-text-muted) 12%, transparent);
+  color: var(--moss-color-text-primary);
+}
+
+.workbench-section-subnav__more-link[data-active="true"] {
+  background: var(--moss-color-primary-50);
+  color: var(--moss-color-text-primary);
+}
+
+/*
+ * Nocturne scope 铬件收敛：这些铬件带浅色字面量（灰蓝描边、白色 chip、
+ * primary-50 亮 pill），暗色变量翻转覆盖不到。仅对列出的 scope 生效，
+ * 色值全部走 --dh-api-* 链（该 scope 下即 Nocturne）。
+ * 制度（2026-08-13 全量收齐，theme.test.ts parity 断言锁定）：
+ * ① 终端条铬件四组（阴影 / chip+pill / utility navlink / 行情条）＝
+ *   WorkbenchShell showShellTerminalBar 为真的 Nocturne scope，与
+ *   tokens.css 终端条块同一份列表（宏观工具已整块抑制终端条不入列）；
+ * ② 子导航三组＝渲染组内子导航的 Nocturne scope：即终端条列表去掉
+ *   market-data（isMarketDataTerminalMain 抑制子导航）再加 macro-toolkit
+ *   （宏观工具保留组内子导航）。
+ */
+.workbench-shell-grid:has(
+    [data-moss-theme-scope="ledger-pnl"],
+    [data-moss-theme-scope="average-balance"],
+    [data-moss-theme-scope="positions"],
+    [data-moss-theme-scope="bond-dashboard"],
+    [data-moss-theme-scope="liability-analytics"],
+    [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="market-data"],
+    [data-moss-theme-scope="pnl-by-business"],
+    [data-moss-theme-scope="pnl-attribution"],
+    [data-moss-theme-scope="pnl-by-business-insights"],
+    [data-moss-theme-scope="risk-tensor"],
+    [data-moss-theme-scope="concentration-monitor"],
+    [data-moss-theme-scope="cashflow-projection"],
+    [data-moss-theme-scope="operations-analysis"],
+    [data-moss-theme-scope="market-finance"],
+    [data-moss-theme-scope="decision-items"],
+    [data-moss-theme-scope="pnl"],
+    [data-moss-theme-scope="pnl-bridge"],
+    [data-moss-theme-scope="product-category-pnl"],
+    [data-moss-theme-scope="bond-trading-desk"],
+    [data-moss-theme-scope="cross-asset"],
+    [data-moss-theme-scope="cube-query"],
+    [data-moss-theme-scope="news-events"],
+    [data-moss-theme-scope="kpi"],
+    [data-moss-theme-scope="team-performance"],
+    [data-moss-theme-scope="platform-config"],
+    [data-moss-theme-scope="balance-analysis"],
+    [data-moss-theme-scope="balance-movement-analysis"],
+    [data-moss-theme-scope="bond-analysis"],
+    [data-moss-theme-scope="macro-toolkit"],
+    [data-moss-theme-scope="market-overview"],
+    [data-moss-theme-scope="module-workbench-home"],
+    [data-moss-theme-scope="portfolio-home"],
+    [data-moss-theme-scope="risk-overview"]
+  )
+  .workbench-terminal-bar,
+.workbench-shell-grid--desktop-aligned:has(
+    [data-moss-theme-scope="ledger-pnl"],
+    [data-moss-theme-scope="average-balance"],
+    [data-moss-theme-scope="positions"],
+    [data-moss-theme-scope="bond-dashboard"],
+    [data-moss-theme-scope="liability-analytics"],
+    [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="market-data"],
+    [data-moss-theme-scope="pnl-by-business"],
+    [data-moss-theme-scope="pnl-attribution"],
+    [data-moss-theme-scope="pnl-by-business-insights"],
+    [data-moss-theme-scope="risk-tensor"],
+    [data-moss-theme-scope="concentration-monitor"],
+    [data-moss-theme-scope="cashflow-projection"],
+    [data-moss-theme-scope="operations-analysis"],
+    [data-moss-theme-scope="market-finance"],
+    [data-moss-theme-scope="decision-items"],
+    [data-moss-theme-scope="pnl"],
+    [data-moss-theme-scope="pnl-bridge"],
+    [data-moss-theme-scope="product-category-pnl"],
+    [data-moss-theme-scope="bond-trading-desk"],
+    [data-moss-theme-scope="cross-asset"],
+    [data-moss-theme-scope="cube-query"],
+    [data-moss-theme-scope="news-events"],
+    [data-moss-theme-scope="kpi"],
+    [data-moss-theme-scope="team-performance"],
+    [data-moss-theme-scope="platform-config"],
+    [data-moss-theme-scope="balance-analysis"],
+    [data-moss-theme-scope="balance-movement-analysis"],
+    [data-moss-theme-scope="bond-analysis"],
+    [data-moss-theme-scope="macro-toolkit"],
+    [data-moss-theme-scope="market-overview"],
+    [data-moss-theme-scope="module-workbench-home"],
+    [data-moss-theme-scope="portfolio-home"],
+    [data-moss-theme-scope="risk-overview"]
+  )
+  [data-testid="workbench-terminal-bar"] {
+  box-shadow: none !important;
+}
+
+.workbench-shell-grid:has(
+    [data-moss-theme-scope="ledger-pnl"],
+    [data-moss-theme-scope="average-balance"],
+    [data-moss-theme-scope="positions"],
+    [data-moss-theme-scope="bond-dashboard"],
+    [data-moss-theme-scope="liability-analytics"],
+    [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="market-data"],
+    [data-moss-theme-scope="pnl-by-business"],
+    [data-moss-theme-scope="pnl-attribution"],
+    [data-moss-theme-scope="pnl-by-business-insights"],
+    [data-moss-theme-scope="risk-tensor"],
+    [data-moss-theme-scope="concentration-monitor"],
+    [data-moss-theme-scope="cashflow-projection"],
+    [data-moss-theme-scope="operations-analysis"],
+    [data-moss-theme-scope="market-finance"],
+    [data-moss-theme-scope="decision-items"],
+    [data-moss-theme-scope="pnl"],
+    [data-moss-theme-scope="pnl-bridge"],
+    [data-moss-theme-scope="product-category-pnl"],
+    [data-moss-theme-scope="bond-trading-desk"],
+    [data-moss-theme-scope="cross-asset"],
+    [data-moss-theme-scope="cube-query"],
+    [data-moss-theme-scope="news-events"],
+    [data-moss-theme-scope="kpi"],
+    [data-moss-theme-scope="team-performance"],
+    [data-moss-theme-scope="platform-config"],
+    [data-moss-theme-scope="balance-analysis"],
+    [data-moss-theme-scope="balance-movement-analysis"],
+    [data-moss-theme-scope="bond-analysis"],
+    [data-moss-theme-scope="macro-toolkit"],
+    [data-moss-theme-scope="market-overview"],
+    [data-moss-theme-scope="module-workbench-home"],
+    [data-moss-theme-scope="portfolio-home"],
+    [data-moss-theme-scope="risk-overview"]
+  )
+  .workbench-terminal-utility-navlink[data-active="true"] {
+  border-bottom-color: var(--dh-api-blue);
+}
+
+.workbench-shell-grid:has(
+    [data-moss-theme-scope="ledger-pnl"],
+    [data-moss-theme-scope="average-balance"],
+    [data-moss-theme-scope="positions"],
+    [data-moss-theme-scope="bond-dashboard"],
+    [data-moss-theme-scope="liability-analytics"],
+    [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="market-data"],
+    [data-moss-theme-scope="pnl-by-business"],
+    [data-moss-theme-scope="pnl-attribution"],
+    [data-moss-theme-scope="pnl-by-business-insights"],
+    [data-moss-theme-scope="risk-tensor"],
+    [data-moss-theme-scope="concentration-monitor"],
+    [data-moss-theme-scope="cashflow-projection"],
+    [data-moss-theme-scope="operations-analysis"],
+    [data-moss-theme-scope="market-finance"],
+    [data-moss-theme-scope="decision-items"],
+    [data-moss-theme-scope="pnl"],
+    [data-moss-theme-scope="pnl-bridge"],
+    [data-moss-theme-scope="product-category-pnl"],
+    [data-moss-theme-scope="bond-trading-desk"],
+    [data-moss-theme-scope="cross-asset"],
+    [data-moss-theme-scope="cube-query"],
+    [data-moss-theme-scope="news-events"],
+    [data-moss-theme-scope="kpi"],
+    [data-moss-theme-scope="team-performance"],
+    [data-moss-theme-scope="platform-config"],
+    [data-moss-theme-scope="balance-analysis"],
+    [data-moss-theme-scope="balance-movement-analysis"],
+    [data-moss-theme-scope="bond-analysis"],
+    [data-moss-theme-scope="macro-toolkit"],
+    [data-moss-theme-scope="market-overview"],
+    [data-moss-theme-scope="module-workbench-home"],
+    [data-moss-theme-scope="portfolio-home"],
+    [data-moss-theme-scope="risk-overview"]
+  )
+  .workbench-market-ticker-shell {
+  border-top-color: var(--dh-api-line-soft);
+}
+
+.workbench-shell-grid:has(
+    [data-moss-theme-scope="macro-toolkit"],
+    [data-moss-theme-scope="ledger-pnl"],
+    [data-moss-theme-scope="average-balance"],
+    [data-moss-theme-scope="positions"],
+    [data-moss-theme-scope="bond-dashboard"],
+    [data-moss-theme-scope="liability-analytics"],
+    [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="pnl-by-business"],
+    [data-moss-theme-scope="pnl-attribution"],
+    [data-moss-theme-scope="pnl-by-business-insights"],
+    [data-moss-theme-scope="risk-tensor"],
+    [data-moss-theme-scope="concentration-monitor"],
+    [data-moss-theme-scope="cashflow-projection"],
+    [data-moss-theme-scope="operations-analysis"],
+    [data-moss-theme-scope="market-finance"],
+    [data-moss-theme-scope="decision-items"],
+    [data-moss-theme-scope="pnl"],
+    [data-moss-theme-scope="pnl-bridge"],
+    [data-moss-theme-scope="product-category-pnl"],
+    [data-moss-theme-scope="bond-trading-desk"],
+    [data-moss-theme-scope="cross-asset"],
+    [data-moss-theme-scope="cube-query"],
+    [data-moss-theme-scope="news-events"],
+    [data-moss-theme-scope="kpi"],
+    [data-moss-theme-scope="team-performance"],
+    [data-moss-theme-scope="platform-config"],
+    [data-moss-theme-scope="balance-analysis"],
+    [data-moss-theme-scope="balance-movement-analysis"],
+    [data-moss-theme-scope="bond-analysis"],
+    [data-moss-theme-scope="market-data"],
+    [data-moss-theme-scope="market-overview"],
+    [data-moss-theme-scope="module-workbench-home"],
+    [data-moss-theme-scope="portfolio-home"],
+    [data-moss-theme-scope="risk-overview"]
+  )
+  .workbench-section-subnav {
+  border-bottom-color: var(--dh-api-line-soft);
+}
+
+.workbench-shell-grid:has(
+    [data-moss-theme-scope="macro-toolkit"],
+    [data-moss-theme-scope="ledger-pnl"],
+    [data-moss-theme-scope="average-balance"],
+    [data-moss-theme-scope="positions"],
+    [data-moss-theme-scope="bond-dashboard"],
+    [data-moss-theme-scope="liability-analytics"],
+    [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="pnl-by-business"],
+    [data-moss-theme-scope="pnl-attribution"],
+    [data-moss-theme-scope="pnl-by-business-insights"],
+    [data-moss-theme-scope="risk-tensor"],
+    [data-moss-theme-scope="concentration-monitor"],
+    [data-moss-theme-scope="cashflow-projection"],
+    [data-moss-theme-scope="operations-analysis"],
+    [data-moss-theme-scope="market-finance"],
+    [data-moss-theme-scope="decision-items"],
+    [data-moss-theme-scope="pnl"],
+    [data-moss-theme-scope="pnl-bridge"],
+    [data-moss-theme-scope="product-category-pnl"],
+    [data-moss-theme-scope="bond-trading-desk"],
+    [data-moss-theme-scope="cross-asset"],
+    [data-moss-theme-scope="cube-query"],
+    [data-moss-theme-scope="news-events"],
+    [data-moss-theme-scope="kpi"],
+    [data-moss-theme-scope="team-performance"],
+    [data-moss-theme-scope="platform-config"],
+    [data-moss-theme-scope="balance-analysis"],
+    [data-moss-theme-scope="balance-movement-analysis"],
+    [data-moss-theme-scope="bond-analysis"],
+    [data-moss-theme-scope="market-data"],
+    [data-moss-theme-scope="market-overview"],
+    [data-moss-theme-scope="module-workbench-home"],
+    [data-moss-theme-scope="portfolio-home"],
+    [data-moss-theme-scope="risk-overview"]
+  )
+  .workbench-section-subnav__link:hover {
+  border-color: var(--dh-api-line-soft);
+}
+
+.workbench-shell-grid:has(
+    [data-moss-theme-scope="macro-toolkit"],
+    [data-moss-theme-scope="ledger-pnl"],
+    [data-moss-theme-scope="average-balance"],
+    [data-moss-theme-scope="positions"],
+    [data-moss-theme-scope="bond-dashboard"],
+    [data-moss-theme-scope="liability-analytics"],
+    [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="pnl-by-business"],
+    [data-moss-theme-scope="pnl-attribution"],
+    [data-moss-theme-scope="pnl-by-business-insights"],
+    [data-moss-theme-scope="risk-tensor"],
+    [data-moss-theme-scope="concentration-monitor"],
+    [data-moss-theme-scope="cashflow-projection"],
+    [data-moss-theme-scope="operations-analysis"],
+    [data-moss-theme-scope="market-finance"],
+    [data-moss-theme-scope="decision-items"],
+    [data-moss-theme-scope="pnl"],
+    [data-moss-theme-scope="pnl-bridge"],
+    [data-moss-theme-scope="product-category-pnl"],
+    [data-moss-theme-scope="bond-trading-desk"],
+    [data-moss-theme-scope="cross-asset"],
+    [data-moss-theme-scope="cube-query"],
+    [data-moss-theme-scope="news-events"],
+    [data-moss-theme-scope="kpi"],
+    [data-moss-theme-scope="team-performance"],
+    [data-moss-theme-scope="platform-config"],
+    [data-moss-theme-scope="balance-analysis"],
+    [data-moss-theme-scope="balance-movement-analysis"],
+    [data-moss-theme-scope="bond-analysis"],
+    [data-moss-theme-scope="market-data"],
+    [data-moss-theme-scope="market-overview"],
+    [data-moss-theme-scope="module-workbench-home"],
+    [data-moss-theme-scope="portfolio-home"],
+    [data-moss-theme-scope="risk-overview"]
+  )
+  .workbench-section-subnav__link[data-active="true"] {
+  border-color: var(--dh-api-blue);
+  background: transparent;
+  color: var(--dh-api-ink);
+  box-shadow: none;
+}
+
 .workbench-notice {
   display: grid;
   gap: 8px;
   padding: 18px;
-  border-radius: 18px;
+  border-radius: 8px;
   color: var(--moss-color-text-primary);
 }
 
@@ -540,7 +791,7 @@
 }
 
 .workbench-notice__title {
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .workbench-notice__body {
@@ -551,6 +802,259 @@
 .workbench-notice__hint {
   color: var(--moss-color-text-muted);
   font-size: 13px;
+}
+
+/*
+ * 治理状态胶囊（降噪 PRD FR-1，2026-08-27）：替代整幅「临时例外」横幅。
+ * 终端条有空间时并入右侧操作区，详情展开为浮层；自带顶部的页面保持文档流。
+ * 原横幅文案原样保留。全部取色走 --moss-color-* 语义链，
+ * 浅色 / Nocturne 两套主题由 tokens.css 重映射自动适配，无需 scope 收敛块。
+ */
+.workbench-governance-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.workbench-governance-pill__toggle {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--moss-color-border-default);
+  border-radius: var(--dh-api-radius, var(--moss-radius-sm));
+  background: transparent;
+  color: var(--moss-color-text-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    border-color 160ms ease;
+}
+
+.workbench-governance-pill__toggle:hover,
+.workbench-governance-pill__toggle[aria-expanded="true"] {
+  color: var(--moss-color-text-secondary);
+}
+
+.workbench-governance-pill__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--moss-color-text-muted);
+  opacity: 0.7;
+}
+
+.workbench-governance-pill__detail {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--moss-color-border-default);
+  border-radius: 8px;
+  background: var(--moss-color-card-bg);
+}
+
+.workbench-operator-zone-shell .workbench-governance-pill {
+  position: relative;
+}
+
+.workbench-operator-zone-shell .workbench-governance-pill__toggle {
+  color: var(--dh-api-muted, var(--moss-color-text-muted));
+}
+
+.workbench-operator-zone-shell .workbench-governance-pill__detail {
+  position: absolute;
+  top: calc(100% + var(--moss-space-2));
+  right: 0;
+  z-index: 50;
+  width: min(360px, calc(100vw - 2 * var(--moss-page-gutter)));
+  box-shadow: var(--moss-shadow-popover);
+}
+
+.workbench-governance-pill__detail-title {
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.workbench-governance-pill__detail-body {
+  margin: 0;
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.workbench-governance-pill__detail-hint {
+  margin: 0;
+  color: var(--moss-color-text-muted);
+  font-size: 11px;
+}
+
+/*
+ * 治理横幅（临时例外）的 Nocturne scope 收敛：基础样式是浅色 cream
+ * （warning-50/200 浅字面量），且 Nocturne 外壳翻转后标题/正文继承近白
+ * ink，落在浅底上不可读。仅对列出的 scope 生效，色值全部走 --dh-api-*
+ * 链（该 scope 下即 Nocturne），密度对齐首页面板（12-14px padding、
+ * 12px 正文、--dh-api-radius 圆角）。
+ * 制度（2026-08-13 全量收齐）：navigation.ts 中 governanceStatus =
+ * "temporary-exception" 的 Nocturne scope 全列（kpi-performance 的
+ * scope 名为 kpi）；liability-analytics 为历史零效果行保留（该 section
+ * 已无治理横幅）。theme.test.ts parity 断言从 navigation.ts 推导期望
+ * 列表锁定本组四块。
+ */
+.workbench-shell-grid:has(
+    [data-moss-theme-scope="ledger-pnl"],
+    [data-moss-theme-scope="average-balance"],
+    [data-moss-theme-scope="positions"],
+    [data-moss-theme-scope="bond-dashboard"],
+    [data-moss-theme-scope="liability-analytics"],
+    [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="stock-analysis"],
+    [data-moss-theme-scope="pnl-by-business"],
+    [data-moss-theme-scope="concentration-monitor"],
+    [data-moss-theme-scope="cashflow-projection"],
+    [data-moss-theme-scope="operations-analysis"],
+    [data-moss-theme-scope="market-finance"],
+    [data-moss-theme-scope="decision-items"],
+    [data-moss-theme-scope="product-category-pnl"],
+    [data-moss-theme-scope="cross-asset"],
+    [data-moss-theme-scope="news-events"],
+    [data-moss-theme-scope="kpi"],
+    [data-moss-theme-scope="team-performance"],
+    [data-moss-theme-scope="platform-config"]
+  )
+  .workbench-notice[data-notice-tone="governance"] {
+  gap: 4px;
+  padding: 12px 14px;
+  border-color: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
+  /* !important 对齐上方 desktop-aligned 层的 2px 锐角烘焙（本文件 §readiness/governance banner）。 */
+  border-radius: var(--dh-api-radius) !important;
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-soft);
+}
+
+.workbench-shell-grid:has(
+    [data-moss-theme-scope="ledger-pnl"],
+    [data-moss-theme-scope="average-balance"],
+    [data-moss-theme-scope="positions"],
+    [data-moss-theme-scope="bond-dashboard"],
+    [data-moss-theme-scope="liability-analytics"],
+    [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="stock-analysis"],
+    [data-moss-theme-scope="pnl-by-business"],
+    [data-moss-theme-scope="concentration-monitor"],
+    [data-moss-theme-scope="cashflow-projection"],
+    [data-moss-theme-scope="operations-analysis"],
+    [data-moss-theme-scope="market-finance"],
+    [data-moss-theme-scope="decision-items"],
+    [data-moss-theme-scope="product-category-pnl"],
+    [data-moss-theme-scope="cross-asset"],
+    [data-moss-theme-scope="news-events"],
+    [data-moss-theme-scope="kpi"],
+    [data-moss-theme-scope="team-performance"],
+    [data-moss-theme-scope="platform-config"]
+  )
+  .workbench-notice[data-notice-tone="governance"]
+  .workbench-notice__title {
+  color: var(--dh-api-amber);
+  font-size: 12px;
+}
+
+.workbench-shell-grid:has(
+    [data-moss-theme-scope="ledger-pnl"],
+    [data-moss-theme-scope="average-balance"],
+    [data-moss-theme-scope="positions"],
+    [data-moss-theme-scope="bond-dashboard"],
+    [data-moss-theme-scope="liability-analytics"],
+    [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="stock-analysis"],
+    [data-moss-theme-scope="pnl-by-business"],
+    [data-moss-theme-scope="concentration-monitor"],
+    [data-moss-theme-scope="cashflow-projection"],
+    [data-moss-theme-scope="operations-analysis"],
+    [data-moss-theme-scope="market-finance"],
+    [data-moss-theme-scope="decision-items"],
+    [data-moss-theme-scope="product-category-pnl"],
+    [data-moss-theme-scope="cross-asset"],
+    [data-moss-theme-scope="news-events"],
+    [data-moss-theme-scope="kpi"],
+    [data-moss-theme-scope="team-performance"],
+    [data-moss-theme-scope="platform-config"]
+  )
+  .workbench-notice[data-notice-tone="governance"]
+  .workbench-notice__body {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.workbench-shell-grid:has(
+    [data-moss-theme-scope="ledger-pnl"],
+    [data-moss-theme-scope="average-balance"],
+    [data-moss-theme-scope="positions"],
+    [data-moss-theme-scope="bond-dashboard"],
+    [data-moss-theme-scope="liability-analytics"],
+    [data-moss-theme-scope="bank-ledger-dashboard"],
+    [data-moss-theme-scope="stock-analysis"],
+    [data-moss-theme-scope="pnl-by-business"],
+    [data-moss-theme-scope="concentration-monitor"],
+    [data-moss-theme-scope="cashflow-projection"],
+    [data-moss-theme-scope="operations-analysis"],
+    [data-moss-theme-scope="market-finance"],
+    [data-moss-theme-scope="decision-items"],
+    [data-moss-theme-scope="product-category-pnl"],
+    [data-moss-theme-scope="cross-asset"],
+    [data-moss-theme-scope="news-events"],
+    [data-moss-theme-scope="kpi"],
+    [data-moss-theme-scope="team-performance"],
+    [data-moss-theme-scope="platform-config"]
+  )
+  .workbench-notice[data-notice-tone="governance"]
+  .workbench-notice__hint {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+}
+
+/*
+ * /agent（MOSS Chat，readiness=gated）是 Nocturne 路由中唯一渲染
+ * readiness 外壳面的 scope：就绪横幅（data-readiness="gated"，非治理
+ * tone）与工作台导引 hero（.workbench-workspace-hero）基础样式都是浅色
+ * 字面量（cream / 白渐变），Nocturne 外壳翻转后正文继承近白 ink 落在
+ * 浅底上不可读。按上方治理横幅同款制度仅收敛颜色（密度/字号/版式不动），
+ * 色值全部走 --dh-api-* 链（该 scope 下即 Nocturne）。
+ */
+.workbench-shell-grid:has([data-moss-theme-scope="agent"]) .workbench-workspace-hero {
+  border-color: var(--dh-api-line);
+  background: var(--dh-api-panel);
+}
+
+/* hero 内 gated 徽章色 --moss-color-warning-600 无深色重映射，拉回琥珀链。 */
+.workbench-shell-grid:has([data-moss-theme-scope="agent"])
+  .workbench-shell-status-meta__badge[data-readiness-tone="gated"] {
+  color: var(--dh-api-amber);
+}
+
+.workbench-shell-grid:has([data-moss-theme-scope="agent"])
+  .workbench-notice[data-readiness="gated"] {
+  border-color: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
+  background: var(--dh-api-amber-soft);
+  color: var(--dh-api-soft);
+}
+
+.workbench-shell-grid:has([data-moss-theme-scope="agent"])
+  .workbench-notice[data-readiness="gated"]
+  .workbench-notice__title {
+  color: var(--dh-api-amber);
+}
+
+.workbench-shell-grid:has([data-moss-theme-scope="agent"])
+  .workbench-notice[data-readiness="gated"]
+  .workbench-notice__hint {
+  color: var(--dh-api-muted);
 }
 
 .portfolio-workbench-lead {
@@ -576,7 +1080,7 @@
   max-width: 700px;
   color: var(--moss-color-text-primary);
   font-size: clamp(24px, 2.6vw, 30px);
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.18;
   letter-spacing: -0.03em;
 }
@@ -599,7 +1103,7 @@
   gap: 4px;
   padding: 12px 14px;
   border: 1px solid var(--moss-shell-terminal-border);
-  border-radius: 16px;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.84);
 }
 
@@ -629,7 +1133,7 @@
   gap: 10px;
   padding: 16px;
   border: 1px solid #e4e9f0;
-  border-radius: 20px;
+  border-radius: var(--ib-radius, 2px);
   background:
     linear-gradient(180deg, rgba(235, 241, 246, 0.84) 0%, rgba(255, 255, 255, 0.9) 100%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
@@ -650,7 +1154,7 @@
 .portfolio-workbench-flow__title {
   color: var(--moss-color-text-primary);
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .portfolio-workbench-flow__list {
@@ -663,7 +1167,7 @@
   gap: 6px;
   padding: 12px 14px;
   border: 1px solid #e4e9f0;
-  border-radius: 16px;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.76);
   color: var(--moss-color-text-primary);
   text-decoration: none;
@@ -689,7 +1193,7 @@
   background: var(--moss-color-neutral-100);
   color: var(--moss-color-text-secondary);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .portfolio-workbench-flow__link[data-active="true"] .portfolio-workbench-flow__step {
@@ -699,14 +1203,14 @@
 
 .portfolio-workbench-flow__link-title {
   flex: 1;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .portfolio-workbench-flow__badge {
-  border-radius: 999px;
+  border-radius: var(--dh-api-radius, 8px);
   padding: 2px 8px;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .portfolio-workbench-flow__detail {
@@ -726,34 +1230,55 @@
     padding-bottom: var(--moss-space-2) !important;
   }
 
-  .workbench-main-column [data-testid="workbench-section-subnav"] > div:first-child {
-    display: flex !important;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: var(--moss-space-2);
-    min-width: 0;
+  /* 窄屏下内联页签放弃单行约束，允许横向滚动而非换行堆叠。 */
+  .workbench-main-column [data-testid="workbench-section-subnav"] .workbench-section-subnav__links {
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
   }
+}
 
-  .workbench-main-column [data-testid="workbench-section-subnav"] > div:first-child span {
-    font-size: 10px !important;
-    letter-spacing: 0.04em !important;
-  }
-
-  .workbench-main-column [data-testid="workbench-section-subnav"] > div:first-child div {
-    font-size: 16px !important;
-    line-height: 1.2 !important;
-  }
-
-  .workbench-main-column [data-testid="workbench-section-subnav"] > div:last-child {
-    flex-wrap: wrap !important;
-    gap: var(--moss-space-2) !important;
-    overflow-x: visible;
-    padding-bottom: 0;
-  }
-
-  .workbench-main-column [data-testid="workbench-section-subnav"] > div:last-child a {
-    flex: 0 1 auto;
-    max-width: 100%;
-    white-space: nowrap;
-  }
+/* Nocturne 外壳统一收口的终端条分册（2026-08-12，主块见 workbenchShell.css 末尾；
+   终端条铬件样式按启动性能守卫只允许住本延迟文件）：
+   workbenchInstitutionalConsole.css 以 !important 在终端条卡面上叠钢青装饰渐层
+   （ledger-pnl 命中），其余 scope 走 --moss-shell-terminal-bg 变量即可
+   （tokens.css 已重映射），列在此处属冗余对齐——保持与 tokens.css 终端条块
+   同一份 scope 列表（即 WorkbenchShell showShellTerminalBar 为真的 Nocturne
+   scope，完整清单见 theme.test.ts parity 断言），避免两处漂移。
+   值引用 --nct-*，不新增色值。 */
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="ledger-pnl"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="average-balance"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="positions"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-dashboard"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="liability-analytics"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bank-ledger-dashboard"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-data"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-attribution"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-by-business-insights"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-tensor"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="concentration-monitor"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cashflow-projection"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="operations-analysis"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-finance"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="decision-items"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="pnl-bridge"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="product-category-pnl"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-trading-desk"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cross-asset"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="cube-query"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="news-events"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="kpi"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="team-performance"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="platform-config"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="balance-analysis"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="balance-movement-analysis"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="bond-analysis"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="macro-toolkit"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="market-overview"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="module-workbench-home"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="portfolio-home"]) .workbench-terminal-bar,
+.workbench-shell-grid.workbench-shell-grid:has([data-moss-theme-scope="risk-overview"]) .workbench-terminal-bar {
+  background: var(--nct-rail) !important;
 }

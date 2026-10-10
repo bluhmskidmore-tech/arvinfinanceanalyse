@@ -7,15 +7,15 @@ import type { ApiEnvelope, BalanceAnalysisOverviewPayload, ResultMeta } from "..
 import { AlertList } from "../../../components/AlertList";
 import { CalendarList } from "../../../components/CalendarList";
 import { FilterBar } from "../../../components/FilterBar";
+import { DataSourceBadge } from "../../../components/StatusPill";
+import { PageAsyncSection } from "../../../components/page/PageAsyncSection";
 import {
   PageFilterTray,
   PageHeader,
 } from "../../../components/page/PagePrimitives";
-import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import { BusinessConclusion } from "../business-analysis/BusinessConclusion";
 import { BusinessContributionTable } from "../business-analysis/BusinessContributionTable";
 import { ManagementOutput } from "../business-analysis/ManagementOutput";
-import { QualityObservation } from "../business-analysis/QualityObservation";
 import { RevenueCostBridge } from "../business-analysis/RevenueCostBridge";
 import { TenorConcentrationPanel } from "../business-analysis/TenorConcentrationPanel";
 import {
@@ -27,25 +27,50 @@ import {
   formatProductCategoryValue,
   selectProductCategoryDetailRows,
 } from "../../product-category-pnl/pages/productCategoryPnlPageModel";
+import { EM_DASH } from "../../../utils/format";
 import "./OperationsAnalysisPage.css";
 
 const OPERATIONS_PRODUCT_CATEGORY_VIEW = "monthly";
 
-function OperationsSectionLead({
-  eyebrow,
-  title,
-  description,
-}: {
-  eyebrow: string;
-  title: string;
-  description: string;
-}) {
+function OperationsSectionLead({ title }: { title: string }) {
   return (
     <div className="operations-analysis-page__section-lead">
-      <span className="operations-analysis-page__section-eyebrow">{eyebrow}</span>
       <h2 className="operations-analysis-page__section-title">{title}</h2>
-      <p className="operations-analysis-page__section-description">{description}</p>
     </div>
+  );
+}
+
+/**
+ * 静态示例区块默认折叠为一行 <details>；红胶囊「静态示例」声明保留在
+ * summary 上，展开后才显示示例内容，避免假精度数字与真实读数同屏。
+ */
+function StaticSampleSection({
+  title,
+  badgeLabel = "静态示例数据",
+  badgeTestId,
+  testId,
+  children,
+}: {
+  title: string;
+  badgeLabel?: string;
+  badgeTestId: string;
+  testId?: string;
+  children: ReactNode;
+}) {
+  return (
+    <details className="operations-analysis-page__sample-details" data-testid={testId}>
+      <summary className="operations-analysis-page__sample-summary">
+        <span className="operations-analysis-page__sample-title">{title}</span>
+        <DataSourceBadge
+          status="mock"
+          label={badgeLabel}
+          testId={badgeTestId}
+          title="静态占位示例，未接入真实数据源，不作正式判断"
+        />
+        <span className="operations-analysis-page__sample-cue">示意样例（点开查看）</span>
+      </summary>
+      <div className="operations-analysis-page__sample-body">{children}</div>
+    </details>
   );
 }
 
@@ -90,6 +115,7 @@ function OperationsMetricCard({
       className={cardClassName}
       data-compact={compact ? "true" : undefined}
       data-status={status}
+      data-long-value={value.length >= 8 ? "true" : undefined}
     >
       <div className="operations-analysis-page__metric-label-row">
         <p className="operations-analysis-page__metric-label">{label}</p>
@@ -99,7 +125,7 @@ function OperationsMetricCard({
           <span className="operations-analysis-page__metric-value">
             {value}
           </span>
-          {unit ? (
+          {unit && value !== EM_DASH ? (
             <span className="operations-analysis-page__metric-unit">
               {unit}
             </span>
@@ -115,6 +141,14 @@ function formatOverviewNumber(raw: string | number | null | undefined): string {
   return formatBalanceAmountToYiFromYuan(raw);
 }
 
+/** 读面查询上限 5000 行；命中上限按截断标注，不当作精确总数直出。 */
+const OVERVIEW_ROW_CAP = 5000;
+
+function formatOverviewRowCount(count: number): string {
+  return count >= OVERVIEW_ROW_CAP ? `≥${count}（截断）` : String(count);
+}
+
+/** 查询失败时值位统一 EM_DASH；失败原因收敛到首屏失败横幅一处，不逐卡重复。 */
 function buildStatusCardContent(input: {
   isError: boolean;
   value: string;
@@ -122,8 +156,8 @@ function buildStatusCardContent(input: {
 }) {
   if (input.isError) {
     return {
-      value: "不可用",
-      detail: "当前查询失败，请在下方面板重试。",
+      value: EM_DASH,
+      detail: "",
     };
   }
   return input;
@@ -132,7 +166,7 @@ function buildStatusCardContent(input: {
 /** Page-local: 受治理元信息一行，不扩展指标含义，只标明口径 / 质量 / 供应商 / 回退。 */
 function formatResultMetaProvenance(meta: ResultMeta | undefined): string {
   if (!meta) {
-    return "无结果元信息";
+    return "数据说明待确认";
   }
   const basis = meta.basis === "formal" ? "正式口径" : meta.basis === "analytical" ? "分析口径" : meta.basis;
   const quality =
@@ -143,22 +177,27 @@ function formatResultMetaProvenance(meta: ResultMeta | undefined): string {
         : meta.quality_flag === "error"
           ? "错误"
           : meta.quality_flag === "stale"
-            ? "陈旧"
+            ? "已过期"
             : meta.quality_flag;
   const vendor =
     meta.vendor_status === "ok"
       ? "正常"
       : meta.vendor_status === "vendor_stale"
-        ? "供应商陈旧"
+        ? "更新延迟"
         : meta.vendor_status === "vendor_unavailable"
-          ? "供应商不可用"
+          ? "暂不可用"
           : meta.vendor_status;
   const fallback =
     meta.fallback_mode === "latest_snapshot"
-      ? "最新快照降级"
+      ? "使用最近可用数据"
       : meta.fallback_mode;
-  const fb = meta.fallback_mode !== "none" ? ` · 回退 ${fallback}` : "";
-  return `口径 ${basis} · 质量 ${quality} · 供应 ${vendor}${fb}`;
+  const usage = meta.formal_use_allowed === false
+    ? "；仅供分析，尚未获准正式使用"
+    : meta.formal_use_allowed !== true ? "；正式使用状态待确认" : "";
+  const qualityNote = meta.quality_flag !== "ok" ? `；数据质量：${quality}` : "";
+  const vendorNote = meta.vendor_status !== "ok" ? `；数据来源${vendor}` : "";
+  const fallbackNote = meta.fallback_mode !== "none" ? `；${fallback}` : "";
+  return `${basis}${usage}${qualityNote}${vendorNote}${fallbackNote}`;
 }
 
 export default function OperationsAnalysisPage() {
@@ -283,7 +322,7 @@ export default function OperationsAnalysisPage() {
   const sourceStatusCard = buildStatusCardContent({
     isError: sourceQuery.isError,
     value: String(sourceSummaries.length),
-    detail: "来自数据源预览总览的来源摘要数量。",
+    detail: "已收录的数据来源数量。",
   });
   const macroStatusCard = buildStatusCardContent({
     isError: macroCatalogQuery.isError || macroLatestQuery.isError,
@@ -293,30 +332,25 @@ export default function OperationsAnalysisPage() {
   const newsStatusCard = buildStatusCardContent({
     isError: newsQuery.isError,
     value: String(newsTotal),
-    detail: "来自 Choice 新闻事件流的当前查询总行数。",
+    detail: "Choice 新闻事件数量。",
   });
   const formalFxStatusCard = buildStatusCardContent({
     isError: fxFormalStatusQuery.isError,
     value: `${fxFormalStatus?.materialized_count ?? 0} / ${fxFormalStatus?.candidate_count ?? 0}`,
-    detail: `物化/候选（对账）${fxFormalStatus?.materialized_count ?? 0} / ${
-      fxFormalStatus?.candidate_count ?? 0
-    } · 最新交易日 ${fxFormalStatus?.latest_trade_date ?? "待定"} · 沿用前值 ${
+    detail: `正式记录 / 候选记录，最新交易日 ${fxFormalStatus?.latest_trade_date ?? "待定"}，沿用前值 ${
       fxFormalStatus?.carry_forward_count ?? 0
     }`,
   });
   const sourceHeadlineDetail = sourceQuery.isError
     ? sourceStatusCard.detail
-    : `${sourceStatusCard.detail} · ${formatResultMetaProvenance(sourceQuery.data?.result_meta)}`;
+    : `${sourceStatusCard.detail}；${formatResultMetaProvenance(sourceQuery.data?.result_meta)}`;
   const macroQueriesFailed = macroCatalogQuery.isError || macroLatestQuery.isError;
   const macroHeadlineDetail = macroQueriesFailed
     ? macroStatusCard.detail
-    : `${macroStatusCard.detail} · ${formatResultMetaProvenance(macroLatestQuery.data?.result_meta)}`;
-  const newsHeadlineDetail = newsQuery.isError
-    ? newsStatusCard.detail
-    : `${newsStatusCard.detail} · ${formatResultMetaProvenance(newsQuery.data?.result_meta)}`;
+    : `${macroStatusCard.detail}；${formatResultMetaProvenance(macroLatestQuery.data?.result_meta)}`;
   const formalFxHeadlineDetail = fxFormalStatusQuery.isError
     ? formalFxStatusCard.detail
-    : `${formalFxStatusCard.detail} · ${formatResultMetaProvenance(fxFormalStatusQuery.data?.result_meta)}`;
+    : `${formalFxStatusCard.detail}；${formatResultMetaProvenance(fxFormalStatusQuery.data?.result_meta)}`;
 
   const recommendation = useMemo(() => {
     const hasCriticalError =
@@ -331,37 +365,37 @@ export default function OperationsAnalysisPage() {
 
     if (hasCriticalError || hasCriticalEmpty) {
       return {
-        title: "经营口径证据链不完整",
+        title: "经营分析数据尚不完整",
         detail:
-          "产品分类损益正式读模型或源批次预览未形成可读结果。先核验总账对账 + 日均配对链路，再下经营判断。",
-        actionLabel: "复核源预览",
-        actionTo: "/source-preview",
+          "产品分类损益或数据来源暂不可用。请在数据更新中心核对报告日和数据更新情况，补齐后再判断本期经营表现。",
+        actionLabel: "打开数据更新中心",
+        actionTo: "/platform-config",
       };
     }
 
     if (!latestProductCategoryReportDate || !productCategoryPnlQuery.data?.result) {
       return {
-        title: "等待产品分类损益证据",
+        title: "等待产品分类损益数据",
         detail:
-          "当前尚未解析到 product-category report date。经营页不再用资产负债余额读面替代经营口径。",
-        actionLabel: "Open product-category PnL",
+          "当前暂无可用报告日，请在产品分类损益页查看数据情况。",
+        actionLabel: "打开产品分类损益",
         actionTo: "/product-category-pnl",
       };
     }
 
     if (missingFxRows.length > 0) {
       return {
-        title: "经营判断可用但需关注 FX 覆盖",
-        detail: `产品分类损益已解析到 ${productCategoryPnl.report_date} / ${productCategoryPnl.view}，但正式 FX 状态仍缺 ${missingFxRows.length} 对。先用产品分类 formal 结果作经营判断，再核验外币覆盖。`,
-        actionLabel: "Open market data",
+        title: "本期经营分析需关注汇率缺口",
+        detail: `产品分类损益报告日为 ${productCategoryPnl.report_date}，正式汇率仍缺 ${missingFxRows.length} 对。涉及外币的经营判断需先核验汇率覆盖。`,
+        actionLabel: "打开市场数据",
         actionTo: "/market-data",
       };
     }
 
     return {
-      title: "产品分类经营口径可用于本期判断",
-      detail: `当前证据解析到 ${productCategoryPnl.report_date} / ${productCategoryPnl.view}，首屏以 /ui/pnl/product-category 的资产、负债、合计经营净收入为准。`,
-      actionLabel: "Open product-category PnL",
+      title: "查看本期产品分类经营表现",
+      detail: `产品分类损益报告日为 ${productCategoryPnl.report_date}。可分别查看资产、负债及合计经营净收入，再进入明细比较各类产品贡献。`,
+      actionLabel: "打开产品分类损益",
       actionTo: "/product-category-pnl",
     };
   }, [
@@ -377,18 +411,20 @@ export default function OperationsAnalysisPage() {
     sourceSummaries.length,
   ]);
 
+  const pnlReadFailed =
+    productCategoryDatesQuery.isError || productCategoryPnlQuery.isError;
+
   const operationsHeadlineCards = useMemo(
     () => {
-      const productErr = productCategoryPnlQuery.isError;
+      const productErr = pnlReadFailed;
       const productProv = formatResultMetaProvenance(productCategoryPnlQuery.data?.result_meta);
+      // 失败原因收敛到首屏失败横幅一处；失败期间卡内不再逐卡重复同一文案。
       const productDetail = productErr
-        ? "产品分类损益：查询失败"
-        : `正式经营口径 /ui/pnl/product-category · view ${
-            productCategoryPnl?.view ?? OPERATIONS_PRODUCT_CATEGORY_VIEW
-          } · ${productProv}`;
+        ? ""
+        : `${!productCategoryPnl?.view || productCategoryPnl.view === "monthly" ? "月度" : productCategoryPnl.view}产品分类损益；${productProv}`;
       const productDateDetail = productErr
-        ? "产品分类损益报告月：查询失败"
-        : `总账对账 + 日均配对链路 · ${productProv}`;
+        ? ""
+        : "本期产品分类损益的报告日期";
       return [
       {
         title: "资产净收入",
@@ -410,16 +446,18 @@ export default function OperationsAnalysisPage() {
       },
       {
         title: "报告月份",
-        value: productCategoryPnl?.report_date ?? latestProductCategoryReportDate ?? "待定",
+        value: productErr
+          ? EM_DASH
+          : productCategoryPnl?.report_date ?? latestProductCategoryReportDate ?? EM_DASH,
         detail: productDateDetail,
       },
       {
         title: "产品行数",
-        value: String(productCategoryRows.length),
-        detail: `正式产品分类行（不含 grand_total）· ${productProv}`,
+        value: productCategoryPnl ? String(productCategoryRows.length) : EM_DASH,
+        detail: productErr ? "" : "产品分类明细，不含合计行",
       },
       {
-        title: "源批次",
+        title: "数据来源",
         value: sourceStatusCard.value,
         detail: sourceHeadlineDetail,
       },
@@ -429,15 +467,10 @@ export default function OperationsAnalysisPage() {
         detail: macroHeadlineDetail,
       },
       {
-        title: "正式 FX",
+        title: "正式汇率",
         value: formalFxStatusCard.value,
         detail: formalFxHeadlineDetail,
         status: fxFormalStatusQuery.isError ? "warning" as const : "normal" as const,
-      },
-      {
-        title: "新闻事件",
-        value: newsStatusCard.value,
-        detail: newsHeadlineDetail,
       },
     ];
     },
@@ -448,20 +481,42 @@ export default function OperationsAnalysisPage() {
       latestProductCategoryReportDate,
       macroHeadlineDetail,
       macroStatusCard.value,
-      newsHeadlineDetail,
-      newsStatusCard.value,
-      productCategoryPnl?.asset_total.business_net_income,
-      productCategoryPnl?.grand_total.business_net_income,
-      productCategoryPnl?.liability_total.business_net_income,
-      productCategoryPnl?.report_date,
-      productCategoryPnl?.view,
+      pnlReadFailed,
+      productCategoryPnl,
       productCategoryPnlQuery.data?.result_meta,
-      productCategoryPnlQuery.isError,
       productCategoryRows.length,
       sourceHeadlineDetail,
       sourceStatusCard.value,
     ],
   );
+
+  const failedFirstScreenReads = [
+    pnlReadFailed ? "产品分类损益" : null,
+    sourceQuery.isError ? "数据来源" : null,
+    macroCatalogQuery.isError || macroLatestQuery.isError ? "宏观点位" : null,
+    fxFormalStatusQuery.isError ? "正式汇率" : null,
+    newsQuery.isError ? "新闻事件" : null,
+  ].filter((item): item is string => Boolean(item));
+
+  const firstScreenRetryTargets = [
+    productCategoryDatesQuery,
+    productCategoryPnlQuery,
+    sourceQuery,
+    macroCatalogQuery,
+    macroLatestQuery,
+    fxFormalStatusQuery,
+    newsQuery,
+  ];
+  const isRetryingFirstScreen = firstScreenRetryTargets.some(
+    (query) => query.isError && query.isFetching,
+  );
+  const retryFirstScreenReads = () => {
+    for (const query of firstScreenRetryTargets) {
+      if (query.isError) {
+        void query.refetch();
+      }
+    }
+  };
 
   const primaryHeadlineCards = operationsHeadlineCards.slice(0, 3);
   const supportHeadlineCards = operationsHeadlineCards.slice(3);
@@ -471,59 +526,63 @@ export default function OperationsAnalysisPage() {
           testId: "operations-entry-balance-asset-market-value",
           label: "资产端市值",
           value: formatOverviewNumber(balanceOverview.asset_total_market_value_amount),
-          detail: "正式读面资产端市值",
+          detail: "资产端市值",
           unit: "亿元",
         },
         {
           testId: "operations-entry-balance-liability-market-value",
           label: "负债端市值",
           value: formatOverviewNumber(balanceOverview.liability_total_market_value_amount),
-          detail: "正式读面负债端市值",
+          detail: "负债端市值",
           unit: "亿元",
         },
         {
           testId: "operations-entry-balance-asset-amortized",
           label: "资产端摊余成本",
           value: formatOverviewNumber(balanceOverview.asset_total_amortized_cost_amount),
-          detail: "正式读面资产端摊余成本",
+          detail: "资产端摊余成本",
           unit: "亿元",
         },
         {
           testId: "operations-entry-balance-liability-amortized",
           label: "负债端摊余成本",
           value: formatOverviewNumber(balanceOverview.liability_total_amortized_cost_amount),
-          detail: "正式读面负债端摊余成本",
+          detail: "负债端摊余成本",
           unit: "亿元",
         },
         {
           testId: "operations-entry-balance-asset-accrued",
           label: "资产端应计利息",
           value: formatOverviewNumber(balanceOverview.asset_total_accrued_interest_amount),
-          detail: "正式读面资产端应计利息",
+          detail: "资产端应计利息",
           unit: "亿元",
         },
         {
           testId: "operations-entry-balance-liability-accrued",
           label: "负债端应计利息",
           value: formatOverviewNumber(balanceOverview.liability_total_accrued_interest_amount),
-          detail: "正式读面负债端应计利息",
+          detail: "负债端应计利息",
           unit: "亿元",
         },
       ]
     : [];
 
+  /*
+   * 深色 owner 由外层 ThemedRouteBoundary 承担；页根只声明 Nocturne scope
+   * （tokens.css 别名块将 --dh-api-* 重映射至 --nct-*，ledger-pnl 同款）。
+   */
   return (
     <section
       className="operations-analysis-page"
+      data-moss-theme-scope="operations-analysis"
       data-testid="operations-layout-preview"
     >
       <div className="operations-analysis-page__hero-shell">
         <div className="operations-analysis-page__hero-main">
           <PageHeader
             title="经营分析"
-            eyebrow="受治理经营视图"
-            description="从产品分类损益正式读模型出发，先给经营判断与可执行动作；资产负债余额读面只保留为专题入口。"
-            badgeLabel={client.mode === "real" ? "真实只读链路" : "本地演示数据"}
+            description="查看本期经营净收入、各类产品贡献及需要核验的事项。"
+            badgeLabel={client.mode === "real" ? "业务数据" : "本地演示数据"}
             badgeTone={client.mode === "real" ? "positive" : "accent"}
             className="operations-analysis-page__hero-header"
           />
@@ -559,12 +618,11 @@ export default function OperationsAnalysisPage() {
             </PageFilterTray>
           </div>
 
-          <p className="operations-analysis-page__provenance" data-testid="operations-hero-provenance">
-            {client.mode === "real"
-              ? "链路：真实只读 API。"
-              : "链路：本地演示（mock 客户端，非生产）。"}
-            首屏只放总账对账 + 日均配对链路产出的 <code>/ui/pnl/product-category</code> formal 经营口径；源批次、宏观、新闻与正式 FX 物化/候选对账只作为可核验证据，不在这里展开明细。
-            下方「本期关注事项」「近期经营日历」仍为静态示例。
+          <p
+            className="operations-analysis-page__provenance"
+            data-testid="operations-hero-provenance"
+          >
+            经营净收入采用月度产品分类损益口径。宏观数据与新闻用于辅助观察，汇率覆盖情况用于核验外币数据。
           </p>
         </div>
 
@@ -572,6 +630,26 @@ export default function OperationsAnalysisPage() {
           className="operations-analysis-page__kpi-grid"
           data-testid="operations-business-kpis"
         >
+          {failedFirstScreenReads.length > 0 ? (
+            <div
+              className="operations-analysis-page__kpi-failure-banner"
+              role="alert"
+              data-testid="operations-first-screen-failure"
+            >
+              <span>
+                数据暂不可用：{failedFirstScreenReads.join("、")}；对应读数以{" "}
+                {EM_DASH} 占位，其余读数不受影响。
+              </span>
+              <button
+                type="button"
+                className="operations-analysis-page__retry-button"
+                disabled={isRetryingFirstScreen}
+                onClick={retryFirstScreenReads}
+              >
+                {isRetryingFirstScreen ? "读取中" : "重试"}
+              </button>
+            </div>
+          ) : null}
           <div className="operations-analysis-page__primary-metrics">
             {primaryHeadlineCards.map((card) => (
               <OperationsMetricCard
@@ -599,16 +677,20 @@ export default function OperationsAnalysisPage() {
               />
             ))}
           </div>
+          {!newsQuery.isError ? (
+            <p
+              className="operations-analysis-page__kpi-footnote"
+              data-testid="operations-news-footnote"
+            >
+              新闻事件 {newsStatusCard.value} 条（Choice，仅供参考）。
+            </p>
+          ) : null}
         </div>
       </div>
 
       <div className="operations-analysis-page__decision-layout">
         <div className="operations-analysis-page__section-block">
-          <OperationsSectionLead
-            eyebrow="核心视图"
-            title="结论、桥接与质量观察"
-            description="先阅读已被正式读链路支撑的判断，再看质量观察提示哪些口径仍待补齐。收益成本桥明确保留为示意。"
-          />
+          <OperationsSectionLead title="经营结论" />
           <div className="operations-analysis-page__decision-cards" data-testid="operations-conclusion-grid">
             <BusinessConclusion
               reportDate={productCategoryPnl?.report_date}
@@ -621,16 +703,15 @@ export default function OperationsAnalysisPage() {
               grandBusinessNetIncome={formatProductCategoryValue(productCategoryPnl?.grand_total.business_net_income)}
               missingFxCount={missingFxRows.length}
             />
-            <RevenueCostBridge />
-            <QualityObservation
-              sourceCount={sourceSummaries.length}
-              macroCount={macroLatest.length}
-              newsCount={newsTotal}
-              fxMaterializedCount={fxFormalStatus?.materialized_count}
-              fxCandidateCount={fxFormalStatus?.candidate_count}
-              missingFxCount={missingFxRows.length}
-            />
           </div>
+          <StaticSampleSection
+            title="收益成本桥（示意瀑布）"
+            badgeLabel="示意数据·未接入正式口径"
+            badgeTestId="revenue-cost-bridge-sample-badge"
+            testId="operations-bridge-sample-section"
+          >
+            <RevenueCostBridge />
+          </StaticSampleSection>
         </div>
 
         <div className="operations-analysis-page__decision-rail">
@@ -644,18 +725,18 @@ export default function OperationsAnalysisPage() {
               </div>
             </div>
           </OperationsPanel>
-          <OperationsPanel title="本期关注事项（静态示例）">
+          <StaticSampleSection
+            title="本期关注事项"
+            badgeTestId="operations-watch-static-sample-badge"
+            testId="operations-watch-sample-section"
+          >
             <AlertList items={OPERATIONS_WATCH_ITEMS} />
-          </OperationsPanel>
+          </StaticSampleSection>
         </div>
       </div>
 
       <div className="operations-analysis-page__section-block">
-        <OperationsSectionLead
-          eyebrow="贡献"
-          title="经营贡献与行动项"
-          description="产品分类损益行、管理动作和近期日历放在同一层，方便从经营判断进入执行。"
-        />
+        <OperationsSectionLead title="经营贡献与行动项" />
         <div className="operations-analysis-page__contribution-layout" data-testid="operations-contribution-grid">
           <BusinessContributionTable
             reportDate={productCategoryPnl?.report_date ?? latestProductCategoryReportDate}
@@ -673,13 +754,17 @@ export default function OperationsAnalysisPage() {
             readProvenanceLine={
               productCategoryPnlQuery.isError || !productCategoryPnlQuery.data
                 ? undefined
-                : `本表受治理元数据：${formatResultMetaProvenance(productCategoryPnlQuery.data.result_meta)}`
+                : formatResultMetaProvenance(productCategoryPnlQuery.data.result_meta)
             }
           />
           <div className="operations-analysis-page__side-stack">
-            <OperationsPanel title="近期经营日历（静态示例）">
+            <StaticSampleSection
+              title="近期经营日历"
+              badgeTestId="operations-calendar-static-sample-badge"
+              testId="operations-calendar-sample-section"
+            >
               <CalendarList items={OPERATIONS_CALENDAR_MOCK} />
-            </OperationsPanel>
+            </StaticSampleSection>
             <ManagementOutput
               recommendationTitle={recommendation.title}
               recommendationDetail={recommendation.detail}
@@ -691,20 +776,23 @@ export default function OperationsAnalysisPage() {
       </div>
 
       <div className="operations-analysis-page__section-block">
-        <OperationsSectionLead
-          eyebrow="结构"
-          title="期限与集中度 / 专题入口"
-          description="期限缺口只保留结构解读；正式工作簿与细项下钻仍进入对应专题页。"
-        />
+        <OperationsSectionLead title="期限与集中度 / 专题入口" />
         <div className="operations-analysis-page__structure-layout" data-testid="operations-structure-grid">
-          <TenorConcentrationPanel />
+          <StaticSampleSection
+            title="期限与集中度"
+            badgeTestId="operations-tenor-static-sample-badge"
+            testId="operations-tenor-sample-section"
+          >
+            <TenorConcentrationPanel />
+          </StaticSampleSection>
 
           <div
             className="operations-analysis-page__topic-entry"
             data-testid="operations-entry-balance-section"
           >
-        <AsyncSection
+        <PageAsyncSection
           title=""
+          fillHeight={false}
           isLoading={balanceDatesQuery.isLoading || balanceOverviewQuery.isLoading}
           isError={balanceDatesQuery.isError || balanceOverviewQuery.isError}
           isEmpty={
@@ -721,7 +809,7 @@ export default function OperationsAnalysisPage() {
           extra={
             <div className="operations-analysis-page__entry-header">
               <h2 className="operations-analysis-page__entry-title">
-                专题入口：资产负债正式读面
+                专题入口：资产负债分析
               </h2>
               <Link to="/balance-analysis" className="operations-analysis-page__text-link" aria-label="进入资产负债分析">
                 进入资产负债分析
@@ -736,73 +824,60 @@ export default function OperationsAnalysisPage() {
                 <span data-testid="operations-entry-balance-report-date">
                   {balanceOverview.report_date}
                 </span>
-                ，头寸范围={balanceOverview.position_scope}，
-                币种口径={balanceOverview.currency_basis}。这里只保留正式工作簿速览，
-                作为经营分析后的专题入口，不在本页展开完整工作簿。
+                ，{balanceOverview.position_scope === "all"
+                  ? "全部头寸"
+                  : balanceOverview.position_scope}{" "}
+                / {balanceOverview.currency_basis === "CNY"
+                  ? "人民币口径"
+                  : balanceOverview.currency_basis}
+                ；资产负债明细可进入专题页查看。
               </p>
               <div className="operations-analysis-page__balance-overview-grid">
-                {[
-                  {
-                    testId: "operations-entry-balance-detail-rows",
-                    label: "明细行数",
-                    value: String(balanceOverview!.detail_row_count),
-                    detail: "正式读面明细行数",
-                  },
-                  {
-                    testId: "operations-entry-balance-summary-rows",
-                    label: "汇总行数",
-                    value: String(balanceOverview!.summary_row_count),
-                    detail: "正式读面汇总行数",
-                  },
-                  ...balanceOverviewAmountCards,
-                  {
-                    testId: "operations-entry-balance-market-value",
-                    label: "总市值合计",
-                    value: formatOverviewNumber(balanceOverview!.total_market_value_amount),
-                    detail: "正式读面总市值",
-                  },
-                  {
-                    testId: "operations-entry-balance-amortized",
-                    label: "摊余成本合计",
-                    value: formatOverviewNumber(balanceOverview!.total_amortized_cost_amount),
-                    detail: "正式读面摊余成本",
-                  },
-                  {
-                    testId: "operations-entry-balance-accrued",
-                    label: "应计利息合计",
-                    value: formatOverviewNumber(balanceOverview!.total_accrued_interest_amount),
-                    detail: "正式读面应计利息",
-                  },
-                ].map((item) => (
+                {balanceOverviewAmountCards.map((item) => (
                   <div key={item.testId} data-testid={item.testId}>
                     <OperationsMetricCard
                       label={item.label}
                       value={item.value}
                       detail={item.detail}
-                      unit={
-                        item.testId === "operations-entry-balance-asset-market-value" ||
-                        item.testId === "operations-entry-balance-liability-market-value" ||
-                        item.testId === "operations-entry-balance-asset-amortized" ||
-                        item.testId === "operations-entry-balance-liability-amortized" ||
-                        item.testId === "operations-entry-balance-asset-accrued" ||
-                        item.testId === "operations-entry-balance-liability-accrued" ||
-                        item.testId === "operations-entry-balance-market-value" ||
-                        item.testId === "operations-entry-balance-amortized" ||
-                        item.testId === "operations-entry-balance-accrued"
-                          ? "亿元"
-                          : undefined
-                      }
+                      unit="亿元"
                       compact
                     />
                   </div>
                 ))}
               </div>
+              <p
+                className="operations-analysis-page__entry-footnote"
+                data-testid="operations-entry-balance-row-footnote"
+              >
+                记录数：明细 {formatOverviewRowCount(balanceOverview.detail_row_count)}
+                {" / "}汇总 {formatOverviewRowCount(balanceOverview.summary_row_count)}。
+              </p>
             </div>
           ) : null}
-        </AsyncSection>
+        </PageAsyncSection>
       </div>
       </div>
       </div>
+
+      <details className="operations-analysis-page__diagnostics" data-testid="operations-technical-diagnostics">
+        <summary>技术诊断</summary>
+        <p>
+          经营损益接口：<code>/ui/pnl/product-category</code>，view={productCategoryPnl?.view ?? OPERATIONS_PRODUCT_CATEGORY_VIEW}。
+          由总账对账与日均配对链路生成；表格使用接口返回的产品分类及合计。
+        </p>
+        <p>
+          FX 物化/候选对账：{fxFormalStatus?.materialized_count ?? 0} / {fxFormalStatus?.candidate_count ?? 0}。
+        </p>
+        <pre>{JSON.stringify({
+          product_category: productCategoryPnlQuery.data?.result_meta,
+          source: sourceQuery.data?.result_meta,
+          macro_catalog: macroCatalogQuery.data?.result_meta,
+          macro_latest: macroLatestQuery.data?.result_meta,
+          fx: fxFormalStatusQuery.data?.result_meta,
+          news: newsQuery.data?.result_meta,
+          balance: balanceOverviewQuery.data?.result_meta,
+        }, null, 2)}</pre>
+      </details>
 
     </section>
   );

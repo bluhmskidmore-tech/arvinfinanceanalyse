@@ -5,11 +5,16 @@ from decimal import Decimal
 import pytest
 
 from backend.app.core_finance.liability_analytics_compat import (
+
     build_v1_bucket_amount_payload,
     build_v1_name_amount_payload,
 )
 from backend.app.schemas.liability_analytics import LiabilityYieldKpi
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_liability_analytics,
+]
 
 def test_liability_yield_kpi_formats_ratio_input_as_percent_display() -> None:
     kpi = LiabilityYieldKpi(
@@ -25,7 +30,6 @@ def test_liability_yield_kpi_formats_ratio_input_as_percent_display() -> None:
     assert kpi.nim.raw == pytest.approx(0.00894468140782911)
     assert kpi.nim.display == "+0.89%"
 
-
 def test_v1_name_amount_payload_emits_ratio_pct_raw() -> None:
     payload = build_v1_name_amount_payload(
         {
@@ -38,7 +42,6 @@ def test_v1_name_amount_payload_emits_ratio_pct_raw() -> None:
         {"name": "Interbank", "amount": 670.0, "pct": pytest.approx(0.7701, abs=1e-10)},
         {"name": "Issued", "amount": 200.0, "pct": pytest.approx(0.2299, abs=1e-10)},
     ]
-
 
 def test_v1_bucket_amount_payload_emits_ratio_pct_raw() -> None:
     payload = build_v1_bucket_amount_payload(

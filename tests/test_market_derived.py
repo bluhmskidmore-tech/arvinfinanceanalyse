@@ -19,6 +19,7 @@ def test_calculate_spreads_all_fields_present():
     market_data = {
         "ncd_aaa_1y": 2.80,
         "treasury_1y": 2.55,
+        "treasury_2y": 2.70,
         "treasury_10y": 3.20,
         "treasury_5y": 2.90,
         "treasury_3y": 2.70,
@@ -37,6 +38,7 @@ def test_calculate_spreads_all_fields_present():
     # Spread formula: (a - b) * 100 → BP
     assert spreads["ncd_treasury_spread_1y"] == pytest.approx(25.0)  # (2.80 - 2.55) * 100
     assert spreads["term_spread_10y_1y"] == pytest.approx(65.0)  # (3.20 - 2.55) * 100
+    assert spreads["term_spread_10y_2y"] == pytest.approx(50.0)  # (3.20 - 2.70) * 100
     assert spreads["term_spread_10y_5y"] == pytest.approx(30.0)  # (3.20 - 2.90) * 100
     assert spreads["credit_spread_aaa_3y"] == pytest.approx(35.0)  # (3.05 - 2.70) * 100
     assert spreads["cdb_treasury_spread_5y"] == pytest.approx(20.0)  # (3.10 - 2.90) * 100
@@ -60,6 +62,7 @@ def test_calculate_spreads_missing_fields():
 
     assert spreads["ncd_treasury_spread_1y"] is None
     assert spreads["term_spread_10y_1y"] == pytest.approx(65.0)
+    assert spreads["term_spread_10y_2y"] is None
     assert spreads["term_spread_10y_5y"] is None
     assert spreads["credit_spread_aaa_3y"] is None
 

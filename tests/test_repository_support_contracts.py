@@ -274,25 +274,41 @@ def test_redis_healthcheck_oserror_failure(monkeypatch):
     assert result["dsn"] == dsn
 
 
-def test_duckdb_repository_defaults_and_healthcheck_shape():
+def test_duckdb_repository_defaults_and_healthcheck_shape(tmp_path):
     duck_module = load_module(
         "backend.app.repositories.duck_support_contract",
         "backend/app/repositories/duckdb_repo.py",
     )
-    repo = duck_module.DuckDBRepository("/data/analytics.duckdb")
+    duckdb_path = tmp_path / "analytics.duckdb"
+    duck_module.duckdb.connect(str(duckdb_path)).close()
+    repo = duck_module.DuckDBRepository(str(duckdb_path))
     assert repo.read_only is True
     h = repo.healthcheck()
-    assert h == {"ok": True, "mode": "read_only", "path": "/data/analytics.duckdb"}
+    assert h == {
+        "ok": True,
+        "mode": "read_only",
+        "path": str(duckdb_path),
+        "can_connect": True,
+        "sql_roundtrip": True,
+    }
 
 
-def test_duckdb_healthcheck_ignores_read_only_false_field():
+def test_duckdb_healthcheck_ignores_read_only_false_field(tmp_path):
     duck_module = load_module(
         "backend.app.repositories.duck_support_contract_b",
         "backend/app/repositories/duckdb_repo.py",
     )
-    repo = duck_module.DuckDBRepository("/tmp/x.duckdb", read_only=False)
+    duckdb_path = tmp_path / "compat.duckdb"
+    duck_module.duckdb.connect(str(duckdb_path)).close()
+    repo = duck_module.DuckDBRepository(str(duckdb_path), read_only=False)
     assert repo.read_only is False
-    assert repo.healthcheck() == {"ok": True, "mode": "read_only", "path": "/tmp/x.duckdb"}
+    assert repo.healthcheck() == {
+        "ok": True,
+        "mode": "read_only",
+        "path": str(duckdb_path),
+        "can_connect": True,
+        "sql_roundtrip": True,
+    }
 
 
 def test_duckdb_repository_keeps_connections_read_only_for_compat_flag(monkeypatch: pytest.MonkeyPatch):
@@ -517,6 +533,31 @@ def test_liability_analytics_batch_rows_match_single_date_rows(tmp_path):
     assert tyw_batch == {d: repo.fetch_tyw_rows(d) for d in dates}
     assert tyw_batch["2025-12-31"][0]["is_asset_side"] is True
     assert tyw_batch["2025-11-30"][0]["is_asset_side"] is False
+
+    zqtz_daily = repo.fetch_zqtz_liability_daily_totals_for_year(2025)
+    tyw_daily = repo.fetch_tyw_liability_daily_totals_for_year(2025)
+    assert [(str(row["report_date"]), row["amortized_cost_native"]) for row in zqtz_daily] == [
+        ("2025-12-31", Decimal("99.00000000")),
+    ]
+    assert [(str(row["report_date"]), row["principal_native"]) for row in tyw_daily] == [
+        ("2025-11-30", Decimal("400.00000000")),
+    ]
+
+    zqtz_summary = repo.fetch_zqtz_liability_daily_summary_for_year(2025)
+    tyw_summary = repo.fetch_tyw_liability_daily_summary_for_year(2025)
+    assert [(str(row["report_date"]), row["liability_amount"]) for row in zqtz_summary] == [
+        ("2025-12-31", Decimal("99.00000000")),
+    ]
+    assert zqtz_summary[0]["weighted_cost_num"] == Decimal("0.0247500000000000")
+    assert zqtz_summary[0]["weighted_cost_den"] == Decimal("99.00000000")
+    assert [(str(row["report_date"]), row["liability_amount"]) for row in tyw_summary] == [
+        ("2025-11-30", Decimal("400.00000000")),
+    ]
+    assert tyw_summary[0]["weighted_cost_num"] == Decimal("0.0880000000000000")
+    assert tyw_summary[0]["weighted_cost_den"] == Decimal("400.00000000")
+
+    assert [row["instrument_code"] for row in repo.fetch_zqtz_liability_rows_for_month("2025-12")] == ["Z1"]
+    assert [row["position_id"] for row in repo.fetch_tyw_liability_rows_for_month("2025-11")] == ["T2"]
 
 
 def test_liability_analytics_yield_batch_rows_preserve_nim_calculation(tmp_path):
@@ -821,6 +862,65 @@ def test_liability_analytics_yield_kpis_match_formal_cny_row_calculation(tmp_pat
     assert "rv_il" in actual["rule_version"]
 
 
+@pytest.mark.excluded_surface_regression
+@pytest.mark.surface_executive
+@pytest.mark.parametrize("scope,ncd", [("asset", False), ("liability", False), ("liability", True)])
+@pytest.mark.parametrize("asset_class", ["AC", None, "", "   ", "\r\n", "\tAC\r\n", *[chr(code) for code in (9, 10, 11, 12, 13, 28, 29, 30, 31, 32, 133, 160, 5760, *range(8192, 8203), 8232, 8233, 8239, 8287, 12288)]])
+@pytest.mark.parametrize("rate", [None, "0", "0.03", "0.3", "0.5", "0.51", "-0.3", "-100", "100", "101"])
+def test_home_nim_rate_boundaries_match_canonical_rows(scope, ncd, rate, asset_class):
+    import duckdb
+
+    from backend.app.core_finance.liability_analytics_compat import compute_liability_yield_metrics
+    from backend.app.repositories.liability_analytics_repo import (
+        FORMAL_ZQTZ_YIELD_COLUMNS,
+        LiabilityAnalyticsRepository,
+    )
+    from backend.app.services.executive_service import _fetch_nim_context_uncached
+
+    columns = sorted(FORMAL_ZQTZ_YIELD_COLUMNS)
+    numeric = {"face_value_amount", "market_value_amount", "amortized_cost_amount", "coupon_rate", "ytm_value"}
+    conn = duckdb.connect(":memory:")
+    try:
+        definitions = []
+        for column in columns:
+            kind = "decimal(24,8)" if column in numeric else "date" if column in {"report_date", "maturity_date"} else "varchar"
+            definitions.append(f"{column} {kind}")
+        conn.execute("create table fact_formal_zqtz_balance_daily (" + ",".join(definitions) + ")")
+        conn.execute("create table tyw_interbank_daily_snapshot (report_date date, position_side varchar, principal_native decimal(24,8), funding_cost_rate decimal(24,8), source_version varchar, rule_version varchar)")
+        row = dict.fromkeys(columns, "")
+        row.update(
+            report_date="2026-04-30", maturity_date="2027-04-30", position_scope=scope,
+            instrument_code="boundary", instrument_name="同业存单" if ncd else "债券",
+            bond_type="同业存单" if ncd else "债券", invest_type_std="H", asset_class=asset_class,
+            currency_basis="CNY", currency_code="CNY", face_value_amount=100,
+            market_value_amount=100, amortized_cost_amount=100, coupon_rate=rate,
+            ytm_value=rate, source_version="synthetic", rule_version="synthetic",
+        )
+        conn.execute("insert into fact_formal_zqtz_balance_daily values (" + ",".join("?" for _ in columns) + ")", [row[c] for c in columns])
+        conn.execute("insert into tyw_interbank_daily_snapshot values ('2026-04-30','asset',100,3,'synthetic','synthetic'), ('2026-04-30','liability',100,2,'synthetic','synthetic')")
+
+        class MemoryRepository(LiabilityAnalyticsRepository):
+            def _connect(self):
+                return conn.cursor()
+
+        repo = MemoryRepository(":memory:")
+        zqtz, tyw = repo.fetch_yield_rows_for_dates(["2026-04-30"])
+        expected = compute_liability_yield_metrics("2026-04-30", zqtz["2026-04-30"], tyw["2026-04-30"])["kpi"]
+        fast_kpis = repo.fetch_yield_kpis_for_dates(["2026-04-30"])["2026-04-30"]["kpi"]
+        payloads, _, _, history = _fetch_nim_context_uncached(repo, report_dates=["2026-04-30"], current_report_date="2026-04-30")
+        actual = payloads["2026-04-30"]["kpi"]
+        for key, expected_value in expected.items():
+            if expected_value is None:
+                assert fast_kpis[key] is None
+                assert actual[key] is None
+            else:
+                assert fast_kpis[key] == pytest.approx(expected_value)
+                assert actual[key] == pytest.approx(expected_value)
+        assert history == pytest.approx([expected["nim"]])
+    finally:
+        conn.close()
+
+
 def test_liability_analytics_yield_rows_fall_back_when_formal_cny_lacks_invest_type(tmp_path):
     repo_module = load_module(
         "backend.app.repositories.liability_analytics_repo_missing_invest_type_contract",
@@ -987,6 +1087,9 @@ def test_formal_zqtz_balance_metrics_repo_exposes_combined_formal_overview(tmp_p
         "liability_total_amortized_cost_amount": 0,
         "asset_total_accrued_interest_amount": Decimal("0E-8"),
         "liability_total_accrued_interest_amount": 0,
+        "lineage_row_count": 2,
+        "source_version_missing_count": 0,
+        "rule_version_missing_count": 0,
         "source_version": "sv_t_1__sv_z_1",
         "rule_version": "rv_t_1__rv_z_1",
     }
@@ -1071,6 +1174,70 @@ def test_formal_zqtz_balance_metrics_batch_history_matches_single_values(tmp_pat
             currency_basis="CNY",
         )["total_market_value_amount"]
         for d in dates
+    }
+    for report_date in dates:
+        single = repo.fetch_formal_overview(
+            report_date=report_date,
+            position_scope="asset",
+            currency_basis="CNY",
+        )
+        assert history[report_date]["_metric_scope"] == "combined_formal_balance"
+        assert history[report_date]["source_version"] == single["source_version"]
+        assert history[report_date]["rule_version"] == single["rule_version"]
+
+
+def test_formal_zqtz_balance_metrics_batch_history_marks_zqtz_only_scope(tmp_path):
+    repo_module = load_module(
+        "backend.app.repositories.formal_zqtz_balance_metrics_repo_zqtz_history_contract",
+        "backend/app/repositories/formal_zqtz_balance_metrics_repo.py",
+    )
+    import duckdb
+
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_zqtz_balance_daily (
+              report_date varchar,
+              instrument_code varchar,
+              portfolio_name varchar,
+              cost_center varchar,
+              invest_type_std varchar,
+              accounting_basis varchar,
+              position_scope varchar,
+              currency_basis varchar,
+              market_value_amount decimal(24, 8),
+              amortized_cost_amount decimal(24, 8),
+              accrued_interest_amount decimal(24, 8),
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily values
+            ('2025-12-31', 'Z1', 'p', 'c', 'inv', 'acct', 'asset', 'CNY',
+             100, 100, 0, 'sv_z_1', 'rv_z_1')
+            """
+        )
+    finally:
+        conn.close()
+
+    repo = repo_module.FormalZqtzBalanceMetricsRepository(str(db_path))
+    history = repo.fetch_formal_overview_history(
+        report_dates=["2025-12-31"],
+        position_scope="asset",
+        currency_basis="CNY",
+    )
+
+    assert history["2025-12-31"] == {
+        "report_date": "2025-12-31",
+        "total_market_value_amount": Decimal("100.00000000"),
+        "_metric_scope": "zqtz_only",
+        "source_version": "sv_z_1",
+        "rule_version": "rv_z_1",
     }
 
 
@@ -1303,6 +1470,129 @@ def test_dashboard_repository_batch_bond_metrics_falls_back_per_missing_zqtz_dat
     assert previous_total == Decimal("200.00000000")
     assert previous_yield == Decimal("0.030000000000")
     assert previous_top[0][0] == "formal-gov"
+
+
+def test_dashboard_bond_weighted_ytm_excludes_missing_and_dirty_rates_from_denominator(tmp_path):
+    """加权 YTM 分母只计入归一后利率非 NULL 的市值：缺失≠0，脏值(>20%、低于 −20%)不稀释。
+
+    同时锁定百分数口径的无条件 /100（0.5 = 0.5% → 0.005，不做 >1 启发式直通）。
+    """
+    repo_module = load_module(
+        "backend.app.repositories.dashboard_repo_ytm_weight_contract",
+        "backend/app/repositories/dashboard_repo.py",
+    )
+    import duckdb
+
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_zqtz_balance_daily (
+              report_date varchar,
+              bond_type varchar,
+              position_scope varchar,
+              currency_basis varchar,
+              market_value_amount decimal(24, 8),
+              ytm_value decimal(18, 8)
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table fact_formal_bond_analytics_daily (
+              report_date varchar,
+              bond_type varchar,
+              market_value decimal(24, 8),
+              ytm decimal(18, 8)
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily values
+            ('2026-04-30', 'gov', 'asset', 'CNY', 100, 3.0),
+            ('2026-04-30', 'gov', 'asset', 'CNY', 100, 0.5),
+            ('2026-04-30', 'gov', 'asset', 'CNY', 300, null),
+            ('2026-04-30', 'gov', 'asset', 'CNY', 100, 25.0),
+            ('2026-04-30', 'gov', 'asset', 'CNY', 100, -25.0)
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_bond_analytics_daily values
+            ('2026-04-29', 'gov', 100, 0.03),
+            ('2026-04-29', 'gov', 300, null)
+            """
+        )
+    finally:
+        conn.close()
+
+    repo = repo_module.DashboardRepository(str(db_path))
+
+    total, weighted, top3, has_rows = repo.fetch_bond_core_metrics("2026-04-30")
+    assert has_rows is True
+    assert total == Decimal("700.00000000")
+    # 只有 3.0%（mv 100）与 0.5%（mv 100）参与加权：(0.03 + 0.005) * 100 / 200。
+    assert weighted is not None
+    assert weighted == Decimal("0.0175")
+    assert top3[0][2] == weighted
+
+    # zqtz 缺日期时回退 fact 表：分母同样排除 ytm 缺失行（0.03*100/100，而非 /400）。
+    results = repo.fetch_bond_core_metrics_for_dates(["2026-04-30", "2026-04-29"])
+    assert results["2026-04-30"][1] == weighted
+    fallback_total, fallback_weighted, _fallback_top, fallback_has_rows = results["2026-04-29"]
+    assert fallback_has_rows is True
+    assert fallback_total == Decimal("400.00000000")
+    assert fallback_weighted == Decimal("0.03")
+
+
+def test_dashboard_zqtz_weighted_ytm_admits_legal_negative_yield_down_to_floor(tmp_path):
+    """zqtz ytm_value 的负值口径与 rate_units.NEGATIVE_YIELD_DIRTY_FLOOR（−20%，含端点）对齐。
+
+    −0.5 → −0.005、−20 → −0.20 都是观测值参与加权；−25 是脏值，从分子与分母一并剔除。
+    """
+    repo_module = load_module(
+        "backend.app.repositories.dashboard_repo_negative_ytm_contract",
+        "backend/app/repositories/dashboard_repo.py",
+    )
+    import duckdb
+
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_zqtz_balance_daily (
+              report_date varchar,
+              bond_type varchar,
+              position_scope varchar,
+              currency_basis varchar,
+              market_value_amount decimal(24, 8),
+              ytm_value decimal(18, 8)
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily values
+            ('2026-04-30', 'gov', 'asset', 'CNY', 100, 1.0),
+            ('2026-04-30', 'gov', 'asset', 'CNY', 100, -0.5),
+            ('2026-04-30', 'gov', 'asset', 'CNY', 100, -20.0),
+            ('2026-04-30', 'gov', 'asset', 'CNY', 100, -25.0)
+            """
+        )
+    finally:
+        conn.close()
+
+    repo = repo_module.DashboardRepository(str(db_path))
+    total, weighted, top3, has_rows = repo.fetch_bond_core_metrics("2026-04-30")
+
+    assert has_rows is True
+    assert total == Decimal("400.00000000")
+    # (0.01 + −0.005 + −0.20) * 100 / 300；−25 行不进入分子也不进入分母。
+    assert weighted == Decimal("-0.065")
+    assert top3[0][2] == weighted
 
 
 def test_dashboard_repository_lists_domain_date_context_from_all_available_tables(tmp_path):

@@ -26,7 +26,7 @@ It is a release gate overlay for the currently included boundary.
 
 ## Active Cutoff Scope
 
-This cutoff applies only to the currently included release surface:
+The current business boundary is maintained in [DOCUMENT_AUTHORITY.md](DOCUMENT_AUTHORITY.md#current-surface-boundaries). This cutoff applies to the included release surface and the regression conditions below:
 
 - formal balance
 - formal PnL
@@ -38,6 +38,7 @@ This cutoff applies only to the currently included release surface:
 - `executive-consumer cutover v1`
   - `/ui/home/overview`
   - `/ui/home/summary`
+  - `/ui/home/snapshot`
   - `/ui/pnl/attribution`
 
 ## Explicit Non-Goals
@@ -48,12 +49,7 @@ This cutoff does **not** require promotion of surfaces that are still explicitly
 - `/ui/home/alerts`
 - `/ui/home/contribution`
 - Agent MVP / real `/api/agent/query` enablement
-- reserved `/api/cube/query` / `/api/cube/dimensions/*` public rollout
-- reserved liability-analytics compatibility public rollout:
-  - `/api/risk/buckets`
-  - `/api/analysis/yield_metrics`
-  - `/api/analysis/liabilities/counterparty`
-  - `/api/liabilities/monthly`
+- formal financial promotion of the landed cube-query and liability-analytics compatibility public routes
 - `source_preview`
 - `macro-data`
 - `choice-news`
@@ -63,7 +59,7 @@ This cutoff does **not** require promotion of surfaces that are still explicitly
 - cube-query broad rollout
 - other `Phase 3 / Phase 4` style expansion work
 
-Excluded surfaces may remain hidden, placeholder-only, analytical-only, or explicit `503` without blocking this cutoff.
+Excluded surfaces retain their current contracts: reserved routes remain fail-closed, while landed query/compatibility routes retain controlled access and explicit basis metadata. An open compatibility endpoint does not establish formal financial promotion.
 
 ## Cutoff Goals
 
@@ -147,7 +143,7 @@ At cutoff time, the release evidence pack must include all of the following:
    - current named gate: `python scripts/backend_release_suite.py`
    - route and contract tests for the in-scope chains
    - route tests for excluded executive surfaces staying `503`
-   - route tests for reserved `cube-query` / liability-analytics compatibility routes staying `503`
+   - route tests for landed `cube-query` / liability-analytics compatibility contracts, access guards, and explicit basis metadata
 
 3. Route smoke
    - direct `TestClient` or equivalent smoke for included routes
@@ -176,23 +172,26 @@ At least one maintained verification suite proves the included chains are green:
 
 ### E2. Included Executive E1 Surfaces Are Green
 
-These routes must return stable `200` with correct analytical envelope semantics:
+For authorized requests with required governed inputs available, these routes must return stable `200` with correct analytical envelope semantics; missing inputs must retain their documented failure or degraded-state contract:
 
 - `/ui/home/overview`
 - `/ui/home/summary`
+- `/ui/home/snapshot`
 - `/ui/pnl/attribution`
 
 ### E3. Excluded Executive Surfaces Are Stable `503`
 
-These routes must remain explicit fail-closed until a later cutover promotes them:
+After read authorization, these routes must remain explicit `503` fail-closed until a later cutover promotes them:
 
 - `/ui/risk/overview`
 - `/ui/home/alerts`
 - `/ui/home/contribution`
 
-### E3A. Reserved Query / Compat Surfaces Stay Reserved
+<a id="e3a-reserved-query--compat-surfaces-stay-reserved"></a>
 
-These routes must remain explicit `503` or equivalent reserved behavior until a later cutover promotes them:
+### E3A. Landed Query / Compat Surfaces Keep Their Contracts
+
+These landed routes must preserve access controls, input validation, and their current response contracts:
 
 - `/api/cube/query`
 - `/api/cube/dimensions/*`
@@ -200,6 +199,8 @@ These routes must remain explicit `503` or equivalent reserved behavior until a 
 - `/api/analysis/yield_metrics`
 - `/api/analysis/liabilities/counterparty`
 - `/api/liabilities/monthly`
+
+Cube-query results must disclose their supported fact-table basis through `result_meta`; liability-analytics results must retain analytical/compatibility semantics. Valid authorized reads are not subject to a blanket reserved `503`; unavailable required storage or inputs must retain the endpoint's failure/degradation contract. Regression evidence is maintained in `tests/test_cube_query_api.py`, `tests/test_liability_analytics_api.py`, and `tests/test_liability_analytics_envelope_contract.py`. This condition does not promote compatibility results to formal financial truth.
 
 ### E4. Storage Path Resolution Is Context-Stable
 
@@ -246,7 +247,7 @@ The following must agree with actual route/test behavior:
 
 ## Current Gap Snapshot (2026-04-17)
 
-Based on the current audit, route verification, and live preflight:
+The following is the historical cutoff evidence from 2026-04-17, retained for traceability. Its observed counts and then-reserved route statuses are not current execution evidence or current route requirements; the active criteria above govern new release checks.
 
 ### Confirmed good enough now
 
@@ -291,7 +292,7 @@ Describe it as:
 
 - governed `Phase 2` formal-compute cutoff candidate
 - plus `executive-consumer cutover v1`
-- with explicit excluded surfaces still fail-closed or held at placeholder / reserved status
+- with reserved routes fail-closed and landed analytical compatibility surfaces explicitly identified
 
 ## Maintenance Rule
 

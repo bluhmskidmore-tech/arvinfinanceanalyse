@@ -1,21 +1,3 @@
-import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
-import {
-  mockAdvancedAttributionSummary,
-  mockCampisiAttribution,
-  mockCarryRollDown,
-  mockKrdAttribution,
-  mockPnlAttributionAnalysisSummary,
-  mockPnlComposition,
-  mockSpreadAttribution,
-  mockTplMarketCorrelation,
-  mockVolumeRateAttribution,
-} from "../mocks/pnlAttributionWorkbench";
-import {
-  mockCampisiEnhanced,
-  mockCampisiFourEffects,
-  mockCampisiMaturityBuckets,
-} from "../mocks/campisiMocks";
-import { pnlAttributionPayload } from "../mocks/workbench";
 import type {
   AdvancedAttributionSummary,
   ApiEnvelope,
@@ -34,7 +16,6 @@ import type {
 } from "./contracts";
 
 type FetchLike = typeof fetch;
-type Delay = () => Promise<void>;
 
 type RequestJson = <T>(
   fetchImpl: FetchLike,
@@ -78,7 +59,9 @@ export type PnlAttributionClientMethods = {
     reportDate?: string,
   ) => Promise<ApiEnvelope<AdvancedAttributionSummary>>;
   getPnlCampisiAttribution: (options?: CampisiOptions) => Promise<ApiEnvelope<CampisiAttributionPayload>>;
-  getPnlCampisiFourEffects: (options?: CampisiOptions) => Promise<ApiEnvelope<CampisiFourEffectsPayload>>;
+  getPnlCampisiFourEffects: (
+    options?: CampisiOptions & { detail?: "full" | "summary" },
+  ) => Promise<ApiEnvelope<CampisiFourEffectsPayload>>;
   getPnlCampisiEnhanced: (options?: CampisiOptions) => Promise<ApiEnvelope<CampisiEnhancedPayload>>;
   getPnlCampisiMaturityBuckets: (options?: CampisiOptions) => Promise<ApiEnvelope<CampisiMaturityBucketsPayload>>;
 };
@@ -89,7 +72,7 @@ export type PnlAttributionClientFactoryOptions = {
   requestJson: RequestJson;
 };
 
-function buildCampisiQuery(options?: CampisiOptions) {
+function buildCampisiQuery(options?: CampisiOptions & { detail?: "full" | "summary" }) {
   const params = new URLSearchParams();
   if (options?.startDate?.trim()) {
     params.set("start_date", options.startDate.trim());
@@ -100,83 +83,11 @@ function buildCampisiQuery(options?: CampisiOptions) {
   if (Number.isFinite(options?.lookbackDays)) {
     params.set("lookback_days", String(options?.lookbackDays));
   }
+  if (options?.detail) {
+    params.set("detail", options.detail);
+  }
   const query = params.toString();
   return query ? `?${query}` : "";
-}
-
-export function createDemoPnlAttributionClient(delay: Delay): PnlAttributionClientMethods {
-  return {
-    async getPnlAttribution(_reportDate?: string) {
-      await delay();
-      return buildMockApiEnvelope("executive.pnl-attribution", pnlAttributionPayload);
-    },
-    async getVolumeRateAttribution(options) {
-      await delay();
-      return buildMockApiEnvelope("pnl_attribution.volume_rate", {
-        ...mockVolumeRateAttribution,
-        compare_type: options?.compareType ?? mockVolumeRateAttribution.compare_type,
-      });
-    },
-    async getTplMarketCorrelation(_options) {
-      await delay();
-      return buildMockApiEnvelope("pnl_attribution.tpl_market", mockTplMarketCorrelation);
-    },
-    async getPnlCompositionBreakdown(_options) {
-      await delay();
-      return buildMockApiEnvelope("pnl_attribution.composition", mockPnlComposition);
-    },
-    async getPnlAttributionAnalysisSummary(_reportDate) {
-      await delay();
-      return buildMockApiEnvelope(
-        "pnl_attribution.summary",
-        mockPnlAttributionAnalysisSummary,
-      );
-    },
-    async getPnlCarryRollDown(_reportDate) {
-      await delay();
-      return buildMockApiEnvelope("pnl_attribution.carry_rolldown", mockCarryRollDown);
-    },
-    async getPnlSpreadAttribution(_options) {
-      await delay();
-      return buildMockApiEnvelope("pnl_attribution.spread", mockSpreadAttribution);
-    },
-    async getPnlKrdAttribution(_options) {
-      await delay();
-      return buildMockApiEnvelope("pnl_attribution.krd", mockKrdAttribution);
-    },
-    async getPnlAdvancedAttributionSummary(_reportDate) {
-      await delay();
-      return buildMockApiEnvelope(
-        "pnl_attribution.advanced_summary",
-        mockAdvancedAttributionSummary,
-      );
-    },
-    async getPnlCampisiAttribution(_options) {
-      await delay();
-      return buildMockApiEnvelope("pnl_attribution.campisi", mockCampisiAttribution);
-    },
-    async getPnlCampisiFourEffects(_options) {
-      await delay();
-      return buildMockApiEnvelope("campisi.four_effects", mockCampisiFourEffects, {
-        basis: "formal",
-        formal_use_allowed: true,
-      });
-    },
-    async getPnlCampisiEnhanced(_options) {
-      await delay();
-      return buildMockApiEnvelope("campisi.enhanced", mockCampisiEnhanced, {
-        basis: "formal",
-        formal_use_allowed: true,
-      });
-    },
-    async getPnlCampisiMaturityBuckets(_options) {
-      await delay();
-      return buildMockApiEnvelope("campisi.maturity_buckets", mockCampisiMaturityBuckets, {
-        basis: "formal",
-        formal_use_allowed: true,
-      });
-    },
-  };
 }
 
 export function createRealPnlAttributionClient({
@@ -210,6 +121,9 @@ export function createRealPnlAttributionClient({
       const params = new URLSearchParams();
       if (options?.months !== undefined) {
         params.set("months", String(options.months));
+      }
+      if (options?.reportDate?.trim()) {
+        params.set("report_date", options.reportDate.trim());
       }
       const q = params.toString();
       return requestJson<TPLMarketCorrelationPayload>(

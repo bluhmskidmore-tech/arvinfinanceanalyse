@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 
 from backend.app.schemas.bond_analytics import (
     AccountingClassAuditItem,
@@ -27,6 +28,14 @@ from backend.app.schemas.common_numeric import Numeric
 
 
 class TestReturnDecompositionNumericMigration:
+    def test_large_decimal_amount_serializes_lossless_raw_text(self) -> None:
+        raw = Decimal("12345678901234567890.12345678")
+        item = AssetClassBreakdown(asset_class="rates", carry=raw)
+
+        dumped = item.model_dump(mode="json")
+
+        assert dumped["carry"]["raw_text"] == str(raw)
+
     def test_asset_class_breakdown_accepts_legacy_str(self) -> None:
         item = AssetClassBreakdown(
             asset_class="rates",
@@ -172,7 +181,7 @@ class TestKRDNumericMigration:
             portfolio_modified_duration=Numeric(raw=3.1, unit="ratio", display="3.10", precision=2, sign_aware=False),
             portfolio_dv01=Numeric(raw=18.5, unit="dv01", display="18.50", precision=2, sign_aware=False),
             portfolio_convexity=Numeric(raw=0.22, unit="ratio", display="0.22", precision=2, sign_aware=False),
-            krd_buckets=[KRDBucket(tenor="5Y", krd="0.80", dv01="12.50", market_value_weight="0.40")],
+            krd_buckets=[KRDBucket(tenor="5Y", avg_modified_duration="0.80", dv01="12.50", market_value_weight="0.40")],
             scenarios=[
                 ScenarioResult(
                     scenario_name="parallel_up",
@@ -352,6 +361,25 @@ class TestActionAuditAndHeadlinesNumericMigration:
         assert isinstance(dumped["total_pnl_from_actions"], dict)
         restored = ActionAttributionResponse.model_validate(dumped)
         assert restored.period_start_duration.unit == "ratio"
+
+    def test_unrelated_headlines_response_omits_warning_codes_when_unset(self) -> None:
+        resp = PortfolioHeadlinesResponse(
+            report_date=date(2026, 3, 31),
+            total_market_value="500.00",
+            weighted_ytm="2.80",
+            weighted_duration="3.20",
+            weighted_coupon="2.60",
+            total_dv01="15.20",
+            bond_count=8,
+            credit_weight="0.40",
+            issuer_hhi="0.23",
+            issuer_top5_weight="0.57",
+        )
+
+        dumped = resp.model_dump(mode="json")
+
+        assert dumped["warnings"] == []
+        assert "warning_codes" not in dumped
 
     def test_audit_headlines_and_top_holdings_accept_legacy_str(self) -> None:
         audit = AccountingClassAuditItem(

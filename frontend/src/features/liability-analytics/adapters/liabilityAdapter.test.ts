@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { LiabilityCounterpartyPayload, Numeric } from "../../../api/contracts";
+import type { Numeric } from "../../../api/contracts";
+import type { LiabilityCounterpartyPayload } from "../../../api/liabilityAdbContracts";
 import { formatRawAsNumeric } from "../../../utils/format";
 import { adaptLiabilityCounterparty } from "./liabilityAdapter";
 
@@ -22,7 +23,11 @@ function governedNumeric(raw: number | null, unit: Numeric["unit"], signAware = 
 function payload(overrides: Partial<LiabilityCounterpartyPayload> = {}): LiabilityCounterpartyPayload {
   return {
     report_date: "2025-12-31",
-    total_value: num({ raw: 200_000_000, display: "2.00 亿", unit: "yuan", sign_aware: false }),
+    total_value: num({ raw: 200_000_000, display: "200000000.00", unit: "yuan", sign_aware: false }),
+    top10_share: null,
+    hhi: null,
+    population_count: 0,
+    is_truncated: false,
     top_10: [],
     by_type: [],
     ...overrides,
@@ -49,9 +54,14 @@ describe("adaptLiabilityCounterparty", () => {
       isLoading: false,
       isError: false,
     });
+
     expect(out.state.kind).toBe("ok");
     expect(out.vm?.totalValue.raw).toBe(200_000_000);
     expect(out.vm?.totalValue.unit).toBe("yuan");
+    expect(out.vm?.top10Share).toBeNull();
+    expect(out.vm?.hhi).toBeNull();
+    expect(out.vm?.populationCount).toBe(0);
+    expect(out.vm?.isTruncated).toBe(false);
     expect(out.vm?.rows).toHaveLength(1);
     expect(out.vm?.rows[0]?.name).toBe("A");
     expect(out.vm?.rows[0]?.value?.raw).toBe(100_000_000);
@@ -91,6 +101,7 @@ describe("adaptLiabilityCounterparty", () => {
       isLoading: false,
       isError: false,
     });
+
     expect(out.vm?.rows[0]?.share).toBeNull();
     expect(out.vm?.rows[0]?.value).toBeNull();
     expect(out.vm?.rows[0]?.weightedCost).toBeNull();

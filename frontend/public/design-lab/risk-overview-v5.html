@@ -1,0 +1,710 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="ink">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>风险总览 · 设计原型 LAB v5 · 融合定稿候选</title>
+<style>
+/* ────────────────────────────────────────────────
+   风险总览 高保真原型 v5 · V3×V4 融合版
+   · 上半页(KPI/图表)= V4 曜石玻璃工艺
+   · 下半页(摘要/表格/质量血缘)= V3 编辑风开放纪律
+   · 统一件:编号节题 + 发丝线 · 墨/纸双主题
+   数据:正式张量表 2026-06-30 + 近 24 期真实序列 + 收益率曲线直读
+   ──────────────────────────────────────────────── */
+:root {
+  --mono: "IBM Plex Mono", "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --sans: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --serif: "Noto Serif SC", "Source Han Serif SC", Georgia, "Times New Roman", serif;
+}
+html[data-theme="ink"] {
+  --bg: #060a12;
+  --bg-soft: #090e18;
+  --panel: #0b1220;
+  --panel-2: #0d1626;
+  --ink: #e9eff8;
+  --ink-2: #aebdd2;
+  --mut: #7c8ea8;
+  --line: rgba(146, 178, 219, 0.13);
+  --line-2: rgba(146, 178, 219, 0.3);
+  --acc: #7db8ff;
+  --acc-dim: rgba(125, 184, 255, 0.55);
+  --amber: #e6b566;
+  --ok: #5fca96;
+  --err: #f0806c;
+  --hero-grad: linear-gradient(92deg, #f4f8ff 25%, #7db8ff 95%);
+  --hero-glow: rgba(125, 184, 255, 0.32);
+  --num-grad: linear-gradient(92deg, #f2f7ff 20%, #7db8ff 90%);
+  --glass-line: rgba(255, 255, 255, 0.09);
+  --glass-hi: rgba(255, 255, 255, 0.055);
+  --glass-shadow: 0 16px 34px rgba(0, 0, 0, 0.36);
+  --glass-hi-line: rgba(255, 255, 255, 0.1);
+  --spark-fill: rgba(125, 184, 255, 0.14);
+  --spark-fill-err: rgba(240, 128, 108, 0.12);
+  --bar-dot: #dbeaff;
+  --amb: radial-gradient(720px 420px at 12% -6%, rgba(80, 140, 230, 0.12), transparent 62%),
+         radial-gradient(640px 400px at 96% 8%, rgba(125, 184, 255, 0.07), transparent 60%),
+         radial-gradient(760px 520px at 55% 108%, rgba(230, 181, 102, 0.06), transparent 64%);
+  color-scheme: dark;
+}
+html[data-theme="paper"] {
+  --bg: #f2efe7;
+  --bg-soft: #ebe7dc;
+  --panel: #fdfcf6;
+  --panel-2: #f7f4ec;
+  --ink: #1a2433;
+  --ink-2: #3d4c61;
+  --mut: #6d7c90;
+  --line: rgba(26, 36, 51, 0.14);
+  --line-2: rgba(26, 36, 51, 0.34);
+  --acc: #1c5fd6;
+  --acc-dim: rgba(28, 95, 214, 0.5);
+  --amber: #9a6b1e;
+  --ok: #1e7f52;
+  --err: #c0492f;
+  --hero-grad: linear-gradient(92deg, #1a2433 30%, #1c5fd6 95%);
+  --hero-glow: rgba(28, 95, 214, 0.22);
+  --num-grad: linear-gradient(92deg, #1a2433 25%, #1c5fd6 95%);
+  --glass-line: rgba(26, 36, 51, 0.1);
+  --glass-hi: rgba(255, 255, 255, 0.6);
+  --glass-shadow: 0 12px 28px rgba(26, 36, 51, 0.1);
+  --glass-hi-line: rgba(255, 255, 255, 0.7);
+  --spark-fill: rgba(28, 95, 214, 0.1);
+  --spark-fill-err: rgba(192, 73, 47, 0.1);
+  --bar-dot: #1a2433;
+  --amb: radial-gradient(720px 420px at 12% -6%, rgba(28, 95, 214, 0.06), transparent 62%);
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; background: var(--amb); }
+a { color: inherit; text-decoration: none; }
+
+/* ── 实验室横幅 ── */
+.lab-banner {
+  position: sticky; top: 0; z-index: 50;
+  display: flex; align-items: center; gap: 14px;
+  padding: 6px 18px;
+  background: var(--amber); color: #14100a;
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em;
+}
+.lab-banner b { font-weight: 800; }
+.lab-banner .spacer { flex: 1; }
+.lab-banner a { color: #14100a; font-weight: 700; text-decoration: underline; }
+.lab-banner button {
+  border: 1px solid rgba(20, 16, 10, 0.55); border-radius: 999px;
+  background: transparent; color: #14100a; cursor: pointer;
+  font-family: var(--mono); font-size: 11px; font-weight: 700;
+  padding: 2px 12px; letter-spacing: 0.08em;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+.lab-banner button.on { background: #14100a; color: var(--amber); }
+
+/* ── 玻璃基座(V4 工艺,双主题自适应) ── */
+.glass {
+  border: 1px solid var(--glass-line);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, var(--glass-hi), rgba(255, 255, 255, 0.015) 34%, rgba(0, 0, 0, 0) 62%),
+    var(--panel);
+  box-shadow: inset 0 1px 0 var(--glass-hi-line), var(--glass-shadow);
+}
+.glass-hover { transition: box-shadow 0.18s ease, border-color 0.18s ease, transform 0.18s ease; }
+.glass-hover:hover {
+  border-color: var(--acc-dim); transform: translateY(-2px);
+  box-shadow: inset 0 1px 0 var(--glass-hi-line), 0 0 26px var(--hero-glow), var(--glass-shadow);
+}
+
+/* ── 版式骨架 ── */
+.shell { display: grid; grid-template-columns: 208px minmax(0, 1fr) 296px; gap: 26px; max-width: 1560px; margin: 0 auto; padding: 26px 24px 72px; }
+
+/* ── 侧栏(V3 编辑风) ── */
+.side { border-right: 1px solid var(--line); padding: 10px 18px 0 0; }
+.side .logo { display: flex; align-items: center; gap: 9px; font-weight: 800; font-size: 16px; letter-spacing: 0.04em; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+.side .logo i {
+  width: 22px; height: 22px; border-radius: 5px;
+  background: var(--acc); color: var(--bg);
+  display: grid; place-items: center;
+  font-style: normal; font-family: var(--mono); font-size: 11px; font-weight: 800;
+}
+.side nav { margin-top: 16px; display: grid; gap: 2px; }
+.side .grp { font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em; color: var(--mut); margin: 14px 0 6px; }
+.side nav a {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 7px 10px; border-radius: 5px; color: var(--ink-2); font-size: 13px;
+  border-left: 2px solid transparent;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+.side nav a:hover { background: var(--panel-2); color: var(--ink); }
+.side nav a.on { color: var(--ink); border-left-color: var(--amber); background: linear-gradient(90deg, var(--panel-2), transparent); font-weight: 650; }
+.side nav a small { font-size: 11px; color: var(--mut); }
+
+/* ── 主栏 ── */
+.main { min-width: 0; display: grid; gap: 26px; align-content: start; }
+.mast { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.mast .who { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 0.14em; color: var(--acc); }
+.mast .meta { color: var(--ink-2); font-size: 12.5px; }
+.mast .meta b { color: var(--ink); font-family: var(--mono); font-weight: 700; }
+.mast .spring { flex: 1; }
+
+/* ── 辉光交互件 ── */
+.gbtn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 16px; border-radius: 12px;
+  border: 1px solid var(--glass-line);
+  background: linear-gradient(180deg, var(--glass-hi), rgba(255, 255, 255, 0.015)), var(--panel);
+  box-shadow: inset 0 1px 0 var(--glass-hi-line), 0 8px 20px rgba(0, 0, 0, 0.28);
+  color: var(--ink); font-size: 12px; font-weight: 650; cursor: pointer;
+  transition: box-shadow 0.18s ease, border-color 0.18s ease;
+}
+html[data-theme="paper"] .gbtn { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 8px 18px rgba(26, 36, 51, 0.12); }
+.gbtn:hover { border-color: var(--acc-dim); box-shadow: inset 0 1px 0 var(--glass-hi-line), 0 0 20px var(--hero-glow); }
+.gbtn.pri {
+  background: linear-gradient(180deg, #4f8fe8, #2b6bd0);
+  border-color: rgba(125, 184, 255, 0.6); color: #f4f8ff;
+  box-shadow: 0 0 18px rgba(80, 140, 230, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+.gpill {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 10px; font-weight: 700;
+  padding: 3px 10px; border-radius: 999px;
+  border: 1px solid var(--line-2); color: var(--ink-2);
+}
+.gpill i { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+.gpill.warn i { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+.gpill.mut i { background: var(--mut); box-shadow: none; }
+.gpill.warn { color: var(--amber); border-color: var(--amber); }
+
+/* ── 陈旧拦截条 ── */
+.stale { display: flex; align-items: center; gap: 14px; border-top: 1px solid var(--amber); border-bottom: 1px solid var(--amber); padding: 11px 2px; }
+.stale .badge { font-family: var(--mono); font-size: 10.5px; font-weight: 800; letter-spacing: 0.12em; color: var(--amber); border: 1px solid var(--amber); border-radius: 4px; padding: 3px 8px; white-space: nowrap; }
+.stale .body { min-width: 0; }
+.stale .body b { display: block; font-size: 13.5px; }
+.stale .body span { display: block; color: var(--mut); font-family: var(--mono); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stale a { margin-left: auto; color: var(--acc); font-size: 12.5px; font-weight: 650; white-space: nowrap; }
+.stale a:hover { text-decoration: underline; }
+
+/* ── 编号节题(V3 统一件) ── */
+.sec-head { display: flex; align-items: baseline; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.sec-head i { font-style: normal; font-family: var(--mono); font-size: 12px; font-weight: 800; color: var(--acc); letter-spacing: 0.08em; }
+.sec-head h2 { font-size: 15px; font-weight: 750; letter-spacing: 0.05em; }
+.sec-head span { margin-left: auto; color: var(--mut); font-size: 11.5px; }
+
+/* ── 英雄区(V3 无盒 + 渐变主角数字) ── */
+.hero { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 30px; }
+.hero .q { margin-top: 16px; color: var(--ink-2); font-size: 13px; letter-spacing: 0.04em; }
+.hero .num {
+  margin-top: 4px;
+  font-family: var(--serif);
+  font-size: clamp(44px, 4.6vw, 62px);
+  font-weight: 680; line-height: 1.08; letter-spacing: 0.01em;
+  background: var(--hero-grad);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 0 22px var(--hero-glow));
+  white-space: nowrap;
+}
+.hero .num small { font-family: var(--mono); font-size: 15px; font-weight: 650; -webkit-text-fill-color: var(--mut); letter-spacing: 0.06em; }
+.hero .sub { margin-top: 10px; font-family: var(--mono); font-size: 11.5px; color: var(--mut); }
+.hero .sub b { color: var(--amber); font-weight: 700; }
+.hero .lede { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--ink-2); font-size: 13px; max-width: 46em; }
+.facts { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px 20px; font-family: var(--mono); font-size: 11.5px; color: var(--ink-2); }
+.facts span { display: inline-flex; align-items: center; gap: 7px; }
+.facts i { width: 6px; height: 6px; border-radius: 50%; background: var(--mut); }
+.facts i.warn { background: var(--amber); }
+.facts b { color: var(--ink); font-weight: 700; }
+.facts .warn-t { color: var(--amber); font-weight: 700; }
+.hero-side { display: grid; gap: 22px; align-content: start; padding-top: 16px; }
+.rate { border-top: 2px solid var(--ink); padding-top: 10px; }
+.rate .rcap { font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em; color: var(--mut); }
+.rate .rval { margin-top: 6px; font-family: var(--serif); font-size: 34px; font-weight: 680; color: var(--amber); line-height: 1.1; }
+.rate .rnote { margin-top: 6px; color: var(--mut); font-size: 11px; }
+.gate { border-top: 2px solid var(--ink); padding-top: 10px; }
+.gate h3 { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: 0.16em; color: var(--mut); }
+.gate .row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+.gate .row:last-child { border-bottom: 0; padding-bottom: 0; }
+.gate .row .gpill { margin-left: auto; }
+
+/* ── KPI 玻璃卡 × 8(V4 工艺) ── */
+.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.kpi { padding: 14px 16px 12px; display: grid; gap: 2px; }
+.kpi .cap { font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; color: var(--mut); display: flex; justify-content: space-between; align-items: center; }
+.kpi .cap i { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+.kpi .cap i.bad { background: var(--err); box-shadow: 0 0 8px var(--err); }
+.kpi .num { margin-top: 7px; font-family: var(--mono); font-size: 23px; font-weight: 750; white-space: nowrap; background: var(--num-grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.kpi .num small { font-size: 11px; font-weight: 650; -webkit-text-fill-color: var(--mut); }
+.kpi .num.err { background: none; color: var(--err); -webkit-text-fill-color: var(--err); }
+.kpi .sub { margin-top: 4px; font-size: 11px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kpi svg { margin-top: 8px; display: block; width: 100%; height: 26px; }
+.sparkcap { font-family: var(--mono); font-size: 10px; color: var(--mut); letter-spacing: 0.1em; margin-top: -12px; padding: 0 2px; }
+
+/* ── 摘要开放栏(V3) ── */
+.brief-grid { margin-top: 16px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
+.brief { border-top: 2px solid var(--ink); padding-top: 10px; }
+.brief .t { font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em; color: var(--mut); }
+.brief .c { margin-top: 8px; font-family: var(--serif); font-size: 17px; font-weight: 650; line-height: 1.5; }
+.brief .c b { font-family: var(--mono); font-size: 14.5px; }
+.brief .e { margin-top: 9px; border-top: 1px solid var(--line); padding-top: 8px; color: var(--mut); font-size: 11px; }
+
+/* ── 证据板玻璃面板(V4 图表工艺) ── */
+.duo { margin-top: 16px; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; }
+.panel { padding: 18px 20px; }
+.phead { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 12px; }
+.phead b { font-size: 13px; font-weight: 750; letter-spacing: 0.05em; }
+.phead span { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.14em; color: var(--mut); font-weight: 700; }
+
+.krd .row { display: grid; grid-template-columns: 44px minmax(0, 1fr) 84px; gap: 12px; align-items: center; padding: 8px 0; }
+.krd .row + .row { border-top: 1px solid var(--line); }
+.krd .bk { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--ink-2); }
+.krd .bk.hot { color: var(--amber); }
+.krd .track { height: 16px; display: flex; align-items: center; position: relative; }
+.krd .bar {
+  height: 11px; border-radius: 6px; position: relative;
+  background: linear-gradient(90deg, var(--acc-dim), var(--acc));
+  box-shadow: 0 0 14px var(--hero-glow), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+.krd .bar::after {
+  content: ""; position: absolute; right: -3px; top: 50%; transform: translateY(-50%);
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--bar-dot); box-shadow: 0 0 10px var(--acc);
+}
+.krd .bar.hot { background: linear-gradient(90deg, rgba(230, 181, 102, 0.4), var(--amber)); box-shadow: 0 0 18px rgba(230, 181, 102, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.3); }
+.krd .bar.hot::after { background: #ffe9c4; box-shadow: 0 0 12px var(--amber); }
+html[data-theme="paper"] .krd .bar.hot::after { background: var(--amber); }
+.krd .val { font-family: var(--mono); font-size: 11.5px; font-weight: 700; text-align: right; }
+.krd .val.hot { color: var(--amber); }
+.kfoot { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); color: var(--mut); font-size: 10px; font-family: var(--mono); }
+
+.curve .legend { display: flex; gap: 10px; padding-bottom: 6px; }
+.curve .legend span {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-family: var(--mono); font-size: 10px; color: var(--ink-2);
+  border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px;
+}
+.curve .legend i { width: 7px; height: 7px; border-radius: 50%; }
+.curve svg { display: block; width: 100%; height: auto; }
+
+/* ── 现金流双轨(V4) ── */
+.cash { margin-top: 16px; }
+.cash .crow { display: grid; grid-template-columns: 52px 56px minmax(0, 1fr) 76px; gap: 12px; align-items: center; padding: 7px 0; }
+.cash .crow + .crow { border-top: 1px solid var(--line); }
+.cash .cw { font-family: var(--mono); font-size: 11px; font-weight: 800; color: var(--acc); }
+.cash .ct { font-size: 12px; color: var(--ink-2); }
+.cash .track { height: 13px; display: flex; align-items: center; }
+.cash .bar { height: 9px; border-radius: 5px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22); }
+.cash .bar.a { background: linear-gradient(90deg, var(--acc-dim), var(--acc)); box-shadow: 0 0 12px var(--hero-glow), inset 0 1px 0 rgba(255, 255, 255, 0.22); }
+.cash .bar.l { background: linear-gradient(90deg, rgba(230, 181, 102, 0.4), var(--amber)); box-shadow: 0 0 12px rgba(230, 181, 102, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.22); }
+.cash .val { font-family: var(--mono); font-size: 11.5px; font-weight: 700; text-align: right; }
+.gapchips { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+.gapchip { display: inline-flex; align-items: baseline; gap: 8px; border: 1px solid rgba(240, 128, 108, 0.4); border-radius: 10px; padding: 7px 12px; font-family: var(--mono); }
+html[data-theme="paper"] .gapchip { border-color: rgba(192, 73, 47, 0.45); }
+.gapchip span { font-size: 9.5px; letter-spacing: 0.12em; color: var(--mut); }
+.gapchip b { font-size: 13px; font-weight: 750; color: var(--err); }
+.gapchip.dim { border-color: var(--line-2); }
+.gapchip.dim b { color: var(--ink); }
+
+/* ── 纯粹表(V3) ── */
+.tables { margin-top: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
+.tbl .ehead, .ehead { font-size: 12px; font-weight: 750; letter-spacing: 0.08em; color: var(--ink-2); padding-bottom: 9px; border-bottom: 2px solid var(--ink); display: flex; justify-content: space-between; align-items: baseline; }
+.ehead span { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.14em; color: var(--mut); font-weight: 700; }
+.tbl table { width: 100%; border-collapse: collapse; }
+.tbl th { text-align: left; font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.16em; color: var(--mut); font-weight: 700; padding: 9px 0 7px; border-bottom: 1px solid var(--line-2); }
+.tbl th:last-child, .tbl td:last-child { text-align: right; }
+.tbl td { padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+.tbl tr:last-child td { border-bottom: 0; }
+.tbl td.num { font-family: var(--mono); font-size: 11.5px; font-weight: 700; }
+.tbl td.num.neg { color: var(--err); }
+.tbl td.dt { font-family: var(--mono); font-size: 10.5px; color: var(--mut); }
+
+/* ── 04 质量与血缘(V3 开放) ── */
+.qual { margin-top: 16px; display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 30px; }
+.warns { counter-reset: w; display: grid; }
+.warns p {
+  counter-increment: w;
+  display: grid; grid-template-columns: 26px 1fr; gap: 8px;
+  padding: 9px 0; border-bottom: 1px solid var(--line);
+  font-family: var(--mono); font-size: 11px; color: var(--ink-2); line-height: 1.65;
+}
+.warns p:last-child { border-bottom: 0; }
+.warns p::before { content: counter(w, decimal-leading-zero); font-size: 11px; font-weight: 800; color: var(--amber); }
+.lineage { font-family: var(--mono); }
+.lineage .lr { display: grid; grid-template-columns: 108px 1fr; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.lineage .lr:last-child { border-bottom: 0; }
+.lineage .lk { color: var(--mut); font-size: 9.5px; letter-spacing: 0.12em; padding-top: 2px; }
+.lineage .lv { color: var(--ink-2); font-size: 11px; word-break: break-all; }
+
+/* ── 右栏(V3 开放节) ── */
+.rail { display: grid; gap: 26px; align-content: start; padding-top: 2px; }
+.rail .rhead { border-top: 2px solid var(--ink); padding-top: 10px; display: flex; justify-content: space-between; align-items: baseline; }
+.rail .rhead b { font-size: 13px; font-weight: 750; }
+.rail .rhead span { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.18em; color: var(--mut); }
+.drill { display: grid; }
+.drill a { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 8px; align-items: baseline; padding: 10px 2px; border-bottom: 1px solid var(--line); transition: transform 0.16s ease; }
+.drill a:last-child { border-bottom: 0; }
+.drill a:hover { transform: translateX(3px); }
+.drill a i { font-style: normal; font-family: var(--mono); font-size: 11px; font-weight: 800; color: var(--acc); }
+.drill a b { font-size: 13px; font-weight: 650; }
+.drill a b small { display: block; font-size: 11px; font-weight: 400; color: var(--mut); margin-top: 2px; }
+.drill a u { text-decoration: none; color: var(--mut); font-family: var(--mono); transition: color 0.16s ease; }
+.drill a:hover u { color: var(--acc); }
+.note { display: grid; }
+.note p { padding: 9px 0; border-bottom: 1px solid var(--line); color: var(--ink-2); font-size: 12px; line-height: 1.7; }
+.note p:last-child { border-bottom: 0; }
+.note p::before { content: "§ "; color: var(--acc); font-family: var(--mono); }
+
+@media (max-width: 1240px) {
+  .shell { grid-template-columns: 200px minmax(0, 1fr); }
+  .rail { grid-column: 2; grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 1020px) {
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .side { display: none; }
+  .rail { grid-column: 1; }
+  .hero { grid-template-columns: 1fr; }
+  .kpis { grid-template-columns: repeat(2, 1fr); }
+  .brief-grid, .tables, .duo, .qual { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="lab-banner">
+  <b>设计原型 LAB v5</b><span>V3×V4 融合 · 上半页玻璃工艺 × 下半页编辑纪律 · 数据与 v3/v4 完全一致</span>
+  <span class="spacer"></span>
+  <a href="/design-lab/risk-overview.html">编辑风 v3</a>
+  <a href="/design-lab/risk-overview-glass.html">曜石玻璃 v4</a>
+  <button id="t-ink" class="on" type="button">墨版 INK</button>
+  <button id="t-paper" type="button">纸版 PAPER</button>
+</div>
+
+<div class="shell">
+  <!-- 侧栏:仅作情境 -->
+  <aside class="side">
+    <div class="logo"><i>M</i>MOSS</div>
+    <nav>
+      <div class="grp">工作台</div>
+      <a href="#">经营日报 <small>首页</small></a>
+      <a href="#">组合工作台 <small>首页</small></a>
+      <a href="#">市场工作台 <small>首页</small></a>
+      <a href="#" class="on">风险工作台 <small>首页</small></a>
+      <a href="#">绩效工作台 <small>首页</small></a>
+      <a href="#">报表与数据 <small>首页</small></a>
+      <div class="grp">对话</div>
+      <a href="#">MOSS Chat <small>可用</small></a>
+    </nav>
+  </aside>
+
+  <!-- 主栏 -->
+  <main class="main">
+    <header class="mast">
+      <span class="who">MOSS · 利率风险总览</span>
+      <span class="meta">报告日 <b>2026-06-30</b> · 当前组合风险、集中度和流动性是否触发优先处置?</span>
+      <span class="spring"></span>
+      <span class="gpill"><i></i>已接入</span>
+      <button class="gbtn pri" type="button">刷新</button>
+    </header>
+
+    <div class="stale">
+      <span class="badge">数据陈旧</span>
+      <div class="body">
+        <b>2 个报告日被规则版本拦截,最新 2026-05-31</b>
+        <span>Risk tensor stale against rule version for report_date=2026-05-31; expected rv_risk_tensor_formal_materialize_v2</span>
+      </div>
+      <a href="#">前往风险张量页 →</a>
+    </div>
+
+    <!-- 01 风险处置判断(V3 无盒) -->
+    <section class="hero">
+      <div>
+        <div class="sec-head"><i>01</i><h2>风险处置判断</h2><span>数据来源 风险张量 / 现金流</span></div>
+        <div class="q">利率每变动 1 个基点,组合市值约变动</div>
+        <div class="num">10,694.94<small> 万元</small></div>
+        <div class="sub">≈ 1.07 亿元 / bp · 峰值敞口位于 <b>10Y(KRD 2,753.92 万元)</b> · 修正久期 3.78 · 凸度 30.90</div>
+        <p class="lede">质量标记 warning,5 条数据提示集中在期限缺失与含权处理,详见 04。下方保留字段级证据;正式处置进入风险张量、集中度和现金流页面。</p>
+        <div class="facts">
+          <span><i></i>报告日 <b>2026-06-30</b></span>
+          <span><i class="warn"></i>质量标记 <b class="warn-t">warning</b></span>
+          <span><i></i>数据提示 <b>5 条</b></span>
+          <span><i class="warn"></i>拦截日期 <b>2 个</b> · 最新 <b>2026-05-31</b></span>
+          <span><i></i>总市值 <b>3,478.36 亿元</b></span>
+          <span><i></i>持仓 <b>1,767 只</b></span>
+        </div>
+      </div>
+      <div class="hero-side">
+        <div class="rate">
+          <div class="rcap">组合风险评级</div>
+          <div class="rval">关注</div>
+          <div class="rnote">组合层面综合信号,由 KPI 与链路状态推导</div>
+        </div>
+        <div class="gate">
+          <h3>链路状态</h3>
+          <div class="row">风险报告日<span class="gpill warn"><i></i>部分拦截</span></div>
+          <div class="row">风险张量<span class="gpill"><i></i>已返回</span></div>
+          <div class="row">现金流预测<span class="gpill"><i></i>已返回</span></div>
+          <div class="row">集中度<span class="gpill mut"><i></i>下钻页</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- KPI 玻璃卡 × 8(V4 工艺) -->
+    <section class="kpis">
+      <div class="kpi glass glass-hover">
+        <div class="cap">监管 DV01<i></i></div>
+        <div class="num">10,694.94<small> 万元</small></div>
+        <div class="sub">范围:全部正式行</div>
+        <svg viewBox="0 0 96 26" preserveAspectRatio="none"><path d="M 2.0,5.0 C 2.6,5.2 4.6,6.1 5.9,6.3 C 7.2,6.5 8.5,4.8 9.8,6.3 C 11.1,7.8 12.4,13.2 13.7,15.1 C 15.0,17.0 16.4,17.2 17.7,17.7 C 19.0,18.2 20.3,18.4 21.6,18.3 C 22.9,18.2 24.2,17.1 25.5,17.0 C 26.8,16.9 28.1,17.6 29.4,17.9 C 30.7,18.2 32.0,18.9 33.3,18.7 C 34.6,18.5 35.9,16.9 37.2,16.9 C 38.5,16.9 39.8,19.4 41.1,18.9 C 42.4,18.4 43.7,14.3 45.0,14.0 C 46.3,13.7 47.7,17.7 49.0,17.0 C 50.3,16.3 51.6,10.8 52.9,9.7 C 54.2,8.6 55.5,10.1 56.8,10.3 C 58.1,10.5 59.4,10.9 60.7,11.1 C 62.0,11.2 63.3,11.1 64.6,11.2 C 65.9,11.3 67.2,11.7 68.5,11.7 C 69.8,11.7 71.1,11.2 72.4,11.2 C 73.7,11.2 75.0,11.2 76.3,11.6 C 77.6,12.0 79.0,13.0 80.3,13.5 C 81.6,14.0 82.9,13.0 84.2,14.4 C 85.5,15.8 86.8,23.2 88.1,22.0 C 89.4,20.8 91.3,9.4 92.0,6.9 L 92.0,26 L 2.0,26 Z" fill="var(--spark-fill)"/><path d="M 2.0,5.0 C 2.6,5.2 4.6,6.1 5.9,6.3 C 7.2,6.5 8.5,4.8 9.8,6.3 C 11.1,7.8 12.4,13.2 13.7,15.1 C 15.0,17.0 16.4,17.2 17.7,17.7 C 19.0,18.2 20.3,18.4 21.6,18.3 C 22.9,18.2 24.2,17.1 25.5,17.0 C 26.8,16.9 28.1,17.6 29.4,17.9 C 30.7,18.2 32.0,18.9 33.3,18.7 C 34.6,18.5 35.9,16.9 37.2,16.9 C 38.5,16.9 39.8,19.4 41.1,18.9 C 42.4,18.4 43.7,14.3 45.0,14.0 C 46.3,13.7 47.7,17.7 49.0,17.0 C 50.3,16.3 51.6,10.8 52.9,9.7 C 54.2,8.6 55.5,10.1 56.8,10.3 C 58.1,10.5 59.4,10.9 60.7,11.1 C 62.0,11.2 63.3,11.1 64.6,11.2 C 65.9,11.3 67.2,11.7 68.5,11.7 C 69.8,11.7 71.1,11.2 72.4,11.2 C 73.7,11.2 75.0,11.2 76.3,11.6 C 77.6,12.0 79.0,13.0 80.3,13.5 C 81.6,14.0 82.9,13.0 84.2,14.4 C 85.5,15.8 86.8,23.2 88.1,22.0 C 89.4,20.8 91.3,9.4 92.0,6.9" fill="none" stroke="var(--acc)" stroke-width="1.4"/><circle cx="92" cy="6.9" r="4" fill="var(--spark-fill)"/><circle cx="92" cy="6.9" r="2" fill="var(--acc)"/></svg>
+      </div>
+      <div class="kpi glass glass-hover">
+        <div class="cap">估值 DV01<i></i></div>
+        <div class="num">10,694.94<small> 万元</small></div>
+        <div class="sub">敏感度读数 · 同值属口径预期</div>
+        <svg viewBox="0 0 96 26" preserveAspectRatio="none"><path d="M 2.0,5.0 C 2.6,5.2 4.6,6.1 5.9,6.3 C 7.2,6.5 8.5,4.8 9.8,6.3 C 11.1,7.8 12.4,13.2 13.7,15.1 C 15.0,17.0 16.4,17.2 17.7,17.7 C 19.0,18.2 20.3,18.4 21.6,18.3 C 22.9,18.2 24.2,17.1 25.5,17.0 C 26.8,16.9 28.1,17.6 29.4,17.9 C 30.7,18.2 32.0,18.9 33.3,18.7 C 34.6,18.5 35.9,16.9 37.2,16.9 C 38.5,16.9 39.8,19.4 41.1,18.9 C 42.4,18.4 43.7,14.3 45.0,14.0 C 46.3,13.7 47.7,17.7 49.0,17.0 C 50.3,16.3 51.6,10.8 52.9,9.7 C 54.2,8.6 55.5,10.1 56.8,10.3 C 58.1,10.5 59.4,10.9 60.7,11.1 C 62.0,11.2 63.3,11.1 64.6,11.2 C 65.9,11.3 67.2,11.7 68.5,11.7 C 69.8,11.7 71.1,11.2 72.4,11.2 C 73.7,11.2 75.0,11.2 76.3,11.6 C 77.6,12.0 79.0,13.0 80.3,13.5 C 81.6,14.0 82.9,13.0 84.2,14.4 C 85.5,15.8 86.8,23.2 88.1,22.0 C 89.4,20.8 91.3,9.4 92.0,6.9 L 92.0,26 L 2.0,26 Z" fill="var(--spark-fill)"/><path d="M 2.0,5.0 C 2.6,5.2 4.6,6.1 5.9,6.3 C 7.2,6.5 8.5,4.8 9.8,6.3 C 11.1,7.8 12.4,13.2 13.7,15.1 C 15.0,17.0 16.4,17.2 17.7,17.7 C 19.0,18.2 20.3,18.4 21.6,18.3 C 22.9,18.2 24.2,17.1 25.5,17.0 C 26.8,16.9 28.1,17.6 29.4,17.9 C 30.7,18.2 32.0,18.9 33.3,18.7 C 34.6,18.5 35.9,16.9 37.2,16.9 C 38.5,16.9 39.8,19.4 41.1,18.9 C 42.4,18.4 43.7,14.3 45.0,14.0 C 46.3,13.7 47.7,17.7 49.0,17.0 C 50.3,16.3 51.6,10.8 52.9,9.7 C 54.2,8.6 55.5,10.1 56.8,10.3 C 58.1,10.5 59.4,10.9 60.7,11.1 C 62.0,11.2 63.3,11.1 64.6,11.2 C 65.9,11.3 67.2,11.7 68.5,11.7 C 69.8,11.7 71.1,11.2 72.4,11.2 C 73.7,11.2 75.0,11.2 76.3,11.6 C 77.6,12.0 79.0,13.0 80.3,13.5 C 81.6,14.0 82.9,13.0 84.2,14.4 C 85.5,15.8 86.8,23.2 88.1,22.0 C 89.4,20.8 91.3,9.4 92.0,6.9" fill="none" stroke="var(--acc)" stroke-width="1.4"/><circle cx="92" cy="6.9" r="4" fill="var(--spark-fill)"/><circle cx="92" cy="6.9" r="2" fill="var(--acc)"/></svg>
+      </div>
+      <div class="kpi glass glass-hover">
+        <div class="cap">修正久期<i></i></div>
+        <div class="num">3.78</div>
+        <div class="sub">市值加权</div>
+        <svg viewBox="0 0 96 26" preserveAspectRatio="none"><path d="M 2.0,15.6 C 2.6,15.7 4.6,15.9 5.9,16.0 C 7.2,16.1 8.5,15.5 9.8,15.9 C 11.1,16.3 12.4,18.2 13.7,18.6 C 15.0,19.0 16.4,18.0 17.7,18.0 C 19.0,18.0 20.3,18.0 21.6,18.4 C 22.9,18.8 24.2,20.0 25.5,20.5 C 26.8,21.0 28.1,21.0 29.4,21.2 C 30.7,21.4 32.0,21.8 33.3,21.9 C 34.6,22.0 35.9,22.0 37.2,22.0 C 38.5,22.0 39.8,22.6 41.1,21.7 C 42.4,20.8 43.7,17.6 45.0,16.5 C 46.3,15.4 47.7,15.7 49.0,15.1 C 50.3,14.5 51.6,13.4 52.9,13.2 C 54.2,13.0 55.5,13.5 56.8,13.7 C 58.1,13.9 59.4,14.2 60.7,14.4 C 62.0,14.7 63.3,15.4 64.6,15.2 C 65.9,15.0 67.2,13.5 68.5,13.0 C 69.8,12.5 71.1,12.5 72.4,12.2 C 73.7,11.9 75.0,11.2 76.3,11.4 C 77.6,11.6 79.0,13.0 80.3,13.4 C 81.6,13.8 82.9,15.5 84.2,14.1 C 85.5,12.7 86.8,4.0 88.1,5.0 C 89.4,6.0 91.3,17.7 92.0,20.2 L 92.0,26 L 2.0,26 Z" fill="var(--spark-fill)"/><path d="M 2.0,15.6 C 2.6,15.7 4.6,15.9 5.9,16.0 C 7.2,16.1 8.5,15.5 9.8,15.9 C 11.1,16.3 12.4,18.2 13.7,18.6 C 15.0,19.0 16.4,18.0 17.7,18.0 C 19.0,18.0 20.3,18.0 21.6,18.4 C 22.9,18.8 24.2,20.0 25.5,20.5 C 26.8,21.0 28.1,21.0 29.4,21.2 C 30.7,21.4 32.0,21.8 33.3,21.9 C 34.6,22.0 35.9,22.0 37.2,22.0 C 38.5,22.0 39.8,22.6 41.1,21.7 C 42.4,20.8 43.7,17.6 45.0,16.5 C 46.3,15.4 47.7,15.7 49.0,15.1 C 50.3,14.5 51.6,13.4 52.9,13.2 C 54.2,13.0 55.5,13.5 56.8,13.7 C 58.1,13.9 59.4,14.2 60.7,14.4 C 62.0,14.7 63.3,15.4 64.6,15.2 C 65.9,15.0 67.2,13.5 68.5,13.0 C 69.8,12.5 71.1,12.5 72.4,12.2 C 73.7,11.9 75.0,11.2 76.3,11.4 C 77.6,11.6 79.0,13.0 80.3,13.4 C 81.6,13.8 82.9,15.5 84.2,14.1 C 85.5,12.7 86.8,4.0 88.1,5.0 C 89.4,6.0 91.3,17.7 92.0,20.2" fill="none" stroke="var(--acc)" stroke-width="1.4"/><circle cx="92" cy="20.2" r="4" fill="var(--spark-fill)"/><circle cx="92" cy="20.2" r="2" fill="var(--acc)"/></svg>
+      </div>
+      <div class="kpi glass glass-hover">
+        <div class="cap">组合凸度<i></i></div>
+        <div class="num">30.90</div>
+        <div class="sub">张量直读</div>
+        <svg viewBox="0 0 96 26" preserveAspectRatio="none"><path d="M 2.0,20.3 C 2.6,20.3 4.6,20.4 5.9,20.4 C 7.2,20.4 8.5,20.3 9.8,20.4 C 11.1,20.5 12.4,21.1 13.7,21.1 C 15.0,21.1 16.4,20.4 17.7,20.3 C 19.0,20.2 20.3,20.2 21.6,20.4 C 22.9,20.6 24.2,21.2 25.5,21.4 C 26.8,21.6 28.1,21.5 29.4,21.6 C 30.7,21.7 32.0,21.7 33.3,21.8 C 34.6,21.9 35.9,22.0 37.2,22.0 C 38.5,22.0 39.8,22.2 41.1,21.7 C 42.4,21.2 43.7,19.7 45.0,19.1 C 46.3,18.6 47.7,18.6 49.0,18.4 C 50.3,18.2 51.6,18.0 52.9,17.9 C 54.2,17.8 55.5,17.9 56.8,18.0 C 58.1,18.1 59.4,18.1 60.7,18.2 C 62.0,18.3 63.3,18.7 64.6,18.6 C 65.9,18.5 67.2,18.0 68.5,17.8 C 69.8,17.6 71.1,17.4 72.4,17.2 C 73.7,17.0 75.0,16.5 76.3,16.5 C 77.6,16.5 79.0,17.0 80.3,17.1 C 81.6,17.2 82.9,19.2 84.2,17.2 C 85.5,15.2 86.8,4.3 88.1,5.0 C 89.4,5.7 91.3,18.4 92.0,21.1 L 92.0,26 L 2.0,26 Z" fill="var(--spark-fill)"/><path d="M 2.0,20.3 C 2.6,20.3 4.6,20.4 5.9,20.4 C 7.2,20.4 8.5,20.3 9.8,20.4 C 11.1,20.5 12.4,21.1 13.7,21.1 C 15.0,21.1 16.4,20.4 17.7,20.3 C 19.0,20.2 20.3,20.2 21.6,20.4 C 22.9,20.6 24.2,21.2 25.5,21.4 C 26.8,21.6 28.1,21.5 29.4,21.6 C 30.7,21.7 32.0,21.7 33.3,21.8 C 34.6,21.9 35.9,22.0 37.2,22.0 C 38.5,22.0 39.8,22.2 41.1,21.7 C 42.4,21.2 43.7,19.7 45.0,19.1 C 46.3,18.6 47.7,18.6 49.0,18.4 C 50.3,18.2 51.6,18.0 52.9,17.9 C 54.2,17.8 55.5,17.9 56.8,18.0 C 58.1,18.1 59.4,18.1 60.7,18.2 C 62.0,18.3 63.3,18.7 64.6,18.6 C 65.9,18.5 67.2,18.0 68.5,17.8 C 69.8,17.6 71.1,17.4 72.4,17.2 C 73.7,17.0 75.0,16.5 76.3,16.5 C 77.6,16.5 79.0,17.0 80.3,17.1 C 81.6,17.2 82.9,19.2 84.2,17.2 C 85.5,15.2 86.8,4.3 88.1,5.0 C 89.4,5.7 91.3,18.4 92.0,21.1" fill="none" stroke="var(--acc)" stroke-width="1.4"/><circle cx="92" cy="21.1" r="4" fill="var(--spark-fill)"/><circle cx="92" cy="21.1" r="2" fill="var(--acc)"/></svg>
+      </div>
+      <div class="kpi glass glass-hover">
+        <div class="cap">CS01 信用利差<i></i></div>
+        <div class="num">2,730.89<small> 万元</small></div>
+        <div class="sub">每 bp 利差</div>
+        <svg viewBox="0 0 96 26" preserveAspectRatio="none"><path d="M 2.0,8.9 C 2.6,8.9 4.6,9.2 5.9,9.2 C 7.2,9.1 8.5,8.8 9.8,8.6 C 11.1,8.4 12.4,8.0 13.7,7.9 C 15.0,7.8 16.4,8.2 17.7,8.2 C 19.0,8.2 20.3,8.2 21.6,8.1 C 22.9,8.0 24.2,7.8 25.5,7.8 C 26.8,7.8 28.1,8.0 29.4,8.1 C 30.7,8.2 32.0,8.3 33.3,8.4 C 34.6,8.5 35.9,8.3 37.2,8.5 C 38.5,8.7 39.8,9.0 41.1,9.4 C 42.4,9.8 43.7,10.5 45.0,10.8 C 46.3,11.1 47.7,11.2 49.0,11.4 C 50.3,11.6 51.6,11.8 52.9,12.0 C 54.2,12.2 55.5,12.2 56.8,12.3 C 58.1,12.4 59.4,12.4 60.7,12.6 C 62.0,12.8 63.3,13.4 64.6,13.7 C 65.9,14.0 67.2,14.3 68.5,14.5 C 69.8,14.7 71.1,14.7 72.4,14.8 C 73.7,15.0 75.0,15.2 76.3,15.4 C 77.6,15.6 79.0,15.8 80.3,15.9 C 81.6,16.0 82.9,15.2 84.2,16.2 C 85.5,17.2 86.8,23.9 88.1,22.0 C 89.4,20.1 91.3,7.8 92.0,5.0 L 92.0,26 L 2.0,26 Z" fill="var(--spark-fill)"/><path d="M 2.0,8.9 C 2.6,8.9 4.6,9.2 5.9,9.2 C 7.2,9.1 8.5,8.8 9.8,8.6 C 11.1,8.4 12.4,8.0 13.7,7.9 C 15.0,7.8 16.4,8.2 17.7,8.2 C 19.0,8.2 20.3,8.2 21.6,8.1 C 22.9,8.0 24.2,7.8 25.5,7.8 C 26.8,7.8 28.1,8.0 29.4,8.1 C 30.7,8.2 32.0,8.3 33.3,8.4 C 34.6,8.5 35.9,8.3 37.2,8.5 C 38.5,8.7 39.8,9.0 41.1,9.4 C 42.4,9.8 43.7,10.5 45.0,10.8 C 46.3,11.1 47.7,11.2 49.0,11.4 C 50.3,11.6 51.6,11.8 52.9,12.0 C 54.2,12.2 55.5,12.2 56.8,12.3 C 58.1,12.4 59.4,12.4 60.7,12.6 C 62.0,12.8 63.3,13.4 64.6,13.7 C 65.9,14.0 67.2,14.3 68.5,14.5 C 69.8,14.7 71.1,14.7 72.4,14.8 C 73.7,15.0 75.0,15.2 76.3,15.4 C 77.6,15.6 79.0,15.8 80.3,15.9 C 81.6,16.0 82.9,15.2 84.2,16.2 C 85.5,17.2 86.8,23.9 88.1,22.0 C 89.4,20.1 91.3,7.8 92.0,5.0" fill="none" stroke="var(--acc)" stroke-width="1.4"/><circle cx="92" cy="5.0" r="4" fill="var(--spark-fill)"/><circle cx="92" cy="5.0" r="2" fill="var(--acc)"/></svg>
+      </div>
+      <div class="kpi glass glass-hover">
+        <div class="cap">发行人 HHI<i></i></div>
+        <div class="num">4.84<small> %</small></div>
+        <div class="sub">集中度指数 · 低集中</div>
+        <svg viewBox="0 0 96 26" preserveAspectRatio="none"><path d="M 2.0,19.4 C 2.6,19.4 4.6,19.6 5.9,19.4 C 7.2,19.1 8.5,17.6 9.8,17.9 C 11.1,18.2 12.4,20.5 13.7,21.2 C 15.0,21.9 16.4,22.1 17.7,22.0 C 19.0,21.9 20.3,21.3 21.6,20.4 C 22.9,19.4 24.2,17.0 25.5,16.3 C 26.8,15.6 28.1,16.3 29.4,16.3 C 30.7,16.3 32.0,16.3 33.3,16.3 C 34.6,16.3 35.9,16.4 37.2,16.4 C 38.5,16.4 39.8,16.6 41.1,16.4 C 42.4,16.2 43.7,15.4 45.0,15.1 C 46.3,14.8 47.7,15.2 49.0,14.8 C 50.3,14.4 51.6,12.8 52.9,12.4 C 54.2,12.0 55.5,12.4 56.8,12.4 C 58.1,12.4 59.4,12.5 60.7,12.4 C 62.0,12.3 63.3,11.8 64.6,11.6 C 65.9,11.3 67.2,11.1 68.5,10.9 C 69.8,10.7 71.1,10.4 72.4,10.3 C 73.7,10.2 75.0,10.2 76.3,10.2 C 77.6,10.2 79.0,10.4 80.3,10.4 C 81.6,10.4 82.9,11.3 84.2,10.4 C 85.5,9.5 86.8,3.1 88.1,5.0 C 89.4,6.9 91.3,19.2 92.0,22.0 L 92.0,26 L 2.0,26 Z" fill="var(--spark-fill)"/><path d="M 2.0,19.4 C 2.6,19.4 4.6,19.6 5.9,19.4 C 7.2,19.1 8.5,17.6 9.8,17.9 C 11.1,18.2 12.4,20.5 13.7,21.2 C 15.0,21.9 16.4,22.1 17.7,22.0 C 19.0,21.9 20.3,21.3 21.6,20.4 C 22.9,19.4 24.2,17.0 25.5,16.3 C 26.8,15.6 28.1,16.3 29.4,16.3 C 30.7,16.3 32.0,16.3 33.3,16.3 C 34.6,16.3 35.9,16.4 37.2,16.4 C 38.5,16.4 39.8,16.6 41.1,16.4 C 42.4,16.2 43.7,15.4 45.0,15.1 C 46.3,14.8 47.7,15.2 49.0,14.8 C 50.3,14.4 51.6,12.8 52.9,12.4 C 54.2,12.0 55.5,12.4 56.8,12.4 C 58.1,12.4 59.4,12.5 60.7,12.4 C 62.0,12.3 63.3,11.8 64.6,11.6 C 65.9,11.3 67.2,11.1 68.5,10.9 C 69.8,10.7 71.1,10.4 72.4,10.3 C 73.7,10.2 75.0,10.2 76.3,10.2 C 77.6,10.2 79.0,10.4 80.3,10.4 C 81.6,10.4 82.9,11.3 84.2,10.4 C 85.5,9.5 86.8,3.1 88.1,5.0 C 89.4,6.9 91.3,19.2 92.0,22.0" fill="none" stroke="var(--acc)" stroke-width="1.4"/><circle cx="92" cy="22.0" r="4" fill="var(--spark-fill)"/><circle cx="92" cy="22.0" r="2" fill="var(--acc)"/></svg>
+      </div>
+      <div class="kpi glass glass-hover">
+        <div class="cap">前五大权重<i></i></div>
+        <div class="num">40.3<small> %</small></div>
+        <div class="sub">发行人口径</div>
+        <svg viewBox="0 0 96 26" preserveAspectRatio="none"><path d="M 2.0,20.0 C 2.6,20.0 4.6,20.2 5.9,20.0 C 7.2,19.8 8.5,18.6 9.8,18.6 C 11.1,18.7 12.4,20.0 13.7,20.3 C 15.0,20.6 16.4,20.6 17.7,20.3 C 19.0,20.1 20.3,19.7 21.6,18.8 C 22.9,17.9 24.2,15.7 25.5,15.1 C 26.8,14.5 28.1,15.1 29.4,15.1 C 30.7,15.1 32.0,15.1 33.3,15.1 C 34.6,15.1 35.9,14.9 37.2,14.9 C 38.5,14.9 39.8,15.1 41.1,14.9 C 42.4,14.8 43.7,14.1 45.0,14.0 C 46.3,13.9 47.7,14.4 49.0,14.3 C 50.3,14.2 51.6,13.4 52.9,13.2 C 54.2,13.0 55.5,13.2 56.8,13.2 C 58.1,13.2 59.4,13.5 60.7,13.2 C 62.0,12.9 63.3,11.8 64.6,11.4 C 65.9,11.0 67.2,11.0 68.5,10.8 C 69.8,10.6 71.1,10.4 72.4,10.3 C 73.7,10.2 75.0,10.2 76.3,10.2 C 77.6,10.1 79.0,10.0 80.3,10.0 C 81.6,10.0 82.9,10.8 84.2,10.0 C 85.5,9.2 86.8,3.0 88.1,5.0 C 89.4,7.0 91.3,19.2 92.0,22.0 L 92.0,26 L 2.0,26 Z" fill="var(--spark-fill)"/><path d="M 2.0,20.0 C 2.6,20.0 4.6,20.2 5.9,20.0 C 7.2,19.8 8.5,18.6 9.8,18.6 C 11.1,18.7 12.4,20.0 13.7,20.3 C 15.0,20.6 16.4,20.6 17.7,20.3 C 19.0,20.1 20.3,19.7 21.6,18.8 C 22.9,17.9 24.2,15.7 25.5,15.1 C 26.8,14.5 28.1,15.1 29.4,15.1 C 30.7,15.1 32.0,15.1 33.3,15.1 C 34.6,15.1 35.9,14.9 37.2,14.9 C 38.5,14.9 39.8,15.1 41.1,14.9 C 42.4,14.8 43.7,14.1 45.0,14.0 C 46.3,13.9 47.7,14.4 49.0,14.3 C 50.3,14.2 51.6,13.4 52.9,13.2 C 54.2,13.0 55.5,13.2 56.8,13.2 C 58.1,13.2 59.4,13.5 60.7,13.2 C 62.0,12.9 63.3,11.8 64.6,11.4 C 65.9,11.0 67.2,11.0 68.5,10.8 C 69.8,10.6 71.1,10.4 72.4,10.3 C 73.7,10.2 75.0,10.2 76.3,10.2 C 77.6,10.1 79.0,10.0 80.3,10.0 C 81.6,10.0 82.9,10.8 84.2,10.0 C 85.5,9.2 86.8,3.0 88.1,5.0 C 89.4,7.0 91.3,19.2 92.0,22.0" fill="none" stroke="var(--acc)" stroke-width="1.4"/><circle cx="92" cy="22.0" r="4" fill="var(--spark-fill)"/><circle cx="92" cy="22.0" r="2" fill="var(--acc)"/></svg>
+      </div>
+      <div class="kpi glass glass-hover">
+        <div class="cap">30D 流动性缺口<i class="bad"></i></div>
+        <div class="num err">-63.14<small> 亿元</small></div>
+        <div class="sub">90D 缺口 -10.88 亿元</div>
+        <svg viewBox="0 0 96 26" preserveAspectRatio="none"><path d="M 2.0,18.9 C 2.6,18.9 4.6,19.0 5.9,18.8 C 7.2,18.6 8.5,17.9 9.8,17.5 C 11.1,17.1 12.4,16.3 13.7,16.1 C 15.0,15.9 16.4,15.6 17.7,16.1 C 19.0,16.6 20.3,19.1 21.6,19.3 C 22.9,19.5 24.2,17.6 25.5,17.3 C 26.8,17.0 28.1,17.4 29.4,17.3 C 30.7,17.2 32.0,17.0 33.3,17.0 C 34.6,17.0 35.9,17.0 37.2,17.4 C 38.5,17.8 39.8,19.3 41.1,19.5 C 42.4,19.7 43.7,18.5 45.0,18.5 C 46.3,18.5 47.7,18.8 49.0,19.4 C 50.3,20.0 51.6,21.6 52.9,22.0 C 54.2,22.4 55.5,22.1 56.8,22.0 C 58.1,21.9 59.4,21.7 60.7,21.3 C 62.0,20.9 63.3,20.4 64.6,19.4 C 65.9,18.4 67.2,16.1 68.5,15.3 C 69.8,14.5 71.1,15.5 72.4,14.5 C 73.7,13.5 75.0,10.9 76.3,9.3 C 77.6,7.7 79.0,5.6 80.3,5.0 C 81.6,4.4 82.9,5.5 84.2,5.6 C 85.5,5.7 86.8,5.3 88.1,5.5 C 89.4,5.7 91.3,6.4 92.0,6.6 L 92.0,26 L 2.0,26 Z" fill="var(--spark-fill-err)"/><path d="M 2.0,18.9 C 2.6,18.9 4.6,19.0 5.9,18.8 C 7.2,18.6 8.5,17.9 9.8,17.5 C 11.1,17.1 12.4,16.3 13.7,16.1 C 15.0,15.9 16.4,15.6 17.7,16.1 C 19.0,16.6 20.3,19.1 21.6,19.3 C 22.9,19.5 24.2,17.6 25.5,17.3 C 26.8,17.0 28.1,17.4 29.4,17.3 C 30.7,17.2 32.0,17.0 33.3,17.0 C 34.6,17.0 35.9,17.0 37.2,17.4 C 38.5,17.8 39.8,19.3 41.1,19.5 C 42.4,19.7 43.7,18.5 45.0,18.5 C 46.3,18.5 47.7,18.8 49.0,19.4 C 50.3,20.0 51.6,21.6 52.9,22.0 C 54.2,22.4 55.5,22.1 56.8,22.0 C 58.1,21.9 59.4,21.7 60.7,21.3 C 62.0,20.9 63.3,20.4 64.6,19.4 C 65.9,18.4 67.2,16.1 68.5,15.3 C 69.8,14.5 71.1,15.5 72.4,14.5 C 73.7,13.5 75.0,10.9 76.3,9.3 C 77.6,7.7 79.0,5.6 80.3,5.0 C 81.6,4.4 82.9,5.5 84.2,5.6 C 85.5,5.7 86.8,5.3 88.1,5.5 C 89.4,5.7 91.3,6.4 92.0,6.6" fill="none" stroke="var(--err)" stroke-width="1.4"/><circle cx="92" cy="6.6" r="4" fill="var(--spark-fill-err)"/><circle cx="92" cy="6.6" r="2" fill="var(--err)"/></svg>
+      </div>
+    </section>
+    <div class="sparkcap">走势为近 24 期真实读数 · 2026-05-09 → 2026-06-30 · 来源 fact_formal_risk_tensor_daily</div>
+
+    <!-- 02 摘要(V3 开放栏) -->
+    <section>
+      <div class="sec-head"><i>02</i><h2>风险截面摘要</h2><span>字段级读数,不在首页补算</span></div>
+      <div class="brief-grid">
+        <article class="brief">
+          <div class="t">久期与 DV01</div>
+          <div class="c">DV01 <b>10,694.94</b> 万元,修正久期 <b>3.78</b>,凸度 <b>30.90</b>。</div>
+          <div class="e">直接展示 risk tensor 字段,不以前端计算监管 DV01。</div>
+        </article>
+        <article class="brief">
+          <div class="t">信用与集中度</div>
+          <div class="c">CS01 <b>2,730.89</b> 万元,前五大权重 <b>40.3%</b>,HHI <b>4.84%</b>。</div>
+          <div class="e">首页只提供摘要状态。</div>
+        </article>
+        <article class="brief">
+          <div class="t">现金流压力</div>
+          <div class="c">30D 缺口 <b>-63.14</b> 亿元,90D 缺口 <b>-10.88</b> 亿元。</div>
+          <div class="e">现金流压力以 /cashflow-projection 正式展示为准。</div>
+        </article>
+      </div>
+    </section>
+
+    <!-- 03 证据板(V4 图表工艺) -->
+    <section>
+      <div class="sec-head"><i>03</i><h2>风险证据板</h2><span>KRD · 收益率曲线 · 现金流窗口 · 字段级明细</span></div>
+      <div class="duo">
+        <div class="panel glass krd">
+          <div class="phead"><b>KRD 分布</b><span>DV01 贡献 · 万元</span></div>
+          <div class="row"><span class="bk">1Y</span><div class="track"><div class="bar" style="width:22.5%"></div></div><span class="val">620.43</span></div>
+          <div class="row"><span class="bk">3Y</span><div class="track"><div class="bar" style="width:82.7%"></div></div><span class="val">2,278.93</span></div>
+          <div class="row"><span class="bk">5Y</span><div class="track"><div class="bar" style="width:65.9%"></div></div><span class="val">1,815.80</span></div>
+          <div class="row"><span class="bk">7Y</span><div class="track"><div class="bar" style="width:31.1%"></div></div><span class="val">857.59</span></div>
+          <div class="row"><span class="bk hot">10Y</span><div class="track"><div class="bar hot" style="width:100%"></div></div><span class="val hot">2,753.92</span></div>
+          <div class="row"><span class="bk">30Y</span><div class="track"><div class="bar" style="width:86%"></div></div><span class="val">2,368.27</span></div>
+          <div class="kfoot">条形长度为读数比例 · 10Y 为峰值桶(琥珀)</div>
+        </div>
+        <div class="panel glass curve">
+          <div class="phead"><b>收益率曲线水平</b><span>2026-06-30 · %</span></div>
+          <div class="legend">
+            <span><i style="background:var(--ink)"></i>国债</span>
+            <span><i style="background:var(--amber)"></i>国开</span>
+            <span><i style="background:var(--acc)"></i>AAA 信用</span>
+          </div>
+          <svg viewBox="0 0 420 190">
+            <defs>
+              <linearGradient id="ta" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="rgba(125,184,255,0.22)"/>
+                <stop offset="1" stop-color="rgba(125,184,255,0)"/>
+              </linearGradient>
+            </defs>
+            <line x1="36" y1="156" x2="352" y2="156" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 5"/>
+            <line x1="36" y1="122.8" x2="352" y2="122.8" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 5"/>
+            <line x1="36" y1="89.7" x2="352" y2="89.7" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 5"/>
+            <line x1="36" y1="56.5" x2="352" y2="56.5" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 5"/>
+            <text x="358" y="159" fill="var(--mut)" font-family="var(--mono)" font-size="8.5">1.0</text>
+            <text x="358" y="126" fill="var(--mut)" font-family="var(--mono)" font-size="8.5">1.5</text>
+            <text x="358" y="93" fill="var(--mut)" font-family="var(--mono)" font-size="8.5">2.0</text>
+            <text x="358" y="60" fill="var(--mut)" font-family="var(--mono)" font-size="8.5">2.5</text>
+            <text x="36" y="176" fill="var(--mut)" font-family="var(--mono)" font-size="8.5" text-anchor="middle">1Y</text>
+            <text x="88" y="176" fill="var(--mut)" font-family="var(--mono)" font-size="8.5" text-anchor="middle">2Y</text>
+            <text x="140" y="176" fill="var(--mut)" font-family="var(--mono)" font-size="8.5" text-anchor="middle">3Y</text>
+            <text x="192" y="176" fill="var(--mut)" font-family="var(--mono)" font-size="8.5" text-anchor="middle">5Y</text>
+            <text x="244" y="176" fill="var(--mut)" font-family="var(--mono)" font-size="8.5" text-anchor="middle">7Y</text>
+            <text x="296" y="176" fill="var(--mut)" font-family="var(--mono)" font-size="8.5" text-anchor="middle">10Y</text>
+            <text x="348" y="176" fill="var(--mut)" font-family="var(--mono)" font-size="8.5" text-anchor="middle">30Y</text>
+            <path d="M 36,147.9 C 44.7,147.0 70.7,144.2 88,142.3 C 105.3,140.4 122.7,139.2 140,136.6 C 157.3,134.0 174.7,130.0 192,127.0 C 209.3,124.0 226.7,121.7 244,118.4 C 261.3,115.1 278.7,114.8 296,107.4 C 313.3,100.0 339.3,79.6 348,74.0 L 348,168 L 36,168 Z" fill="url(#ta)"/>
+            <path d="M 36,132.9 C 44.7,132.2 70.7,130.2 88,128.9 C 105.3,127.7 122.7,126.9 140,125.4 C 157.3,123.9 166.0,123.6 192,120.1 C 218.0,116.6 270.0,118.2 296,104.4 C 322.0,90.6 339.3,48.4 348,37.2" fill="none" stroke="var(--amber)" stroke-width="1.6" style="filter:drop-shadow(0 0 5px rgba(230,181,102,0.4))"/>
+            <path d="M 36,122.8 C 44.7,122.0 70.7,119.0 88,117.8 C 105.3,116.6 122.7,117.5 140,115.6 C 157.3,113.7 174.7,109.3 192,106.5 C 209.3,103.7 226.7,102.2 244,98.5 C 261.3,94.8 287.3,86.8 296,84.4" fill="none" stroke="var(--acc)" stroke-width="1.6" style="filter:drop-shadow(0 0 5px rgba(125,184,255,0.4))"/>
+            <path d="M 36,147.9 C 44.7,147.0 70.7,144.2 88,142.3 C 105.3,140.4 122.7,139.2 140,136.6 C 157.3,134.0 174.7,130.0 192,127.0 C 209.3,124.0 226.7,121.7 244,118.4 C 261.3,115.1 278.7,114.8 296,107.4 C 313.3,100.0 339.3,79.6 348,74.0" fill="none" stroke="var(--ink)" stroke-width="2" style="filter:drop-shadow(0 0 6px var(--hero-glow))"/>
+            <circle cx="348" cy="37.2" r="5" fill="rgba(230,181,102,0.25)"/><circle cx="348" cy="37.2" r="2.6" fill="var(--amber)"/>
+            <circle cx="296" cy="84.4" r="5" fill="rgba(125,184,255,0.25)"/><circle cx="296" cy="84.4" r="2.6" fill="var(--acc)"/>
+            <circle cx="348" cy="74.0" r="5" fill="var(--spark-fill)"/><circle cx="348" cy="74.0" r="2.8" fill="var(--ink)"/>
+            <rect x="354" y="29" width="34" height="15" rx="5" fill="rgba(230,181,102,0.14)" stroke="rgba(230,181,102,0.5)"/>
+            <text x="371" y="40" fill="var(--amber)" font-family="var(--mono)" font-size="9" font-weight="700" text-anchor="middle">2.79</text>
+            <rect x="302" y="77" width="34" height="15" rx="5" fill="rgba(125,184,255,0.14)" stroke="rgba(125,184,255,0.5)"/>
+            <text x="319" y="88" fill="var(--acc)" font-family="var(--mono)" font-size="9" font-weight="700" text-anchor="middle">2.08</text>
+            <rect x="354" y="66" width="34" height="15" rx="5" fill="var(--spark-fill)" stroke="var(--acc-dim)"/>
+            <text x="371" y="77" fill="var(--ink)" font-family="var(--mono)" font-size="9" font-weight="700" text-anchor="middle">2.24</text>
+          </svg>
+          <div class="kfoot">国开缺 7Y、AAA 缺 30Y 正式读数,缺省不插值 · 来源 fact_formal_yield_curve_daily</div>
+        </div>
+      </div>
+
+      <div class="panel glass cash">
+        <div class="phead"><b>现金流窗口 · 资产端 vs 负债端</b><span>亿元 · 30D / 90D</span></div>
+        <div class="crow"><span class="cw">30D</span><span class="ct">资产流入</span><div class="track"><div class="bar a" style="width:39.3%"></div></div><span class="val">62.01</span></div>
+        <div class="crow"><span class="cw"></span><span class="ct">负债流出</span><div class="track"><div class="bar l" style="width:79.2%"></div></div><span class="val">125.15</span></div>
+        <div class="crow"><span class="cw">90D</span><span class="ct">资产流入</span><div class="track"><div class="bar a" style="width:93.1%"></div></div><span class="val">147.06</span></div>
+        <div class="crow"><span class="cw"></span><span class="ct">负债流出</span><div class="track"><div class="bar l" style="width:100%"></div></div><span class="val">157.94</span></div>
+        <div class="gapchips">
+          <span class="gapchip"><span>30D 净缺口</span><b>-63.14 亿</b></span>
+          <span class="gapchip"><span>90D 净缺口</span><b>-10.88 亿</b></span>
+          <span class="gapchip dim"><span>30D 缺口率</span><b>-1.82%</b></span>
+        </div>
+      </div>
+
+      <div class="tables">
+        <div class="tbl">
+          <div class="ehead">组合与久期<span>字段级证据</span></div>
+          <table>
+            <thead><tr><th>字段</th><th>读数</th><th>报告日</th></tr></thead>
+            <tbody>
+              <tr><td>组合总市值</td><td class="num">3,478.36 亿元</td><td class="dt">2026-06-30</td></tr>
+              <tr><td>持仓只数</td><td class="num">1,767</td><td class="dt">2026-06-30</td></tr>
+              <tr><td>修正久期</td><td class="num">3.78</td><td class="dt">2026-06-30</td></tr>
+              <tr><td>组合凸度</td><td class="num">30.90</td><td class="dt">2026-06-30</td></tr>
+              <tr><td>组合 DV01</td><td class="num">10,694.94 万元</td><td class="dt">2026-06-30</td></tr>
+              <tr><td>监管口径 DV01</td><td class="num">10,694.94 万元</td><td class="dt">2026-06-30</td></tr>
+              <tr><td>利率风险口径 DV01</td><td class="num">10,686.87 万元</td><td class="dt">2026-06-30</td></tr>
+              <tr><td>利率风险口径市值</td><td class="num">3,017.18 亿元</td><td class="dt">2026-06-30</td></tr>
+              <tr><td>久期剔除项</td><td class="num">131 只 · 461.18 亿元</td><td class="dt">2026-06-30</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="tbl">
+          <div class="ehead">信用与集中度<span>字段级证据</span></div>
+          <table>
+            <thead><tr><th>字段</th><th>读数</th><th>报告日</th></tr></thead>
+            <tbody>
+              <tr><td>CS01</td><td class="num">2,730.89 万元</td><td class="dt">2026-06-30</td></tr>
+              <tr><td>前五大发行人权重</td><td class="num">40.3%</td><td class="dt">2026-06-30</td></tr>
+              <tr><td>发行人集中度 HHI</td><td class="num">4.84%</td><td class="dt">2026-06-30</td></tr>
+              <tr><td>久期缺口</td><td class="num">+3.12</td><td class="dt">2026-06-30</td></tr>
+              <tr><td>12M 再投资风险</td><td class="num">22.82%</td><td class="dt">2026-06-30</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 04 质量与血缘(V3 开放) -->
+    <section>
+      <div class="sec-head"><i>04</i><h2>数据质量与血缘</h2><span>warnings_json 原文 · 版本与追溯</span></div>
+      <div class="qual">
+        <div>
+          <div class="ehead">质量提示 · 5 条<span class="gpill warn"><i></i>WARNING</span></div>
+          <div class="warns">
+            <p>Non-standard tenor buckets remapped to nearest KRD bucket: 20Y, 2Y, 6M</p>
+            <p>131 rows carry market_value=46,117,705,535.34 and are excluded from portfolio duration denominator: 127 without maturity_date; 4 with non-positive modified_duration. DV01 totals remain sourced from row dv01.</p>
+            <p>Excluded 127 rows without maturity_date from liquidity gap calculation.</p>
+            <p>Excluded 1,476 liability rows without maturity_date from liquidity gap calculation.</p>
+            <p>Embedded optionality is excluded from liquidity gaps; put/call/prepayment cash flows are not modeled.</p>
+          </div>
+        </div>
+        <div>
+          <div class="ehead">血缘 · LINEAGE<span>报告日 2026-06-30</span></div>
+          <div class="lineage">
+            <div class="lr"><span class="lk">SOURCE</span><span class="lv">sv_risk_tensor__sv_a583ab603b92__sv_fa8f64e200b6</span></div>
+            <div class="lr"><span class="lk">RULE</span><span class="lv">rv_risk_tensor_formal_materialize_v3</span></div>
+            <div class="lr"><span class="lk">CACHE</span><span class="lv">cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v3</span></div>
+            <div class="lr"><span class="lk">TRACE</span><span class="lv">trace_risk_tensor_20260630</span></div>
+            <div class="lr"><span class="lk">UPSTREAM</span><span class="lv">sv_a583ab603b92 · rv_bond_analytics_formal_materialize_v1</span></div>
+            <div class="lr"><span class="lk">LIABILITY</span><span class="lv">sv_fa8f64e200b6 · rv_snapshot_zqtz_tyw_v1</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 右栏 -->
+  <aside class="rail">
+    <section>
+      <div class="rhead"><b>下钻入口</b><span>DRILL-DOWN</span></div>
+      <div class="drill">
+        <a href="#"><i>01</i><b>风险张量<small>查看正式风险张量、KRD、CS01 与质量标记。</small></b><u>›</u></a>
+        <a href="#"><i>02</i><b>集中度监控<small>查看发行人、行业、评级和限额相关集中度。</small></b><u>›</u></a>
+        <a href="#"><i>03</i><b>现金流预测<small>查看未来现金流、久期缺口和再投资风险。</small></b><u>›</u></a>
+      </div>
+    </section>
+    <section>
+      <div class="rhead"><b>数据说明</b><span>NOTE</span></div>
+      <div class="note">
+        <p>风险首页不以前端估算替代监管口径 DV01 或现金流压力指标。</p>
+        <p>风险报告日读取失败时,首页只显示失败状态,不使用前端补数。</p>
+        <p>组合 / 监管 DV01 同值为口径预期(include-all 规则,518/518 行一致),非前端回填。</p>
+        <p>收益率曲线缺失期限不插值,仅展示正式读数。</p>
+      </div>
+    </section>
+  </aside>
+</div>
+
+<script>
+  const root = document.documentElement;
+  const btnInk = document.getElementById("t-ink");
+  const btnPaper = document.getElementById("t-paper");
+  function setTheme(name) {
+    root.dataset.theme = name;
+    btnInk.classList.toggle("on", name === "ink");
+    btnPaper.classList.toggle("on", name === "paper");
+    try { localStorage.setItem("lab-theme", name); } catch (e) {}
+  }
+  btnInk.addEventListener("click", () => setTheme("ink"));
+  btnPaper.addEventListener("click", () => setTheme("paper"));
+  try {
+    const saved = localStorage.getItem("lab-theme");
+    if (saved === "ink" || saved === "paper") setTheme(saved);
+  } catch (e) {}
+</script>
+</body>
+</html>

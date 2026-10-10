@@ -4,6 +4,7 @@ import csv
 from io import StringIO
 from typing import Annotated
 
+from backend.app.api.deps import ensure_read_allowed
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services import kpi_workbench_service
@@ -83,22 +84,47 @@ def _raise_workbench_http_error(exc: Exception) -> None:
     if isinstance(exc, kpi_workbench_service.KpiInvalidDateError):
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if isinstance(exc, kpi_workbench_service.KpiStorageError):
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=503,
+            detail=kpi_workbench_service.KPI_STORAGE_UNAVAILABLE_MESSAGE,
+        ) from exc
     raise exc
 
 
 def _ensure_kpi_read_allowed(auth: AuthContext) -> None:
-    try:
-        ensure_user_allowed(
-            auth=auth,
-            settings=get_settings(),
-            resource="kpi",
-            action="read",
-        )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    # allow_dev_fallback 与 positions/team_performance/balance_analysis 读路由对齐：
+    # 仅在 development 环境且身份为匿名 viewer 回退时放行，显式身份缺 scope 仍 403。
+    ensure_read_allowed(
+        auth,
+        "kpi",
+        settings=get_settings(),
+        allow_dev_fallback=True,
+        authorize=ensure_user_allowed,
+    )
+
+
+_CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+# Free-text columns only; numeric columns are Decimal-formatted and a leading "-" there is a sign.
+_CSV_TEXT_FIELDS = frozenset(
+    {
+        "owner_name",
+        "org_unit",
+        "major_category",
+        "indicator_category",
+        "metric_name",
+        "target_text",
+        "unit",
+        "scoring_text",
+        "remarks",
+    }
+)
+
+
+def _neutralize_csv_formula(value: object) -> object:
+    # Spreadsheet apps treat cells starting with these characters as formulas/DDE.
+    if isinstance(value, str) and value.startswith(_CSV_FORMULA_PREFIXES):
+        return "'" + value
+    return value
 
 
 def _render_report_csv(*, rows: list[dict[str, object]], year: int, as_of_date: str | None) -> PlainTextResponse:
@@ -122,7 +148,13 @@ def _render_report_csv(*, rows: list[dict[str, object]], year: int, as_of_date: 
     ]
     writer = csv.DictWriter(buffer, fieldnames=fieldnames)
     writer.writeheader()
-    writer.writerows(rows)
+    writer.writerows(
+        {
+            key: _neutralize_csv_formula(value) if key in _CSV_TEXT_FIELDS else value
+            for key, value in row.items()
+        }
+        for row in rows
+    )
     suffix = as_of_date or "latest"
     return PlainTextResponse(
         buffer.getvalue(),
@@ -184,7 +216,7 @@ def list_kpi_metrics(
             year=year,
             is_active=is_active,
         )
-    except Exception as exc:
+    except kpi_workbench_service.KpiWorkbenchError as exc:
         _raise_workbench_http_error(exc)
 
 
@@ -196,7 +228,7 @@ def get_kpi_metric(
     _ensure_kpi_read_allowed(auth)
     try:
         return kpi_workbench_service.get_metric(dsn=_get_dsn(), metric_id=metric_id)
-    except Exception as exc:
+    except kpi_workbench_service.KpiWorkbenchError as exc:
         _raise_workbench_http_error(exc)
 
 
@@ -210,10 +242,12 @@ def create_kpi_metric(
         ensure_user_allowed(auth=auth, settings=settings, resource="kpi.metric", action="write")
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     try:
         return kpi_workbench_service.create_metric(dsn=_get_dsn(), data=_body_dict(body))
-    except Exception as exc:
+    except kpi_workbench_service.KpiWorkbenchError as exc:
         _raise_workbench_http_error(exc)
 
 
@@ -228,10 +262,12 @@ def update_kpi_metric(
         ensure_user_allowed(auth=auth, settings=settings, resource="kpi.metric", action="write")
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     try:
         return kpi_workbench_service.update_metric(dsn=_get_dsn(), metric_id=metric_id, data=_body_dict(body))
-    except Exception as exc:
+    except kpi_workbench_service.KpiWorkbenchError as exc:
         _raise_workbench_http_error(exc)
 
 
@@ -245,10 +281,12 @@ def delete_kpi_metric(
         ensure_user_allowed(auth=auth, settings=settings, resource="kpi.metric", action="delete")
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     try:
         kpi_workbench_service.delete_metric(dsn=_get_dsn(), metric_id=metric_id)
-    except Exception as exc:
+    except kpi_workbench_service.KpiWorkbenchError as exc:
         _raise_workbench_http_error(exc)
 
 
@@ -267,7 +305,7 @@ def get_kpi_values(
             as_of_date=as_of_date,
             include_trace=include_trace,
         )
-    except Exception as exc:
+    except kpi_workbench_service.KpiWorkbenchError as exc:
         _raise_workbench_http_error(exc)
 
 
@@ -281,10 +319,12 @@ def create_kpi_value(
         ensure_user_allowed(auth=auth, settings=settings, resource="kpi.value", action="write")
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     try:
         return kpi_workbench_service.create_value(dsn=_get_dsn(), data=_body_dict(body))
-    except Exception as exc:
+    except kpi_workbench_service.KpiWorkbenchError as exc:
         _raise_workbench_http_error(exc)
 
 
@@ -299,10 +339,12 @@ def update_kpi_value(
         ensure_user_allowed(auth=auth, settings=settings, resource="kpi.value", action="write")
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     try:
         return kpi_workbench_service.update_value(dsn=_get_dsn(), value_id=value_id, data=_body_dict(body))
-    except Exception as exc:
+    except kpi_workbench_service.KpiWorkbenchError as exc:
         _raise_workbench_http_error(exc)
 
 
@@ -316,6 +358,8 @@ def batch_update_kpi_values(
         ensure_user_allowed(auth=auth, settings=settings, resource="kpi.value", action="write")
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     try:
         items = [_body_dict(item) for item in body.items]
@@ -324,7 +368,7 @@ def batch_update_kpi_values(
             as_of_date=body.as_of_date,
             items=items,
         )
-    except Exception as exc:
+    except kpi_workbench_service.KpiWorkbenchError as exc:
         _raise_workbench_http_error(exc)
 
 
@@ -347,6 +391,8 @@ def fetch_and_recalc_kpi(
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     try:
         return kpi_workbench_service.fetch_and_recalc(
@@ -355,7 +401,7 @@ def fetch_and_recalc_kpi(
             as_of_date=as_of_date,
             metric_ids=body.metric_ids,
         )
-    except Exception as exc:
+    except kpi_workbench_service.KpiWorkbenchError as exc:
         _raise_workbench_http_error(exc)
 
 
@@ -375,7 +421,7 @@ def get_kpi_report(
             owner_id=owner_id,
             as_of_date=as_of_date,
         )
-    except Exception as exc:
+    except kpi_workbench_service.KpiWorkbenchError as exc:
         _raise_workbench_http_error(exc)
 
     if str(format or "").lower() == "csv":

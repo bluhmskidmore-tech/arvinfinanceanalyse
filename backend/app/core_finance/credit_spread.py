@@ -1,3 +1,30 @@
+"""
+DORMANT: 无生产调用方（2026-08 复核：``compute_credit_spread_profile`` /
+``get_credit_spread`` 及其余 profile 表面仅被 tests/test_credit_spread.py 引用；
+正式信用利差链路是 ``credit_spread_analysis.py``（经
+services/credit_spread_analysis_service.py）与 ``macro/credit_spread_*``）。
+接线前必须：
+
+1. 同名函数消歧：``market_derived.get_credit_spread(rating, tenor_years, curve)``
+   与本文件的 ``get_credit_spread(position, ...)`` 签名、查表键都不同（本文件按
+   ``tenor_bucket`` 标签查表，market_derived 按年限映射标签）。两者当前都按
+   "曲线值为 BP → /10000"，但历史上曾单位相反，改动任一侧都要同时复核。
+2. 兜底必须先可披露：缺评级默认 AA、未知评级 80bp、缺到期日期限默认 3Y、
+   曲线缺该期限回退 3Y/5Y/1Y——目前最多只打 warning，返回载荷里没有兜底笔数与
+   市值占比，页面无法区分"真实利差"与"政策假设"。
+3. ``RATING_MAPPING`` 的 spread_basis_bp 是硬编码政策假设，不是市场观测值。
+
+已知口径限制：
+- ``compute_concentration`` 的 ``hhi`` 是 0–1 分数，``risk_metrics.calc_hhi`` 是
+  ×10000 指数，两者不可直接套同一阈值。
+- ``concentration_by_tenor`` 用 ``get_tenor_bucket`` 原始桶（含 ON~6M），与
+  ``krd.py`` 的短端归并桶不是同一套分组。
+- wind ``mod_duration`` 恰为 0 时本文件当缺失、回退闭式计算，而 ``krd.py`` 原样保留 0；
+  同一份 wind 记录在两个模块会得到不同修正久期。
+
+信用利差敞口、利差/迁移情景与集中度（纯函数）。
+"""
+
 from __future__ import annotations
 
 import logging
@@ -8,8 +35,10 @@ from decimal import Decimal
 from typing import Any
 
 from .attribution_core import get_tenor_bucket
+from .bond_analytics.common import resolve_ytm_with_par_fallback
 from .bond_duration import estimate_duration, modified_duration_from_macaulay
-from .krd import classify_asset_class, map_accounting_class
+from .krd import _dirty_floor_ytm, _optional_decimal, classify_asset_class, map_accounting_class
+from .rate_units import bp_to_decimal
 from .safe_decimal import safe_decimal
 
 logger = logging.getLogger(__name__)
@@ -165,19 +194,25 @@ def get_credit_spread(
     spread_curves: Mapping[str, Mapping[str, Any]] | None = None,
     report_date: date | None = None,
 ) -> Decimal:
-    rating = str(_get_value(position, "agency_rating", default="AA") or "AA")
+    raw_rating = _get_value(position, "agency_rating")
+    if raw_rating is None or not str(raw_rating).strip():
+        logger.warning("get_credit_spread: missing rating; defaulting to AA")
+        rating = "AA"
+    else:
+        rating = str(raw_rating).strip()
     tenor = _get_tenor_bucket(position, report_date=report_date)
     if spread_curves:
         curve = spread_curves.get(rating)
         if curve:
             if tenor in curve:
-                return safe_decimal(curve[tenor])
+                return bp_to_decimal(safe_decimal(curve[tenor]))
             for fallback_tenor in ("3Y", "5Y", "1Y"):
                 if fallback_tenor in curve:
-                    return safe_decimal(curve[fallback_tenor])
+                    return bp_to_decimal(safe_decimal(curve[fallback_tenor]))
 
     if rating in RATING_MAPPING:
         return Decimal(str(RATING_MAPPING[rating]["spread_basis_bp"])) / Decimal("10000")
+    logger.warning("get_credit_spread: unknown rating %s; falling back to 0.008", rating)
     return Decimal("0.008")
 
 
@@ -213,7 +248,7 @@ def _build_credit_position_metrics(
 
         bond_code = str(_get_value(position, "bond_code", default=""))
         coupon_rate = safe_decimal(_get_value(position, "coupon_rate"))
-        ytm = safe_decimal(_get_value(position, "yield_to_maturity"))
+        ytm = _dirty_floor_ytm(_optional_decimal(_get_value(position, "yield_to_maturity")))
         effective_report_date = _coerce_date(
             _get_value(position, "report_date", "biz_date", "report_date_end", default=report_date)
         )
@@ -230,9 +265,11 @@ def _build_credit_position_metrics(
             wind_metrics={bond_code: wind_bond} if wind_bond else None,
             coupon_frequency=coupon_frequency,
         )
+        # 与 estimate_duration 的 par 回退同源：缺 ytm 行的修正久期除数用生效 ytm=coupon。
+        effective_ytm, _par_fallback_used = resolve_ytm_with_par_fallback(coupon_rate, ytm)
         spread_duration = modified_duration_from_macaulay(
             duration=duration,
-            ytm=ytm,
+            ytm=effective_ytm,
             coupon_frequency=coupon_frequency,
             wind_mod_dur=safe_decimal(wind_bond.get("mod_duration")) if wind_bond else None,
         )

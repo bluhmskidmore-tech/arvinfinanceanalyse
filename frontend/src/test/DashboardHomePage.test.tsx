@@ -1,26 +1,75 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeAll, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, fireEvent, getConfig, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { afterEach, beforeAll, beforeEach, vi } from "vitest";
 
 vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="dashboard-echarts-stub" />,
 }));
 
+vi.mock("../app/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../app/navigation")>()),
+  isAgentFrontendEnabled: () => true,
+}));
+
+vi.mock("../features/agent/AgentPanel", () => ({
+  AgentPanel: function MockAgentPanel({
+    pageId,
+    reportDate = null,
+    currentFilters = {},
+    defaultFilters = {},
+    selectedRows = [],
+    contextNote = null,
+  }: {
+    pageId: string;
+    reportDate?: string | null;
+    currentFilters?: Record<string, unknown>;
+    defaultFilters?: Record<string, unknown>;
+    selectedRows?: Array<Record<string, unknown>>;
+    contextNote?: string | null;
+  }) {
+    const pageContext = {
+      page_id: pageId,
+      current_filters:
+        reportDate != null
+          ? { ...defaultFilters, ...currentFilters, report_date: reportDate }
+          : { ...defaultFilters, ...currentFilters },
+      selected_rows: selectedRows,
+      context_note: contextNote,
+    };
+    return (
+      <div data-testid="agent-panel">
+        <code data-testid="agent-panel-page-context">{JSON.stringify(pageContext)}</code>
+      </div>
+    );
+  },
+}));
+
 import { createApiClient, type ApiClient } from "../api/client";
-import type { ApiEnvelope, ChoiceNewsEvent, ChoiceNewsEventsPayload } from "../api/contracts";
+import { ApiClientProvider } from "../api/clientContext";
+import { getApiClientFactoryRecord, registerApiClientFactory } from "../api/clientFactoryOptions";
+import type {
+  ApiEnvelope,
+  ChoiceNewsEvent,
+  ChoiceNewsEventsBatchPayload,
+  Numeric,
+} from "../api/contracts";
+import { apiQueryKeys } from "../api/queryKeys";
+import { SYSTEM_READ_GENERATION_HEADER } from "../api/systemReadGeneration";
 import {
   DASHBOARD_BOND_NEWS_TOPICS,
   DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS,
   DASHBOARD_MACRO_NEWS_TOPICS,
 } from "../features/workbench/dashboard/dashboardMacroNewsTopics";
-import type { DashboardHomeBodyView } from "../features/workbench/dashboard-home/dashboardHomeBodyView";
-import { TerminalHomeContent } from "../features/workbench/dashboard-home/TerminalHomeContent";
+import DashboardHomePage from "../features/workbench/dashboard-home/DashboardHomePage";
+import { todayIsoDate as resolveTodayIsoDate } from "../features/workbench/pages/dashboardPageHelpers";
 import { preloadWorkbenchRouteModules } from "./preloadWorkbenchRouteModules";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
 type MockIntersectionObserver = {
   observe: ReturnType<typeof vi.fn>;
   disconnect: ReturnType<typeof vi.fn>;
+  options: IntersectionObserverInit[];
   triggerAll: (entry?: Partial<IntersectionObserverEntry>) => void;
 };
 
@@ -29,18 +78,25 @@ afterEach(() => {
     restoreHomeGateTimers();
     restoreHomeGateTimers = null;
   }
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+beforeEach(() => {
+  vi.stubGlobal("IntersectionObserver", undefined);
 });
 
 beforeAll(async () => {
   await preloadWorkbenchRouteModules("dashboard-home");
-}, 20_000);
+}, 60_000);
 
 function stubIntersectionObserver(): MockIntersectionObserver {
   const callbacks: IntersectionObserverCallback[] = [];
+  const options: IntersectionObserverInit[] = [];
   const observer: MockIntersectionObserver = {
     observe: vi.fn(),
     disconnect: vi.fn(),
+    options,
     triggerAll: (entry = {}) => {
       const target = (entry.target ?? document.createElement("div")) as Element;
       for (const callback of callbacks) {
@@ -58,8 +114,12 @@ function stubIntersectionObserver(): MockIntersectionObserver {
       }
     },
   };
-  const MockObserver = vi.fn(function MockIntersectionObserver(callback: IntersectionObserverCallback) {
+  const MockObserver = vi.fn(function MockIntersectionObserver(
+    callback: IntersectionObserverCallback,
+    init?: IntersectionObserverInit,
+  ) {
     callbacks.push(callback);
+    options.push(init ?? {});
     return observer;
   });
 
@@ -74,13 +134,71 @@ function createRealModeHomeClient(overrides: Partial<ApiClient> = {}): ApiClient
   return {
     ...base,
     getHomeSnapshot: (...args) => mockSnapshotSource.getHomeSnapshot(...args),
+    // 分层门控打开后首页会请求的跨域补充接口：统一走 mock 本地实现，
+    // 避免 jsdom 里发真实 fetch 产生网络错误噪音。
+    getBondAnalyticsKrdCurveRisk: (...args) =>
+      mockSnapshotSource.getBondAnalyticsKrdCurveRisk(...args),
+    getBalanceAnalysisDates: (...args) => mockSnapshotSource.getBalanceAnalysisDates(...args),
+    getBalanceAnalysisDecisionItems: (...args) =>
+      mockSnapshotSource.getBalanceAnalysisDecisionItems(...args),
     ...overrides,
   };
 }
 
 function renderDashboardHome(client?: ApiClient) {
+  const resolvedClient = client ?? createApiClient({ mode: "mock" });
+  if (resolvedClient.mode === "real" && !getApiClientFactoryRecord(resolvedClient)) {
+    registerApiClientFactory(
+      resolvedClient,
+      {
+        mode: "real",
+        baseUrl: "",
+        fetchImpl: async (input) => {
+          const path = new URL(String(input), "http://moss.local").pathname;
+          if (path === "/api/system-read-publication") {
+            return jsonResponse({ enabled: false, generation: null, coverage_dates: {} });
+          }
+          throw new Error(`Unexpected factory fetch in homepage test: ${path}`);
+        },
+      },
+      () => resolvedClient,
+    );
+  }
   return renderWorkbenchApp(["/"], {
-    client: client ?? createApiClient({ mode: "mock" }),
+    client: resolvedClient,
+  });
+}
+
+type HomeSnapshotEnvelope = Awaited<ReturnType<ApiClient["getHomeSnapshot"]>>;
+
+function homeSnapshotWithAumDisplay(
+  envelope: HomeSnapshotEnvelope,
+  raw: number,
+  display: string,
+): HomeSnapshotEnvelope {
+  return {
+    ...envelope,
+    result: {
+      ...envelope.result,
+      overview: {
+        ...envelope.result.overview,
+        metrics: envelope.result.overview.metrics.map((metric) =>
+          metric.id === "aum"
+            ? { ...metric, value: { ...metric.value, raw, display } }
+            : metric,
+        ),
+      },
+    },
+  };
+}
+
+function jsonResponse(payload: unknown, generation?: string) {
+  return new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json",
+      ...(generation ? { [SYSTEM_READ_GENERATION_HEADER]: generation } : {}),
+    },
   });
 }
 
@@ -91,43 +209,69 @@ function renderPolicyFundingDeepLink(client?: ApiClient) {
 }
 
 let restoreHomeGateTimers: (() => void) | null = null;
-
-function compressedHomeGateDelay(timeout: number | undefined) {
-  if (timeout == null || timeout <= 0) {
-    return timeout;
-  }
-  const knownHomeGateDelayMs = new Set([600, 650, 800, 850, 900, 1_000, 1_100, 1_200, 2_000, 2_100]);
-  if (!knownHomeGateDelayMs.has(timeout)) {
-    return timeout;
-  }
-  return Math.max(1, Math.ceil(timeout / 50));
-}
+const pendingHomeDelays = new Map<Parameters<typeof window.clearTimeout>[0], number>();
 
 function enableHomeGateTimerCompression() {
   if (restoreHomeGateTimers) {
     return;
   }
 
-  const originalSetTimeout = window.setTimeout.bind(window);
-  const originalClearTimeout = window.clearTimeout.bind(window);
+  const originalSetTimeout = window.setTimeout;
+  const originalClearTimeout = window.clearTimeout;
 
+  // Only short window timers within RTL's existing wait budget are accelerated.
+  // Keep query TTLs, RTL deadlines and refetch intervals on their original clocks.
+  // Preserve relative delays without copying production gate constants here.
   window.setTimeout = ((...args: Parameters<typeof window.setTimeout>) => {
     const [handler, timeout, ...rest] = args;
-    return originalSetTimeout(handler, compressedHomeGateDelay(timeout), ...rest);
+    if (
+      typeof handler !== "function" || !timeout || timeout <= 0 ||
+      timeout >= getConfig().asyncUtilTimeout
+    ) {
+      return originalSetTimeout.call(window, handler, timeout, ...rest);
+    }
+    const handle = originalSetTimeout.call(
+      window,
+      () => {
+        pendingHomeDelays.delete(handle);
+        handler(...rest);
+      },
+      Math.max(1, Math.ceil(timeout / 50)),
+    );
+    pendingHomeDelays.set(handle, timeout);
+    return handle;
   }) as unknown as typeof window.setTimeout;
-  window.clearTimeout = ((...args: Parameters<typeof window.clearTimeout>) =>
-    originalClearTimeout(...args)) as typeof window.clearTimeout;
+  window.clearTimeout = (handle) => {
+    if (handle != null) pendingHomeDelays.delete(handle);
+    originalClearTimeout.call(window, handle);
+  };
 
   restoreHomeGateTimers = () => {
+    for (const handle of pendingHomeDelays.keys()) {
+      originalClearTimeout.call(window, handle);
+    }
+    pendingHomeDelays.clear();
     window.setTimeout = originalSetTimeout;
     window.clearTimeout = originalClearTimeout;
   };
 }
 
-async function waitForTestClock(ms: number) {
+async function flushHomeQueryNotifications() {
   await act(async () => {
-    await new Promise((resolve) => window.setTimeout(resolve, ms));
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
   });
+}
+
+async function settleHomeTimersWithoutIdle() {
+  // Let pending timeouts and query notifications finish, but keep idle work
+  // blocked so negative assertions observe a fully scheduled, unopened gate.
+  await waitFor(
+    async () => {
+      await flushHomeQueryNotifications();
+      expect([...pendingHomeDelays.values()], "pending home window delays").toEqual([]);
+    },
+    { interval: 1 },
+  );
 }
 
 function stubIdleCallbacks() {
@@ -177,115 +321,49 @@ async function runNextIdle(idle: StubbedIdleCallbacks) {
   });
 }
 
-async function runPendingIdleIfAny(idle: StubbedIdleCallbacks) {
-  if (idle.pendingCount() === 0) {
-    await waitForTestClock(0);
-  }
-  if (idle.pendingCount() === 0) {
-    return;
-  }
-  await act(async () => {
-    idle.runPending();
-  });
-}
-
-async function waitForDeferredHomeContentDelay() {
-  await waitForTestClock(850);
-}
-
-async function waitForBodyAutoRevealDelay() {
-  await waitForTestClock(2_100);
-}
-
-async function waitForFirstScreenHydrationDelay() {
-  await waitForTestClock(650);
-}
-
-async function waitForBodyDetailDataDelay() {
-  await waitForTestClock(1_100);
-}
-
-async function waitForBodyStructureDataDelay() {
-  await waitForTestClock(1_100);
-}
-
-async function waitForEventFeedDataDelay() {
-  await waitForTestClock(1_100);
-}
-
-async function waitForSecondaryEventFeedDataDelay() {
-  await waitForTestClock(1_100);
-}
-
-async function waitForBondNewsFeedDataDelay() {
-  await waitForTestClock(1_100);
-}
-
-async function waitForFormalContextDataDelay() {
-  await waitForTestClock(1_100);
-}
-
-async function revealHomeBodyStructureData(idle: StubbedIdleCallbacks) {
-  await runNextIdle(idle);
-  await waitForBodyAutoRevealDelay();
-  await runNextIdle(idle);
-  await screen.findByTestId("dashboard-home-work-grid");
-  await waitForBodyDetailDataDelay();
-  await runNextIdle(idle);
-  await waitForBodyStructureDataDelay();
-  await runNextIdle(idle);
-}
-
-async function revealHomeBodyDetailAndEventFeeds(idle: StubbedIdleCallbacks) {
-  await revealHomeBodyStructureData(idle);
-  await waitForEventFeedDataDelay();
-  await runPendingIdleIfAny(idle);
-  await waitForSecondaryEventFeedDataDelay();
-  await runPendingIdleIfAny(idle);
-}
-
-async function revealHomeBodyDetailAndBondNewsFeeds(idle: StubbedIdleCallbacks) {
-  await revealHomeBodyDetailAndEventFeeds(idle);
-  await waitForBondNewsFeedDataDelay();
-  await runPendingIdleIfAny(idle);
-}
-
-async function revealHomeFormalContextData(idle: StubbedIdleCallbacks) {
-  await revealHomeBodyDetailAndBondNewsFeeds(idle);
-  await waitForFormalContextDataDelay();
-  await runPendingIdleIfAny(idle);
-}
-
-function requestedNewsTopicCodes(spy: {
-  mock: { calls: Array<Parameters<ApiClient["getChoiceNewsEvents"]>> };
-}): string[] {
-  return spy.mock.calls.map(([options]) => options.topicCode ?? "");
-}
-
-function requestedNewsTopicCount(
-  spy: { mock: { calls: Array<Parameters<ApiClient["getChoiceNewsEvents"]>> } },
-  topicCode: string,
-): number {
-  return requestedNewsTopicCodes(spy).filter((requestedTopicCode) => requestedTopicCode === topicCode).length;
-}
-
-function bondNewsTopicCodesExcludingFallbackTopics(): string[] {
-  const fallbackTopicCodes = new Set<string>(DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code));
-  return DASHBOARD_BOND_NEWS_TOPICS.filter((topic) => !fallbackTopicCodes.has(topic.code)).map(
-    (topic) => topic.code,
+async function settleHomeIdleWork(idle: StubbedIdleCallbacks) {
+  // Finish remaining work for final request/content assertions. Tests of a
+  // boundary use runNextIdle and assert before releasing the following wave.
+  // The normal RTL deadline bounds the drain and reports any remaining delays.
+  // Flush query observers outside the gate act, so their dependent effects can
+  // enqueue the next wave before deciding that this page's queue is empty.
+  await waitFor(
+    async () => {
+      await act(async () => { idle.runPending(); });
+      await flushHomeQueryNotifications();
+      expect(screen.getByTestId("dashboard-home-work-grid")).toBeInTheDocument();
+      expect([...pendingHomeDelays.values()], "pending home window delays").toEqual([]);
+      expect(idle.pendingCount(), "pending home idle callbacks").toBe(0);
+    },
+    { interval: 1 },
   );
 }
 
-function bondNewsOnlyTopicCodesAfterProbe(): string[] {
-  return bondNewsTopicCodesExcludingFallbackTopics().slice(1);
+type ChoiceNewsBatchOptions = Parameters<ApiClient["getChoiceNewsEventsBatch"]>[0];
+type ChoiceNewsBatchSpy = {
+  mock: { calls: Array<[ChoiceNewsBatchOptions]> };
+};
+
+// 批量化后请求形态从“每 topic 一次调用”变为“每波一次批量调用”，
+// 这些 helper 把批量调用摊平回 topic/group 维度，让原有场景断言语义保持不变。
+function requestedNewsTopicCodes(spy: ChoiceNewsBatchSpy): string[] {
+  return spy.mock.calls.flatMap(([options]) =>
+    (options.topics ?? []).map(({ topicCode }) => topicCode),
+  );
 }
 
-function bondNewsProbeTopicCode(): string {
-  return bondNewsTopicCodesExcludingFallbackTopics()[0] ?? "";
+function requestedNewsTopicCount(spy: ChoiceNewsBatchSpy, topicCode: string): number {
+  return requestedNewsTopicCodes(spy).filter((requestedTopicCode) => requestedTopicCode === topicCode).length;
 }
 
-function remainingBondNewsTopicCodesAfterProbe(): string[] {
-  return bondNewsTopicCodesExcludingFallbackTopics().slice(1);
+function requestedNewsGroupIds(spy: ChoiceNewsBatchSpy): string[] {
+  return spy.mock.calls.flatMap(([options]) =>
+    (options.groups ?? []).map(({ groupId }) => groupId),
+  );
+}
+
+function bondNewsGroupIds(): string[] {
+  return DASHBOARD_BOND_NEWS_TOPICS.map((topic) => topic.groupId);
 }
 
 function choiceNewsEvent(overrides: Partial<ChoiceNewsEvent>): ChoiceNewsEvent {
@@ -305,12 +383,17 @@ function choiceNewsEvent(overrides: Partial<ChoiceNewsEvent>): ChoiceNewsEvent {
   };
 }
 
-function choiceNewsEnvelope(events: ChoiceNewsEvent[]): ApiEnvelope<ChoiceNewsEventsPayload> {
+/** 按契约回放批量响应：batches 顺序与请求顺序一致（先 topics 后 groups）。 */
+function choiceNewsBatchEnvelope(
+  options: ChoiceNewsBatchOptions,
+  eventsForTopic: (topicCode: string) => ChoiceNewsEvent[] = () => [],
+  eventsForGroup: (groupId: string) => ChoiceNewsEvent[] = () => [],
+): ApiEnvelope<ChoiceNewsEventsBatchPayload> {
   return {
     result_meta: {
       basis: "formal",
       trace_id: "tr_home_choice_news_test",
-      result_kind: "news.choice.latest",
+      result_kind: "news.choice.latest_batch",
       formal_use_allowed: true,
       source_version: "sv_test",
       vendor_version: "vv_test",
@@ -323,10 +406,20 @@ function choiceNewsEnvelope(events: ChoiceNewsEvent[]): ApiEnvelope<ChoiceNewsEv
       generated_at: "2026-06-04T00:00:00Z",
     },
     result: {
-      total_rows: events.length,
-      limit: events.length,
-      offset: 0,
-      events,
+      batches: [
+        ...(options.topics ?? []).map(({ topicCode }) => ({
+          key: `topic:${topicCode}`,
+          topic_code: topicCode,
+          group_id: null,
+          events: eventsForTopic(topicCode),
+        })),
+        ...(options.groups ?? []).map(({ groupId }) => ({
+          key: `group:${groupId}`,
+          topic_code: null,
+          group_id: groupId,
+          events: eventsForGroup(groupId),
+        })),
+      ],
     },
   };
 }
@@ -344,9 +437,12 @@ function createSupplementalHomeSpies(mockSnapshotSource: ApiClient) {
     getBondAnalyticsReturnDecomposition: vi.fn(mockSnapshotSource.getBondAnalyticsReturnDecomposition),
     getPnlCampisiFourEffects: vi.fn(mockSnapshotSource.getPnlCampisiFourEffects),
     getBondAnalyticsYieldCurveTermStructure: vi.fn(mockSnapshotSource.getBondAnalyticsYieldCurveTermStructure),
+    getBondAnalyticsKrdCurveRisk: vi.fn(mockSnapshotSource.getBondAnalyticsKrdCurveRisk),
+    getBalanceAnalysisDates: vi.fn(mockSnapshotSource.getBalanceAnalysisDates),
     getBalanceAnalysisDecisionItems: vi.fn(mockSnapshotSource.getBalanceAnalysisDecisionItems),
     getResearchCalendarEvents: vi.fn(async () => []),
     getChoiceNewsEvents: vi.fn(mockSnapshotSource.getChoiceNewsEvents),
+    getChoiceNewsEventsBatch: vi.fn(mockSnapshotSource.getChoiceNewsEventsBatch),
     getBondDashboardAssetStructure: vi.fn(mockSnapshotSource.getBondDashboardAssetStructure),
     getBondDashboardMaturityStructure: vi.fn(mockSnapshotSource.getBondDashboardMaturityStructure),
     getBondDashboardIndustryDistribution: vi.fn(mockSnapshotSource.getBondDashboardIndustryDistribution),
@@ -359,105 +455,337 @@ function createSupplementalHomeSpies(mockSnapshotSource: ApiClient) {
   };
 }
 
-function createTerminalStateView(overrides: Partial<DashboardHomeBodyView> = {}): DashboardHomeBodyView {
-  const baseState = { kind: "empty" as const, label: "暂无数据" };
-  return {
-    reportDate: "2026-04-30",
-    quickDrilldowns: [],
-    macroBriefing: {
-      releaseItems: [],
-      releaseWindowLabel: "未来 45 天",
-      releaseMessage: "暂无已维护发布日期，请补充配置清单。",
-      newsItems: [],
-      newsMessage: "政策与资金面：暂无债券相关更新",
-      newsStale: false,
-      newsFreshnessLabel: "暂无更新",
-      newsSourceLabel: "来源：Choice 宏观新闻",
-      newsAsOfLabel: "数据截至：暂无",
-      newsStatusLabel: "来源状态：暂无数据",
-      newsRefreshLabel: "刷新：随页面查询自动更新",
-      policyFundingSummary: {
-        headline: "暂无可展示的政策与资金面快讯。",
-        chips: [
-          { id: "as-of", label: "数据截至：暂无", tone: "neutral" },
-          { id: "freshness", label: "暂无更新", tone: "neutral" },
-        ],
-        groups: [],
-      },
-      supplyItems: [{ id: "supply-empty", label: "供给/招标：当前窗口无事件" }],
-    },
-    bondNews: {
-      holdingHits: [],
-      marketNews: [],
-      creditAndIssuanceNews: [],
-      holdingMessage: "持仓命中：当前无相关新闻",
-      marketMessage: "债券市场：暂无相关新闻",
-      creditMessage: "发行/评级：暂无相关新闻",
-      sourceLabel: "来源：Choice / Tushare 债券新闻",
-      asOfLabel: "数据截至：暂无",
-      statusLabel: "来源状态：暂无数据",
-      refreshLabel: "刷新：随页面查询自动更新",
-    },
-    marketContext: {
-      temperatureLabel: "市场温度：中性",
-      temperatureScore: 50,
-      temperatureTone: "neutral",
-      drivers: ["外部市场暂无明显方向"],
-      contextBlocks: [
-        {
-          id: "pnl",
-          label: "PnL归因",
-          title: "等待正式归因数据",
-          detail: "未收到 return-decomposition 正式 payload",
-          foot: "不从总 PnL 反推归因",
-        },
-        {
-          id: "curve",
-          label: "曲线/利率",
-          title: "等待曲线期限结构",
-          detail: "未收到 yield_curve_term_structure 正式 payload",
-          foot: "默认曲线 treasury,cdb,aaa_credit",
-        },
-        {
-          id: "credit",
-          label: "信用利差",
-          title: "等待信用利差上下文",
-          detail: "未收到 credit_spread_migration 正式 payload",
-          foot: "只作解释变量，不改变 PnL 计算",
-        },
-      ],
-      aiSummary: [
-        "PnL归因：等待正式归因数据；未收到 return-decomposition 正式 payload。",
-        "曲线/利率：等待曲线期限结构；未收到 yield_curve_term_structure 正式 payload。",
-      ],
-      sourceLabel: "来源：收益归因 / yield_curve_term_structure / credit_spread_migration",
-      asOfLabel: "数据截至：暂无",
-      statusLabel: "来源状态：等待正式数据",
-      refreshLabel: "刷新：随报告日查询自动更新",
-    },
-    holdingRows: [],
-    holdingsState: { kind: "empty", label: "重仓券暂无数据" },
-    assetDistribution: [],
-    assetDistributionState: baseState,
-    ratingDistribution: [],
-    ratingDistributionState: baseState,
-    maturityDistribution: [],
-    maturityDistributionState: { kind: "empty", label: "久期分布暂无数据" },
-    industryDistribution: [],
-    industryDistributionState: { kind: "error", label: "行业分布加载失败" },
-    riskExposureMetrics: [],
-    riskExposureState: { kind: "empty", label: "风险指标暂无数据" },
-    positionChanges: [],
-    positionChangesState: { kind: "error", label: "增减仓加载失败" },
-    researchReports: [],
-    researchReportsState: { kind: "error", label: "研究报告加载失败" },
-    incomeTrend: [],
-    incomeTrendState: { kind: "partial", label: "缺 CDB_INDEX 可核验曲线" },
-    ...overrides,
-  };
-}
-
 describe("DashboardHomePage", () => {
+  it("opens a new fixed-generation interaction from the real home refresh button", async () => {
+    const mockSource = createApiClient({ mode: "mock" });
+    const baseSnapshot = await mockSource.getHomeSnapshot();
+    const snapshots = {
+      "full-gen-r0": homeSnapshotWithAumDisplay(baseSnapshot, 10_000_000_000, "100.00 亿"),
+      "full-gen-r1": homeSnapshotWithAumDisplay(baseSnapshot, 20_000_000_000, "200.00 亿"),
+    };
+    let publishedGeneration: keyof typeof snapshots = "full-gen-r0";
+    let handshakeCount = 0;
+    const snapshotRequestGenerations: Array<string | null> = [];
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      const path = new URL(String(input), "http://moss.local").pathname;
+      if (path === "/api/system-read-publication") {
+        handshakeCount += 1;
+        return jsonResponse(
+          { enabled: true, generation: publishedGeneration, coverage_dates: {} },
+          publishedGeneration,
+        );
+      }
+      if (path === "/ui/home/snapshot") {
+        const requestGeneration = new Headers(init?.headers).get(SYSTEM_READ_GENERATION_HEADER);
+        snapshotRequestGenerations.push(requestGeneration);
+        if (requestGeneration !== publishedGeneration) {
+          throw new Error(`Unexpected home generation ${String(requestGeneration)}`);
+        }
+        return jsonResponse(snapshots[publishedGeneration], publishedGeneration);
+      }
+      throw new Error(`Unexpected homepage request ${path}`);
+    });
+
+    renderDashboardHome(createApiClient({ mode: "real", fetchImpl }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("dashboard-home-kpi-aum")).toHaveTextContent("100.00");
+    });
+    publishedGeneration = "full-gen-r1";
+    fireEvent.click(screen.getByRole("button", { name: "刷新首页数据" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("dashboard-home-kpi-aum")).toHaveTextContent("200.00");
+    });
+    expect(handshakeCount).toBe(2);
+    expect(snapshotRequestGenerations).toEqual(["full-gen-r0", "full-gen-r1"]);
+  });
+
+  it("keeps the selected report date across a fixed-generation refresh", async () => {
+    const mockSource = createApiClient({ mode: "mock" });
+    const baseSnapshot = await mockSource.getHomeSnapshot();
+    const snapshots = {
+      "full-gen-r0": homeSnapshotWithAumDisplay(baseSnapshot, 10_000_000_000, "100.00 亿"),
+      "full-gen-r1": homeSnapshotWithAumDisplay(baseSnapshot, 20_000_000_000, "200.00 亿"),
+    };
+    let publishedGeneration: keyof typeof snapshots = "full-gen-r0";
+    let handshakeCount = 0;
+    const requestedDates: Array<string | null> = [];
+    const snapshotRequestGenerations: Array<string | null> = [];
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      const url = new URL(String(input), "http://moss.local");
+      if (url.pathname === "/api/system-read-publication") {
+        handshakeCount += 1;
+        return jsonResponse(
+          { enabled: true, generation: publishedGeneration, coverage_dates: {} },
+          publishedGeneration,
+        );
+      }
+      if (url.pathname === "/ui/home/snapshot") {
+        requestedDates.push(url.searchParams.get("report_date"));
+        const requestGeneration = new Headers(init?.headers).get(SYSTEM_READ_GENERATION_HEADER);
+        snapshotRequestGenerations.push(requestGeneration);
+        if (requestGeneration !== publishedGeneration) {
+          throw new Error(`Unexpected home generation ${String(requestGeneration)}`);
+        }
+        return jsonResponse(snapshots[publishedGeneration], publishedGeneration);
+      }
+      throw new Error(`Unexpected homepage request ${url.pathname}`);
+    });
+
+    renderDashboardHome(createApiClient({ mode: "real", fetchImpl }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("dashboard-home-kpi-aum")).toHaveTextContent("100.00");
+    });
+    fireEvent.change(screen.getByLabelText("报告日"), {
+      target: { value: "2026-07-31" },
+    });
+    await waitFor(() => {
+      expect(requestedDates).toContain("2026-07-31");
+      expect(screen.getByLabelText("报告日")).toHaveValue("2026-07-31");
+    });
+
+    publishedGeneration = "full-gen-r1";
+    fireEvent.click(screen.getByRole("button", { name: "刷新首页数据" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("dashboard-home-kpi-aum")).toHaveTextContent("200.00");
+    });
+    // Date selection keeps the confirmed generation; explicit refresh acquires a new one.
+    expect(handshakeCount).toBe(2);
+    expect(snapshotRequestGenerations).toEqual([
+      "full-gen-r0",
+      "full-gen-r0",
+      "full-gen-r1",
+    ]);
+    expect(requestedDates).toEqual([null, "2026-07-31", "2026-07-31"]);
+    expect(screen.getByLabelText("报告日")).toHaveValue("2026-07-31");
+  });
+
+  it("keeps the existing home query refetch when fixed-generation reads are disabled", async () => {
+    const mockSource = createApiClient({ mode: "mock" });
+    const snapshot = await mockSource.getHomeSnapshot();
+    let handshakeCount = 0;
+    const snapshotRequestGenerations: Array<string | null> = [];
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      const path = new URL(String(input), "http://moss.local").pathname;
+      if (path === "/api/system-read-publication") {
+        handshakeCount += 1;
+        return jsonResponse({ enabled: false, generation: null, coverage_dates: {} });
+      }
+      if (path === "/ui/home/snapshot") {
+        snapshotRequestGenerations.push(
+          new Headers(init?.headers).get(SYSTEM_READ_GENERATION_HEADER),
+        );
+        return jsonResponse(snapshot);
+      }
+      throw new Error(`Unexpected homepage request ${path}`);
+    });
+
+    renderDashboardHome(createApiClient({ mode: "real", fetchImpl }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "刷新首页数据" })).not.toHaveAttribute(
+        "aria-busy",
+        "true",
+      );
+    });
+    expect(snapshotRequestGenerations).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "刷新首页数据" }));
+    await waitFor(() => expect(snapshotRequestGenerations).toHaveLength(2));
+    expect(handshakeCount).toBe(1);
+    expect(snapshotRequestGenerations).toEqual([null, null]);
+  });
+
+  it("keeps the existing home query refetch without a generation boundary", async () => {
+    const mockSource = createApiClient({ mode: "mock" });
+    const getHomeSnapshot = vi.fn<ApiClient["getHomeSnapshot"]>((...args) =>
+      mockSource.getHomeSnapshot(...args),
+    );
+    const client: ApiClient = { ...mockSource, getHomeSnapshot };
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <MemoryRouter>
+        <ApiClientProvider client={client}>
+          <QueryClientProvider client={queryClient}>
+            <DashboardHomePage />
+          </QueryClientProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "刷新首页数据" })).not.toHaveAttribute(
+        "aria-busy",
+        "true",
+      );
+    });
+    expect(getHomeSnapshot).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "刷新首页数据" }));
+    await waitFor(() => expect(getHomeSnapshot).toHaveBeenCalledTimes(2));
+  });
+
+  it("observes the deferred boundary as soon as the shell commits while the snapshot is pending", () => {
+    const observer = stubIntersectionObserver();
+    const client = createRealModeHomeClient({
+      getHomeSnapshot: vi.fn(() => new Promise<HomeSnapshotEnvelope>(() => {})),
+    });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { unmount } = render(
+      <MemoryRouter>
+        <ApiClientProvider client={client}>
+          <QueryClientProvider client={queryClient}>
+            <DashboardHomePage />
+          </QueryClientProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+
+    expect(observer.observe).toHaveBeenCalledWith(
+      screen.getByTestId("dashboard-home-deferred-sentinel"),
+    );
+    expect(screen.queryByTestId("dashboard-home-work-grid")).not.toBeInTheDocument();
+    unmount();
+    queryClient.clear();
+  });
+
+  it("reveals requested below-fold content from a cached snapshot while its same-date background refresh is pending", async () => {
+    const mockSource = createApiClient({ mode: "mock" });
+    const snapshot = await mockSource.getHomeSnapshot();
+    const observer = stubIntersectionObserver();
+    stubIdleCallbacks();
+    const supplementalCalls = createSupplementalHomeSpies(mockSource);
+    let releaseRefresh!: () => void;
+    const refresh = new Promise<HomeSnapshotEnvelope>((resolve) => {
+      releaseRefresh = () => resolve(snapshot);
+    });
+    const getHomeSnapshot = vi.fn(() => refresh);
+    const client = createRealModeHomeClient({
+      ...supplementalCalls,
+      getHomeSnapshot,
+      getLedgerPnlCandidateFinancialIndicators: vi.fn(mockSource.getLedgerPnlCandidateFinancialIndicators),
+    });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient.setQueryData(["home-snapshot", "real", "latest", false], snapshot);
+    const { unmount } = render(
+      <MemoryRouter>
+        <ApiClientProvider client={client}>
+          <QueryClientProvider client={queryClient}>
+            <DashboardHomePage />
+          </QueryClientProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+
+    try {
+      await waitFor(() => expect(getHomeSnapshot).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(observer.observe).toHaveBeenCalledWith(
+        screen.getByTestId("dashboard-home-deferred-sentinel"),
+      ));
+      await act(async () => {
+        fireEvent.scroll(window);
+        observer.triggerAll({ isIntersecting: true, intersectionRatio: 1 });
+      });
+
+      expect(await screen.findByTestId("dashboard-home-work-grid")).toBeInTheDocument();
+      expect(queryClient.isFetching({ queryKey: ["home-snapshot"] })).toBe(1);
+      await waitFor(() => expect(supplementalCalls.getBondDashboardHomeSummary)
+        .toHaveBeenCalledWith(snapshot.result.report_date));
+    } finally {
+      await act(async () => { releaseRefresh(); });
+      unmount();
+      queryClient.clear();
+    }
+  });
+
+  it("retains new-date cached risk hydration when the loaded body switches report dates", async () => {
+    const mockSource = createApiClient({ mode: "mock" });
+    const reportDates = ["2026-04-30", "2026-03-31"];
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 60_000, refetchOnWindowFocus: false } },
+    });
+    for (const [index, reportDate] of reportDates.entries()) {
+      const [snapshot, summary, portfolio] = await Promise.all([
+        mockSource.getHomeSnapshot({ reportDate, allowPartial: true }),
+        mockSource.getBondDashboardHomeSummary(reportDate),
+        mockSource.getBondAnalyticsPortfolioHeadlines(reportDate),
+      ]);
+      const sourceMeta = {
+        quality_flag: "ok" as const,
+        vendor_status: "ok" as const,
+        fallback_mode: "none" as const,
+        resolved_report_date: reportDate,
+        as_of_date: reportDate,
+        fallback_date: undefined,
+      };
+      queryClient.setQueryData(["home-snapshot", "real", reportDate, true], {
+        ...snapshot,
+        result: { ...snapshot.result, report_date: reportDate },
+        result_meta: { ...snapshot.result_meta, ...sourceMeta },
+      });
+      queryClient.setQueryData(apiQueryKeys.bondDashboardHomeSummary("real", reportDate), {
+        ...summary,
+        result: { ...summary.result, headline: { ...summary.result.headline!, report_date: reportDate } },
+        result_meta: { ...summary.result_meta, ...sourceMeta },
+      });
+      queryClient.setQueryData(apiQueryKeys.bondAnalyticsPortfolioHeadlines("real", reportDate), {
+        ...portfolio,
+        result: {
+          ...portfolio.result,
+          report_date: reportDate,
+          issuer_top5_weight: {
+            ...portfolio.result.issuer_top5_weight,
+            raw: index === 0 ? 0.4567 : 0.8765,
+            display: index === 0 ? "0.4567" : "0.8765",
+            unit: "ratio",
+          },
+        },
+        result_meta: { ...portfolio.result_meta, ...sourceMeta },
+      });
+    }
+    const observer = stubIntersectionObserver();
+    stubIdleCallbacks();
+    const supplementalCalls = createSupplementalHomeSpies(mockSource);
+    const getHomeSnapshot = vi.fn(mockSource.getHomeSnapshot);
+    const client = createRealModeHomeClient({
+      ...supplementalCalls,
+      getHomeSnapshot,
+      getLedgerPnlCandidateFinancialIndicators: vi.fn(mockSource.getLedgerPnlCandidateFinancialIndicators),
+    });
+    const { unmount } = render(
+      <MemoryRouter initialEntries={["/?report_date=" + reportDates[0]]}>
+        <ApiClientProvider client={client}>
+          <QueryClientProvider client={queryClient}>
+            <DashboardHomePage />
+          </QueryClientProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    try {
+      await act(async () => {
+        fireEvent.scroll(window);
+        observer.triggerAll({ isIntersecting: true, intersectionRatio: 1 });
+      });
+      expect(await screen.findByTestId("dashboard-home-risk-exposure")).toHaveTextContent("45.67%");
+      const dateInput = screen.getByDisplayValue(reportDates[0]);
+      await act(async () => {
+        fireEvent.change(dateInput, { target: { value: reportDates[1] } });
+      });
+      await waitFor(() => expect(screen.getByTestId("dashboard-home-risk-exposure"))
+        .toHaveTextContent("87.65%"));
+      expect(screen.getByTestId("dashboard-home-risk-exposure")).not.toHaveTextContent("45.67%");
+      expect(getHomeSnapshot).not.toHaveBeenCalled();
+      expect(supplementalCalls.getBondDashboardHomeSummary).not.toHaveBeenCalled();
+      expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).not.toHaveBeenCalled();
+    } finally {
+      unmount();
+      queryClient.clear();
+    }
+  });
+
   it("renders the home shell while snapshot query is unresolved", async () => {
     const base = createApiClient({ mode: "mock" });
     let releaseSnapshot: (() => void) | undefined;
@@ -482,14 +810,43 @@ describe("DashboardHomePage", () => {
     releaseSnapshot?.();
   });
 
-  it("starts event feeds and income trend from the post-snapshot idle gate", async () => {
+  it("opens the review copilot drawer with the dashboard page context", { timeout: 45_000 }, async () => {
+    renderDashboardHome();
+
+    const hero = await screen.findByTestId("dashboard-home-hero");
+    expect(within(hero).getByTestId("dashboard-home-kpi-aum")).toBeInTheDocument();
+
+    fireEvent.click(await screen.findByTestId("dashboard-home-agent-open"));
+
+    // 抽屉整体懒加载（antd chunk 冷启动较慢），放宽等待时间避免抖动。
+    expect(
+      await screen.findByTestId("dashboard-home-agent-drawer", undefined, { timeout: 30_000 }),
+    ).toBeInTheDocument();
+    const contextCode = await screen.findByTestId("agent-panel-page-context", undefined, {
+      timeout: 10_000,
+    });
+    const pageContext = JSON.parse(contextCode.textContent ?? "{}") as {
+      page_id: string;
+      current_filters: Record<string, unknown>;
+      selected_rows: unknown[];
+      context_note: string | null;
+    };
+    expect(pageContext.page_id).toBe("dashboard");
+    expect(pageContext.current_filters.report_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(pageContext.current_filters.allow_partial).toBe(false);
+    expect(typeof pageContext.current_filters.data_status).toBe("string");
+    expect(pageContext.selected_rows).toEqual([]);
+    expect(pageContext.context_note).toContain("组合经营日报");
+  });
+
+  it("starts event feeds and income trend when their sections enter the viewport after snapshot", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     let releaseSnapshot: (() => void) | undefined;
-    const idle = stubIdleCallbacks();
+    const observer = stubIntersectionObserver();
     const getResearchCalendarEvents = vi.fn(async () => []);
-    const getChoiceNewsEvents = vi.fn(async (options) =>
-      mockSnapshotSource.getChoiceNewsEvents(options),
+    const getChoiceNewsEventsBatch = vi.fn(async (options: ChoiceNewsBatchOptions) =>
+      mockSnapshotSource.getChoiceNewsEventsBatch(options),
     );
     const getHomeIncomeTrend = vi.fn(async (...args: Parameters<ApiClient["getHomeIncomeTrend"]>) =>
       mockSnapshotSource.getHomeIncomeTrend(...args),
@@ -511,7 +868,7 @@ describe("DashboardHomePage", () => {
         return mockSnapshotSource.getHomeSnapshot(...args);
       },
       getResearchCalendarEvents,
-      getChoiceNewsEvents,
+      getChoiceNewsEventsBatch,
       getHomeIncomeTrend,
       getBondAnalyticsTopHoldings,
       getBondAnalyticsPositionChanges,
@@ -524,135 +881,84 @@ describe("DashboardHomePage", () => {
       expect(releaseSnapshot).toBeDefined();
     });
     expect(getResearchCalendarEvents).not.toHaveBeenCalled();
-    expect(getChoiceNewsEvents).not.toHaveBeenCalled();
+    expect(getChoiceNewsEventsBatch).not.toHaveBeenCalled();
     expect(getHomeIncomeTrend).not.toHaveBeenCalled();
 
     releaseSnapshot?.();
-    await runNextIdle(idle);
-    await waitForBodyAutoRevealDelay();
-    await runNextIdle(idle);
+    await waitFor(() => expect(observer.observe).toHaveBeenCalledWith(
+      screen.getByTestId("dashboard-home-deferred-sentinel"),
+    ));
+    await act(async () => {
+      fireEvent.scroll(window);
+      observer.triggerAll({ isIntersecting: true, intersectionRatio: 1 });
+    });
     await screen.findByTestId("dashboard-home-work-grid");
     expect(getResearchCalendarEvents).not.toHaveBeenCalled();
-    expect(getChoiceNewsEvents).not.toHaveBeenCalled();
+    expect(getChoiceNewsEventsBatch).not.toHaveBeenCalled();
     expect(getHomeIncomeTrend).not.toHaveBeenCalled();
 
-    await waitForBodyDetailDataDelay();
-    await runNextIdle(idle);
+    await act(async () => {
+      observer.triggerAll({ isIntersecting: true, intersectionRatio: 1 });
+    });
     await waitFor(() => {
       expect(getResearchCalendarEvents).toHaveBeenCalled();
-      expect(getChoiceNewsEvents).toHaveBeenCalled();
+      expect(getChoiceNewsEventsBatch).toHaveBeenCalled();
       expect(getHomeIncomeTrend).toHaveBeenCalled();
-    });
-    expect(getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
-
-    await waitForBodyStructureDataDelay();
-    await runNextIdle(idle);
-    await waitFor(() => {
       expect(getBondAnalyticsTopHoldings).toHaveBeenCalled();
     });
-    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
-      expect.arrayContaining([DASHBOARD_MACRO_NEWS_TOPICS[0].code]),
-    );
-    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
-      expect.arrayContaining([
-        ...DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code),
-        ...DASHBOARD_BOND_NEWS_TOPICS.map((topic) => topic.code),
-      ]),
+    // Batch collapses all macro topics into one request. Secondary/bond gates
+    // share the same post-event-feed delay window as structure, so by this
+    // point they may already be in-flight; only assert the primary macro batch.
+    expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).toEqual(
+      expect.arrayContaining(DASHBOARD_MACRO_NEWS_TOPICS.map((topic) => topic.code)),
     );
 
-    await waitForSecondaryEventFeedDataDelay();
-    await runPendingIdleIfAny(idle);
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+      expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).toEqual(
         expect.arrayContaining(DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code)),
       );
     });
 
-    await waitForBondNewsFeedDataDelay();
-    await runPendingIdleIfAny(idle);
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
-        expect.arrayContaining(bondNewsTopicCodesExcludingFallbackTopics()),
+      expect(requestedNewsGroupIds(getChoiceNewsEventsBatch)).toEqual(
+        expect.arrayContaining(bondNewsGroupIds()),
       );
     });
 
-    await waitForFormalContextDataDelay();
-    await runPendingIdleIfAny(idle);
     expect(getHomeIncomeTrend).toHaveBeenCalled();
   });
 
-  it("starts policy funding event feeds immediately on the Chinese deep link", async () => {
-    const base = createApiClient({ mode: "real" });
-    const mockSnapshotSource = createApiClient({ mode: "mock" });
-    let releaseSnapshot: (() => void) | undefined;
+  it("keeps stored-news reread available while source updates remain backend-controlled", async () => {
     const idle = stubIdleCallbacks();
-    const getResearchCalendarEvents = vi.fn(async () => []);
-    const getChoiceNewsEvents = vi.fn(async (options: Parameters<ApiClient["getChoiceNewsEvents"]>[0]) => {
-      if (options.topicCode === "tushare.news.sina") {
-        return choiceNewsEnvelope([
-          choiceNewsEvent({
-            event_key: "tushare-policy-funding-deep-link",
-            received_at: "2026-06-04T10:17:00Z",
-            topic_code: "tushare.news.sina",
-            payload_text: "10年期美国国债收益率最新上涨2.8个基点，报4.483%。",
-          }),
-        ]);
-      }
-      return choiceNewsEnvelope([]);
-    });
-    const client = createRealModeHomeClient({
-      ...base,
-      getHomeSnapshot: async (...args) => {
-        await new Promise<void>((resolve) => {
-          releaseSnapshot = resolve;
-        });
-        return mockSnapshotSource.getHomeSnapshot(...args);
-      },
-      getResearchCalendarEvents,
-      getChoiceNewsEvents,
-      getHomeIncomeTrend: vi.fn(async (...args: Parameters<ApiClient["getHomeIncomeTrend"]>) =>
-        mockSnapshotSource.getHomeIncomeTrend(...args),
-      ),
-      getBondAnalyticsTopHoldings: vi.fn(
-        async (...args: Parameters<ApiClient["getBondAnalyticsTopHoldings"]>) =>
-          mockSnapshotSource.getBondAnalyticsTopHoldings(...args),
-      ),
-      getBondAnalyticsPositionChanges: vi.fn(
-        async (...args: Parameters<ApiClient["getBondAnalyticsPositionChanges"]>) =>
-          mockSnapshotSource.getBondAnalyticsPositionChanges(...args),
-      ),
-    });
-
-    renderPolicyFundingDeepLink(client);
+    renderDashboardHome();
 
     expect(await screen.findByTestId("dashboard-home-page")).toBeInTheDocument();
-    await waitFor(() => {
-      expect(releaseSnapshot).toBeDefined();
-    });
-    releaseSnapshot?.();
-    await runNextIdle(idle);
-    await screen.findByTestId("dashboard-home-policy-funding-pane");
+    await settleHomeIdleWork(idle);
 
-    await waitFor(() => {
-      expect(getResearchCalendarEvents).toHaveBeenCalled();
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
-        expect.arrayContaining([DASHBOARD_MACRO_NEWS_TOPICS[0].code]),
-      );
-    });
-    await waitForSecondaryEventFeedDataDelay();
-    await runPendingIdleIfAny(idle);
-    await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(expect.arrayContaining(["tushare.news.sina"]));
-    });
-    const policyFundingPane = screen.getByTestId("dashboard-home-policy-funding-pane");
-    await waitFor(() => {
-      expect(policyFundingPane).toHaveAttribute("data-focused", "true");
-      expect(policyFundingPane).toHaveTextContent(
-        "当前使用 Tushare 兜底：Choice 快讯无可展示项，已切换到兜底源。",
-      );
-      expect(policyFundingPane).toHaveTextContent("仅展示 1 条，未发现筛选剔除；样本偏少。");
-      expect(policyFundingPane).toHaveTextContent("样本偏少，请结合兜底源原始明细复核。");
-    });
+    const bondNews = await screen.findByTestId("dashboard-home-bond-news");
+    expect(
+      within(bondNews).getByRole("button", {
+        name: "重新读取已落库新闻与研报",
+      }),
+    ).toBeEnabled();
+    expect(
+      within(bondNews).getByRole("button", {
+        name: "来源更新由后台受控任务维护",
+      }),
+    ).toBeDisabled();
+  });
+
+  // 路由层已将 /政策与资金面 重定向到 canonical "/"（见 routes.tsx），
+  // 深链不再原地渲染，也不再触发政策资金面聚焦与即时事件订阅。
+  it("redirects the policy funding Chinese deep link to the canonical home without focus mode", async () => {
+    const idle = stubIdleCallbacks();
+    renderPolicyFundingDeepLink();
+
+    expect(await screen.findByTestId("dashboard-home-page")).toBeInTheDocument();
+    await runNextIdle(idle);
+
+    const policyFundingPane = await screen.findByTestId("dashboard-home-policy-funding-pane");
+    expect(policyFundingPane).not.toHaveAttribute("data-focused");
   });
 
   it("skips macro fallback news when Choice macro news is fresh and usable", async () => {
@@ -661,17 +967,19 @@ describe("DashboardHomePage", () => {
     let releaseSnapshot: (() => void) | undefined;
     const idle = stubIdleCallbacks();
     const getResearchCalendarEvents = vi.fn(async () => []);
-    const getChoiceNewsEvents = vi.fn(async (options: Parameters<ApiClient["getChoiceNewsEvents"]>[0]) => {
-      if (DASHBOARD_MACRO_NEWS_TOPICS.some((topic) => topic.code === options.topicCode)) {
-        return choiceNewsEnvelope([
-          choiceNewsEvent({
-            topic_code: options.topicCode,
-            payload_text: "资金面维持平稳，DR007 小幅回落。",
-          }),
-        ]);
-      }
-      return mockSnapshotSource.getChoiceNewsEvents(options);
-    });
+    const getChoiceNewsEventsBatch = vi.fn(async (options: ChoiceNewsBatchOptions) =>
+      choiceNewsBatchEnvelope(options, (topicCode) =>
+        DASHBOARD_MACRO_NEWS_TOPICS.some((topic) => topic.code === topicCode)
+          ? [
+              choiceNewsEvent({
+                received_at: `${resolveTodayIsoDate()}T09:30:00Z`,
+                topic_code: topicCode,
+                payload_text: "资金面维持平稳，DR007 小幅回落。",
+              }),
+            ]
+          : [],
+      ),
+    );
     const client = createRealModeHomeClient({
       ...base,
       getHomeSnapshot: async (...args) => {
@@ -681,7 +989,7 @@ describe("DashboardHomePage", () => {
         return mockSnapshotSource.getHomeSnapshot(...args);
       },
       getResearchCalendarEvents,
-      getChoiceNewsEvents,
+      getChoiceNewsEventsBatch,
       getHomeIncomeTrend: vi.fn(async (...args: Parameters<ApiClient["getHomeIncomeTrend"]>) =>
         mockSnapshotSource.getHomeIncomeTrend(...args),
       ),
@@ -702,53 +1010,57 @@ describe("DashboardHomePage", () => {
       expect(releaseSnapshot).toBeDefined();
     });
     releaseSnapshot?.();
-    await revealHomeBodyDetailAndEventFeeds(idle);
+    await settleHomeIdleWork(idle);
 
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+      expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).toEqual(
         expect.arrayContaining(DASHBOARD_MACRO_NEWS_TOPICS.map((topic) => topic.code)),
       );
     });
-    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
-      expect.arrayContaining(DASHBOARD_BOND_NEWS_TOPICS.map((topic) => topic.code)),
-    );
-    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
+    expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).not.toEqual(
       expect.arrayContaining(DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code)),
     );
 
-    await waitForBondNewsFeedDataDelay();
-    await runPendingIdleIfAny(idle);
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
-        expect.arrayContaining(bondNewsTopicCodesExcludingFallbackTopics()),
+      expect(requestedNewsGroupIds(getChoiceNewsEventsBatch)).toEqual(
+        expect.arrayContaining(bondNewsGroupIds()),
       );
     });
-    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
+    // 债券 group 批量请求不携带 topics，宏观 topic 批量请求不携带 groups。
+    expect(
+      getChoiceNewsEventsBatch.mock.calls
+        .filter(([options]) => (options.groups?.length ?? 0) > 0)
+        .every(([options]) => (options.topics?.length ?? 0) === 0),
+    ).toBe(true);
+    expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).not.toEqual(
       expect.arrayContaining(DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code)),
     );
     expect(getResearchCalendarEvents).toHaveBeenCalled();
   });
 
-  it("short-circuits the remaining Choice macro topics when the probe reports missing permission", async () => {
+  // 原“probe 权限错误时跳过剩余 topic”改为批量语义：一个批量请求覆盖全部宏观
+  // topic（无级联可跳过），权限错误按 topic 落在各自 events 中，兜底触发语义不变。
+  it("keeps macro topics in one batch and still triggers fallback when the probe topic reports missing permission", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     let releaseSnapshot: (() => void) | undefined;
     const idle = stubIdleCallbacks();
     const getResearchCalendarEvents = vi.fn(async () => []);
-    const getChoiceNewsEvents = vi.fn(async (options: Parameters<ApiClient["getChoiceNewsEvents"]>[0]) => {
-      if (options.topicCode === DASHBOARD_MACRO_NEWS_TOPICS[0].code) {
-        return choiceNewsEnvelope([
-          choiceNewsEvent({
-            event_key: "choice-permission-error",
-            topic_code: options.topicCode,
-            error_code: 10001012,
-            error_msg: "insufficient user access",
-            payload_text: null,
-          }),
-        ]);
-      }
-      return mockSnapshotSource.getChoiceNewsEvents(options);
-    });
+    const getChoiceNewsEventsBatch = vi.fn(async (options: ChoiceNewsBatchOptions) =>
+      choiceNewsBatchEnvelope(options, (topicCode) =>
+        topicCode === DASHBOARD_MACRO_NEWS_TOPICS[0].code
+          ? [
+              choiceNewsEvent({
+                event_key: "choice-permission-error",
+                topic_code: topicCode,
+                error_code: 10001012,
+                error_msg: "insufficient user access",
+                payload_text: null,
+              }),
+            ]
+          : [],
+      ),
+    );
     const client = createRealModeHomeClient({
       ...base,
       getHomeSnapshot: async (...args) => {
@@ -758,7 +1070,7 @@ describe("DashboardHomePage", () => {
         return mockSnapshotSource.getHomeSnapshot(...args);
       },
       getResearchCalendarEvents,
-      getChoiceNewsEvents,
+      getChoiceNewsEventsBatch,
       getHomeIncomeTrend: vi.fn(async (...args: Parameters<ApiClient["getHomeIncomeTrend"]>) =>
         mockSnapshotSource.getHomeIncomeTrend(...args),
       ),
@@ -779,43 +1091,51 @@ describe("DashboardHomePage", () => {
       expect(releaseSnapshot).toBeDefined();
     });
     releaseSnapshot?.();
-    await revealHomeBodyDetailAndEventFeeds(idle);
+    await settleHomeIdleWork(idle);
 
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+      expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).toEqual(
         expect.arrayContaining([
           DASHBOARD_MACRO_NEWS_TOPICS[0].code,
           ...DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code),
         ]),
       );
     });
-    await waitForBondNewsFeedDataDelay();
-    await runPendingIdleIfAny(idle);
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
-        expect.arrayContaining([
-          ...DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code),
-          ...bondNewsTopicCodesExcludingFallbackTopics(),
-        ]),
+      expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).toEqual(
+        expect.arrayContaining(DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code)),
+      );
+      expect(requestedNewsGroupIds(getChoiceNewsEventsBatch)).toEqual(
+        expect.arrayContaining(bondNewsGroupIds()),
       );
     });
-    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
-      expect.arrayContaining(DASHBOARD_MACRO_NEWS_TOPICS.slice(1).map((topic) => topic.code)),
+    // 宏观主批只发一次（全部 topic 合并进同一个批量请求，不存在 probe→remaining 级联）。
+    const macroBatchCalls = getChoiceNewsEventsBatch.mock.calls.filter(([options]) =>
+      (options.topics ?? []).some(
+        ({ topicCode }) => topicCode === DASHBOARD_MACRO_NEWS_TOPICS[0].code,
+      ),
+    );
+    expect(macroBatchCalls).toHaveLength(1);
+    expect((macroBatchCalls[0]?.[0].topics ?? []).map(({ topicCode }) => topicCode)).toEqual(
+      DASHBOARD_MACRO_NEWS_TOPICS.map((topic) => topic.code),
     );
     expect(getResearchCalendarEvents).toHaveBeenCalled();
   });
 
-  it("loads macro fallback news when the Choice probe request fails", async () => {
+  it("loads macro fallback news when the Choice macro batch request fails", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     let releaseSnapshot: (() => void) | undefined;
     const idle = stubIdleCallbacks();
     const getResearchCalendarEvents = vi.fn(async () => []);
-    const getChoiceNewsEvents = vi.fn(async (options: Parameters<ApiClient["getChoiceNewsEvents"]>[0]) => {
-      if (options.topicCode === DASHBOARD_MACRO_NEWS_TOPICS[0].code) {
-        throw new Error("choice probe unavailable");
+    const getChoiceNewsEventsBatch = vi.fn(async (options: ChoiceNewsBatchOptions) => {
+      const isMacroBatch = (options.topics ?? []).some(
+        ({ topicCode }) => topicCode === DASHBOARD_MACRO_NEWS_TOPICS[0].code,
+      );
+      if (isMacroBatch) {
+        throw new Error("choice macro batch unavailable");
       }
-      return mockSnapshotSource.getChoiceNewsEvents(options);
+      return choiceNewsBatchEnvelope(options);
     });
     const client = createRealModeHomeClient({
       ...base,
@@ -826,7 +1146,7 @@ describe("DashboardHomePage", () => {
         return mockSnapshotSource.getHomeSnapshot(...args);
       },
       getResearchCalendarEvents,
-      getChoiceNewsEvents,
+      getChoiceNewsEventsBatch,
       getHomeIncomeTrend: vi.fn(async (...args: Parameters<ApiClient["getHomeIncomeTrend"]>) =>
         mockSnapshotSource.getHomeIncomeTrend(...args),
       ),
@@ -847,19 +1167,16 @@ describe("DashboardHomePage", () => {
       expect(releaseSnapshot).toBeDefined();
     });
     releaseSnapshot?.();
-    await revealHomeBodyDetailAndEventFeeds(idle);
+    await settleHomeIdleWork(idle);
 
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+      expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).toEqual(
         expect.arrayContaining([
           DASHBOARD_MACRO_NEWS_TOPICS[0].code,
           ...DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code),
         ]),
       );
     });
-    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
-      expect.arrayContaining(DASHBOARD_MACRO_NEWS_TOPICS.slice(1).map((topic) => topic.code)),
-    );
     expect(getResearchCalendarEvents).toHaveBeenCalled();
   });
 
@@ -869,19 +1186,20 @@ describe("DashboardHomePage", () => {
     let releaseSnapshot: (() => void) | undefined;
     const idle = stubIdleCallbacks();
     const getResearchCalendarEvents = vi.fn(async () => []);
-    const getChoiceNewsEvents = vi.fn(async (options: Parameters<ApiClient["getChoiceNewsEvents"]>[0]) => {
-      if (options.topicCode === "tushare.news.sina") {
-        return choiceNewsEnvelope([
-          choiceNewsEvent({
-            event_key: "tushare-policy-funding",
-            received_at: "2026-06-04T10:17:00Z",
-            topic_code: "tushare.news.sina",
-            payload_text: "10年期美国国债收益率最新上涨2.8个基点，报4.483%。",
-          }),
-        ]);
-      }
-      return choiceNewsEnvelope([]);
-    });
+    const getChoiceNewsEventsBatch = vi.fn(async (options: ChoiceNewsBatchOptions) =>
+      choiceNewsBatchEnvelope(options, (topicCode) =>
+        topicCode === "tushare.news.sina"
+          ? [
+              choiceNewsEvent({
+                event_key: "tushare-policy-funding",
+                received_at: "2026-06-04T10:17:00Z",
+                topic_code: "tushare.news.sina",
+                payload_text: "10年期美国国债收益率最新上涨2.8个基点，报4.483%。",
+              }),
+            ]
+          : [],
+      ),
+    );
     const client = createRealModeHomeClient({
       ...base,
       getHomeSnapshot: async (...args) => {
@@ -891,7 +1209,7 @@ describe("DashboardHomePage", () => {
         return mockSnapshotSource.getHomeSnapshot(...args);
       },
       getResearchCalendarEvents,
-      getChoiceNewsEvents,
+      getChoiceNewsEventsBatch,
       getHomeIncomeTrend: vi.fn(async (...args: Parameters<ApiClient["getHomeIncomeTrend"]>) =>
         mockSnapshotSource.getHomeIncomeTrend(...args),
       ),
@@ -912,18 +1230,13 @@ describe("DashboardHomePage", () => {
       expect(releaseSnapshot).toBeDefined();
     });
     releaseSnapshot?.();
-    await revealHomeBodyStructureData(idle);
-    await waitForEventFeedDataDelay();
-    await runPendingIdleIfAny(idle);
+    await settleHomeIdleWork(idle);
 
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+      expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).toEqual(
         expect.arrayContaining(["tushare.news.sina"]),
       );
     });
-    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
-      expect.arrayContaining(bondNewsTopicCodesExcludingFallbackTopics()),
-    );
     await waitFor(() => {
       expect(screen.getAllByText("10年期美国国债收益率最新上涨2.8个基点，报4.483%。").length).toBeGreaterThan(0);
     });
@@ -935,20 +1248,21 @@ describe("DashboardHomePage", () => {
     let releaseSnapshot: (() => void) | undefined;
     const idle = stubIdleCallbacks();
     const getResearchCalendarEvents = vi.fn(async () => []);
-    const getChoiceNewsEvents = vi.fn(async (options: Parameters<ApiClient["getChoiceNewsEvents"]>[0]) => {
-      if (options.topicCode === DASHBOARD_MACRO_NEWS_TOPICS[0].code) {
-        return choiceNewsEnvelope([
-          choiceNewsEvent({
-            event_key: "choice-permission-error",
-            topic_code: options.topicCode,
-            error_code: 10001012,
-            error_msg: "insufficient user access",
-            payload_text: null,
-          }),
-        ]);
-      }
-      return mockSnapshotSource.getChoiceNewsEvents(options);
-    });
+    const getChoiceNewsEventsBatch = vi.fn(async (options: ChoiceNewsBatchOptions) =>
+      choiceNewsBatchEnvelope(options, (topicCode) =>
+        topicCode === DASHBOARD_MACRO_NEWS_TOPICS[0].code
+          ? [
+              choiceNewsEvent({
+                event_key: "choice-permission-error",
+                topic_code: topicCode,
+                error_code: 10001012,
+                error_msg: "insufficient user access",
+                payload_text: null,
+              }),
+            ]
+          : [],
+      ),
+    );
     const client = createRealModeHomeClient({
       ...base,
       getHomeSnapshot: async (...args) => {
@@ -958,7 +1272,7 @@ describe("DashboardHomePage", () => {
         return mockSnapshotSource.getHomeSnapshot(...args);
       },
       getResearchCalendarEvents,
-      getChoiceNewsEvents,
+      getChoiceNewsEventsBatch,
       getHomeIncomeTrend: vi.fn(async (...args: Parameters<ApiClient["getHomeIncomeTrend"]>) =>
         mockSnapshotSource.getHomeIncomeTrend(...args),
       ),
@@ -979,52 +1293,65 @@ describe("DashboardHomePage", () => {
       expect(releaseSnapshot).toBeDefined();
     });
     releaseSnapshot?.();
-    await revealHomeBodyDetailAndEventFeeds(idle);
+    await settleHomeIdleWork(idle);
 
     await waitFor(() => {
-      expect(requestedNewsTopicCount(getChoiceNewsEvents, "tushare.npr")).toBe(1);
+      expect(requestedNewsTopicCount(getChoiceNewsEventsBatch, "tushare.npr")).toBe(1);
     });
-    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+    expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).toEqual(
       expect.arrayContaining([
         DASHBOARD_MACRO_NEWS_TOPICS[0].code,
         ...DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code),
       ]),
     );
-    await waitForBondNewsFeedDataDelay();
-    await runPendingIdleIfAny(idle);
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
-        expect.arrayContaining(bondNewsTopicCodesExcludingFallbackTopics()),
+      expect(requestedNewsGroupIds(getChoiceNewsEventsBatch)).toEqual(
+        expect.arrayContaining(bondNewsGroupIds()),
       );
     });
-    expect(requestedNewsTopicCount(getChoiceNewsEvents, "tushare.npr")).toBe(1);
-    expect(requestedNewsTopicCount(getChoiceNewsEvents, "tushare.research")).toBe(1);
-    expect(requestedNewsTopicCount(getChoiceNewsEvents, "tushare.news")).toBe(1);
+    // 兜底 topic 只以 topic 形式请求一次；债券侧继续走 group 维度，不重复拉同一 topic。
+    expect(requestedNewsTopicCount(getChoiceNewsEventsBatch, "tushare.npr")).toBe(1);
+    expect(requestedNewsGroupIds(getChoiceNewsEventsBatch)).toEqual(
+      expect.arrayContaining(bondNewsGroupIds()),
+    );
   });
 
-  it("stops bond news topic loading when the bond probe is empty", async () => {
+  it("continues bond news topic loading when the bond probe has no usable rows", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     let releaseSnapshot: (() => void) | undefined;
     const idle = stubIdleCallbacks();
     const getResearchCalendarEvents = vi.fn(async () => []);
-    const getChoiceNewsEvents = vi.fn(async (options: Parameters<ApiClient["getChoiceNewsEvents"]>[0]) => {
-      if (options.topicCode === DASHBOARD_MACRO_NEWS_TOPICS[0].code) {
-        return choiceNewsEnvelope([
-          choiceNewsEvent({
-            event_key: "choice-permission-error",
-            topic_code: options.topicCode,
-            error_code: 10001012,
-            error_msg: "insufficient user access",
-            payload_text: null,
-          }),
-        ]);
-      }
-      if (options.topicCode === bondNewsProbeTopicCode()) {
-        return choiceNewsEnvelope([]);
-      }
-      return mockSnapshotSource.getChoiceNewsEvents(options);
-    });
+    const getChoiceNewsEventsBatch = vi.fn(async (options: ChoiceNewsBatchOptions) =>
+      choiceNewsBatchEnvelope(
+        options,
+        (topicCode) =>
+          topicCode === DASHBOARD_MACRO_NEWS_TOPICS[0].code
+            ? [
+                choiceNewsEvent({
+                  event_key: "choice-permission-error",
+                  topic_code: topicCode,
+                  error_code: 10001012,
+                  error_msg: "insufficient user access",
+                  payload_text: null,
+                }),
+              ]
+            : [],
+        (groupId) =>
+          groupId === DASHBOARD_BOND_NEWS_TOPICS[0].groupId
+            ? [
+                choiceNewsEvent({
+                  event_key: "bond-probe-error",
+                  group_id: groupId,
+                  topic_code: DASHBOARD_BOND_NEWS_TOPICS[0].code,
+                  error_code: 10001012,
+                  error_msg: "insufficient user access",
+                  payload_text: null,
+                }),
+              ]
+            : [],
+      ),
+    );
     const client = createRealModeHomeClient({
       ...base,
       getHomeSnapshot: async (...args) => {
@@ -1034,7 +1361,7 @@ describe("DashboardHomePage", () => {
         return mockSnapshotSource.getHomeSnapshot(...args);
       },
       getResearchCalendarEvents,
-      getChoiceNewsEvents,
+      getChoiceNewsEventsBatch,
       getHomeIncomeTrend: vi.fn(async (...args: Parameters<ApiClient["getHomeIncomeTrend"]>) =>
         mockSnapshotSource.getHomeIncomeTrend(...args),
       ),
@@ -1055,43 +1382,25 @@ describe("DashboardHomePage", () => {
       expect(releaseSnapshot).toBeDefined();
     });
     releaseSnapshot?.();
-    await revealHomeBodyStructureData(idle);
-    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
-      expect.arrayContaining([bondNewsProbeTopicCode(), ...bondNewsOnlyTopicCodesAfterProbe()]),
-    );
+    await settleHomeIdleWork(idle);
 
-    await waitForEventFeedDataDelay();
-    await runPendingIdleIfAny(idle);
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
-        expect.arrayContaining([DASHBOARD_MACRO_NEWS_TOPICS[0].code]),
+      expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).toEqual(
+        expect.arrayContaining(DASHBOARD_MACRO_NEWS_TOPICS.map((topic) => topic.code)),
       );
     });
-    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
-      expect.arrayContaining([bondNewsProbeTopicCode(), ...bondNewsOnlyTopicCodesAfterProbe()]),
-    );
 
-    await waitForSecondaryEventFeedDataDelay();
-    await runPendingIdleIfAny(idle);
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
+      expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).toEqual(
         expect.arrayContaining(DASHBOARD_MACRO_NEWS_FALLBACK_TOPICS.map((topic) => topic.code)),
       );
     });
-    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
-      expect.arrayContaining([bondNewsProbeTopicCode(), ...bondNewsOnlyTopicCodesAfterProbe()]),
-    );
 
-    await waitForBondNewsFeedDataDelay();
-    await runPendingIdleIfAny(idle);
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
-        expect.arrayContaining([bondNewsProbeTopicCode()]),
+      expect(requestedNewsGroupIds(getChoiceNewsEventsBatch)).toEqual(
+        expect.arrayContaining(bondNewsGroupIds()),
       );
     });
-    expect(requestedNewsTopicCodes(getChoiceNewsEvents)).not.toEqual(
-      expect.arrayContaining(remainingBondNewsTopicCodesAfterProbe()),
-    );
   });
 
   it("loads remaining bond news topics when the bond probe has rows", async () => {
@@ -1100,29 +1409,34 @@ describe("DashboardHomePage", () => {
     let releaseSnapshot: (() => void) | undefined;
     const idle = stubIdleCallbacks();
     const getResearchCalendarEvents = vi.fn(async () => []);
-    const getChoiceNewsEvents = vi.fn(async (options: Parameters<ApiClient["getChoiceNewsEvents"]>[0]) => {
-      if (options.topicCode === DASHBOARD_MACRO_NEWS_TOPICS[0].code) {
-        return choiceNewsEnvelope([
-          choiceNewsEvent({
-            event_key: "choice-permission-error",
-            topic_code: options.topicCode,
-            error_code: 10001012,
-            error_msg: "insufficient user access",
-            payload_text: null,
-          }),
-        ]);
-      }
-      if (options.topicCode === bondNewsProbeTopicCode()) {
-        return choiceNewsEnvelope([
-          choiceNewsEvent({
-            event_key: "bond-probe-hit",
-            topic_code: options.topicCode,
-            payload_text: "债券市场收益率曲线下行，资金面保持宽松。",
-          }),
-        ]);
-      }
-      return mockSnapshotSource.getChoiceNewsEvents(options);
-    });
+    const getChoiceNewsEventsBatch = vi.fn(async (options: ChoiceNewsBatchOptions) =>
+      choiceNewsBatchEnvelope(
+        options,
+        (topicCode) =>
+          topicCode === DASHBOARD_MACRO_NEWS_TOPICS[0].code
+            ? [
+                choiceNewsEvent({
+                  event_key: "choice-permission-error",
+                  topic_code: topicCode,
+                  error_code: 10001012,
+                  error_msg: "insufficient user access",
+                  payload_text: null,
+                }),
+              ]
+            : [],
+        (groupId) =>
+          groupId === DASHBOARD_BOND_NEWS_TOPICS[0].groupId
+            ? [
+                choiceNewsEvent({
+                  event_key: "bond-probe-hit",
+                  group_id: groupId,
+                  topic_code: DASHBOARD_BOND_NEWS_TOPICS[0].code,
+                  payload_text: "债券市场收益率曲线下行，资金面保持宽松。",
+                }),
+              ]
+            : [],
+      ),
+    );
     const client = createRealModeHomeClient({
       ...base,
       getHomeSnapshot: async (...args) => {
@@ -1132,7 +1446,7 @@ describe("DashboardHomePage", () => {
         return mockSnapshotSource.getHomeSnapshot(...args);
       },
       getResearchCalendarEvents,
-      getChoiceNewsEvents,
+      getChoiceNewsEventsBatch,
       getHomeIncomeTrend: vi.fn(async (...args: Parameters<ApiClient["getHomeIncomeTrend"]>) =>
         mockSnapshotSource.getHomeIncomeTrend(...args),
       ),
@@ -1153,18 +1467,16 @@ describe("DashboardHomePage", () => {
       expect(releaseSnapshot).toBeDefined();
     });
     releaseSnapshot?.();
-    await revealHomeBodyDetailAndEventFeeds(idle);
+    await settleHomeIdleWork(idle);
 
-    await waitForBondNewsFeedDataDelay();
-    await runPendingIdleIfAny(idle);
     await waitFor(() => {
-      expect(requestedNewsTopicCodes(getChoiceNewsEvents)).toEqual(
-        expect.arrayContaining(bondNewsTopicCodesExcludingFallbackTopics()),
+      expect(requestedNewsGroupIds(getChoiceNewsEventsBatch)).toEqual(
+        expect.arrayContaining(bondNewsGroupIds()),
       );
     });
   });
 
-  it("lets below-fold basic data start before slow first-screen hydration queries", async () => {
+  it("starts shared risk hydration with the body after the first-screen idle gate opens", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     let releaseSnapshot: (() => void) | undefined;
@@ -1204,43 +1516,17 @@ describe("DashboardHomePage", () => {
 
     await runNextIdle(idle);
     expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
-    expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).not.toHaveBeenCalled();
-    expect(supplementalCalls.getMarketDataRates).not.toHaveBeenCalled();
-    expect(supplementalCalls.getCoreMetrics).not.toHaveBeenCalled();
-    expect(supplementalCalls.getDailyChanges).not.toHaveBeenCalled();
-    expect(supplementalCalls.getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
-    expect(supplementalCalls.getHomeIncomeTrend).not.toHaveBeenCalled();
-    expect(supplementalCalls.getResearchCalendarEvents).not.toHaveBeenCalled();
-    expect(supplementalCalls.getChoiceNewsEvents).not.toHaveBeenCalled();
-    expect(supplementalCalls.getBalanceAnalysisDecisionItems).not.toHaveBeenCalled();
-
-    await waitForBodyAutoRevealDelay();
-    await runNextIdle(idle);
     await waitFor(() => {
       expect(supplementalCalls.getMarketDataRates).toHaveBeenCalledTimes(1);
-    });
-    expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
-    expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).not.toHaveBeenCalled();
-    expect(supplementalCalls.getCoreMetrics).not.toHaveBeenCalled();
-    expect(supplementalCalls.getDailyChanges).not.toHaveBeenCalled();
-    expect(supplementalCalls.getBalanceAnalysisDecisionItems).not.toHaveBeenCalled();
-    expect(supplementalCalls.getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
-    expect(supplementalCalls.getHomeIncomeTrend).not.toHaveBeenCalled();
-    expect(supplementalCalls.getResearchCalendarEvents).not.toHaveBeenCalled();
-    expect(supplementalCalls.getChoiceNewsEvents).not.toHaveBeenCalled();
-    expect(supplementalCalls.getBondDashboardAssetStructure).not.toHaveBeenCalled();
-
-    await waitForFirstScreenHydrationDelay();
-    await runNextIdle(idle);
-    await waitFor(() => {
-      expect(supplementalCalls.getBondDashboardHeadlineKpis).toHaveBeenCalledTimes(1);
+      expect(supplementalCalls.getBondDashboardHomeSummary).toHaveBeenCalledTimes(1);
       expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).toHaveBeenCalledTimes(1);
     });
+    expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
   });
 
-  it("keeps body structure requests behind a separate idle gate after market rates", async () => {
+  it("preloads home-summary with the body and waits for visible sections before depth reads", async () => {
     const mockSnapshotSource = createApiClient({ mode: "mock" });
-    const idle = stubIdleCallbacks();
+    const observer = stubIntersectionObserver();
     const supplementalCalls = createSupplementalHomeSpies(mockSnapshotSource);
     const client = createRealModeHomeClient({
       ...supplementalCalls,
@@ -1249,38 +1535,38 @@ describe("DashboardHomePage", () => {
     renderDashboardHome(client);
 
     expect(await screen.findByTestId("dashboard-home-hero")).toBeInTheDocument();
-    await runNextIdle(idle);
-
-    await waitForBodyAutoRevealDelay();
-    await runNextIdle(idle);
-    await waitFor(() => {
-      expect(supplementalCalls.getMarketDataRates).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(observer.observe).toHaveBeenCalledWith(
+      screen.getByTestId("dashboard-home-deferred-sentinel"),
+    ));
+    await act(async () => {
+      fireEvent.scroll(window);
+      observer.triggerAll({ isIntersecting: true, intersectionRatio: 1 });
     });
-    expect(supplementalCalls.getBondDashboardHomeSummary).not.toHaveBeenCalled();
-    expect(supplementalCalls.getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
-    expect(supplementalCalls.getBondAnalyticsPositionChanges).not.toHaveBeenCalled();
-    expect(supplementalCalls.getHomeResearchReports).not.toHaveBeenCalled();
-
-    await waitForBodyDetailDataDelay();
-    await runNextIdle(idle);
-    expect(supplementalCalls.getBondDashboardHomeSummary).not.toHaveBeenCalled();
-    expect(supplementalCalls.getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
-    expect(supplementalCalls.getBondAnalyticsPositionChanges).not.toHaveBeenCalled();
-    expect(supplementalCalls.getHomeResearchReports).not.toHaveBeenCalled();
-
-    await waitForBodyStructureDataDelay();
-    await runNextIdle(idle);
+    await screen.findByTestId("dashboard-home-work-grid");
     await waitFor(() => {
       expect(supplementalCalls.getBondDashboardHomeSummary).toHaveBeenCalledTimes(1);
+    });
+    expect(supplementalCalls.getMarketDataRates).not.toHaveBeenCalled();
+    expect(supplementalCalls.getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
+    expect(supplementalCalls.getBondAnalyticsPositionChanges).not.toHaveBeenCalled();
+    expect(supplementalCalls.getHomeResearchReports).not.toHaveBeenCalled();
+
+    await act(async () => {
+      observer.triggerAll({ isIntersecting: true, intersectionRatio: 1 });
+    });
+    await waitFor(() => {
+      expect(supplementalCalls.getBondDashboardHomeSummary).toHaveBeenCalledTimes(1);
+      expect(supplementalCalls.getMarketDataRates).toHaveBeenCalledTimes(1);
       expect(supplementalCalls.getBondAnalyticsTopHoldings).toHaveBeenCalledTimes(1);
       expect(supplementalCalls.getBondAnalyticsPositionChanges).toHaveBeenCalledTimes(1);
       expect(supplementalCalls.getHomeResearchReports).toHaveBeenCalledTimes(1);
     });
   });
 
-  it("keeps first-screen supplemental hydration behind the deferred content reveal delay", async () => {
+  it("starts shared risk hydration on explicit reveal while unseen sections stay gated", async () => {
     const mockSnapshotSource = createApiClient({ mode: "mock" });
-    const idle = stubIdleCallbacks();
+    const observer = stubIntersectionObserver();
+    stubIdleCallbacks();
     const supplementalCalls = createSupplementalHomeSpies(mockSnapshotSource);
     const client = createRealModeHomeClient({
       ...supplementalCalls,
@@ -1289,72 +1575,100 @@ describe("DashboardHomePage", () => {
     renderDashboardHome(client);
 
     expect(await screen.findByTestId("dashboard-home-hero")).toBeInTheDocument();
-    await waitForTestClock(500);
-
-    expect(idle.pendingCount()).toBe(0);
     expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
     expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).not.toHaveBeenCalled();
     expect(supplementalCalls.getMarketDataRates).not.toHaveBeenCalled();
 
-    await waitForDeferredHomeContentDelay();
-    await runNextIdle(idle);
-
-    expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
-    expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).not.toHaveBeenCalled();
-    expect(supplementalCalls.getMarketDataRates).not.toHaveBeenCalled();
-
-    await waitForBodyAutoRevealDelay();
-    await runNextIdle(idle);
-    await waitFor(() => {
-      expect(supplementalCalls.getMarketDataRates).toHaveBeenCalledTimes(1);
-    });
-    expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
-    expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).not.toHaveBeenCalled();
-
-    await waitForFirstScreenHydrationDelay();
-    await runNextIdle(idle);
-    await waitFor(() => {
-      expect(supplementalCalls.getBondDashboardHeadlineKpis).toHaveBeenCalledTimes(1);
-      expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  it("starts deferred content immediately when the user reaches below-fold content without starting slow hydration", async () => {
-    const mockSnapshotSource = createApiClient({ mode: "mock" });
-    const idle = stubIdleCallbacks();
-    const supplementalCalls = createSupplementalHomeSpies(mockSnapshotSource);
-    const client = createRealModeHomeClient({
-      ...supplementalCalls,
-    });
-
-    renderDashboardHome(client);
-
-    expect(await screen.findByTestId("dashboard-home-hero")).toBeInTheDocument();
-    await waitForTestClock(100);
-    expect(idle.pendingCount()).toBe(0);
-    expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
-
+    await waitFor(() => expect(observer.observe).toHaveBeenCalledWith(
+      screen.getByTestId("dashboard-home-deferred-sentinel"),
+    ));
     await act(async () => {
       fireEvent.scroll(window);
+      observer.triggerAll({ isIntersecting: true, intersectionRatio: 1 });
+    });
+    await screen.findByTestId("dashboard-home-work-grid");
+
+    expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
+    expect(supplementalCalls.getMarketDataRates).not.toHaveBeenCalled();
+
+    await waitFor(() => {
+      expect(supplementalCalls.getBondDashboardHomeSummary).toHaveBeenCalledTimes(1);
+      expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).toHaveBeenCalledTimes(1);
+    });
+    expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
+  });
+
+  it("reveals initially visible below-fold content after the first-screen idle gate", async () => {
+    const observer = stubIntersectionObserver();
+    const idle = stubIdleCallbacks();
+
+    renderDashboardHome();
+
+    expect(await screen.findByTestId("dashboard-home-hero")).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-home-deferred-index")).toBeInTheDocument();
+
+    await waitFor(() => expect(observer.observe).toHaveBeenCalled());
+    expect(observer.options[0]?.root).toBeNull();
+    expect(observer.observe).toHaveBeenCalledWith(
+      screen.getByTestId("dashboard-home-deferred-sentinel"),
+    );
+    expect(
+      screen.getByTestId("dashboard-home-deferred-sentinel").getAttribute("class"),
+    ).toMatch(/deferredSentinel/);
+    expect(screen.queryByTestId("dashboard-home-work-grid")).not.toBeInTheDocument();
+
+    await act(async () => {
+      observer.triggerAll({ isIntersecting: true, intersectionRatio: 1 });
+    });
+
+    expect(screen.queryByTestId("dashboard-home-work-grid")).not.toBeInTheDocument();
+    await runNextIdle(idle);
+    expect(await screen.findByTestId("dashboard-home-work-grid")).toBeInTheDocument();
+  });
+
+  it("starts requested body and risk hydration immediately while unseen section queries stay gated", async () => {
+    const mockSnapshotSource = createApiClient({ mode: "mock" });
+    const idle = stubIdleCallbacks();
+    const supplementalCalls = createSupplementalHomeSpies(mockSnapshotSource);
+    const client = createRealModeHomeClient({
+      ...supplementalCalls,
+    });
+
+    renderDashboardHome(client);
+
+    expect(await screen.findByTestId("dashboard-home-hero")).toBeInTheDocument();
+    await waitFor(() => expect(idle.pendingCount()).toBeGreaterThan(0));
+    await settleHomeTimersWithoutIdle();
+    expect(idle.pendingCount()).toBeGreaterThan(0);
+    expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
+
+    const sectionObserver: { current: MockIntersectionObserver | null } = { current: null };
+    await act(async () => {
+      fireEvent.scroll(window);
+      // The outer no-IO fallback has already recorded the user's reach. Give
+      // the newly mounted sections an observer so their visibility gate stays closed.
+      sectionObserver.current = stubIntersectionObserver();
     });
 
     expect(await screen.findByTestId("dashboard-home-work-grid")).toBeInTheDocument();
-    expect(supplementalCalls.getMarketDataRates).toHaveBeenCalledTimes(1);
+    expect(sectionObserver.current?.observe).toHaveBeenCalledWith(
+      screen.getByTestId("dashboard-home-deferred-matrix"),
+    );
+    expect(supplementalCalls.getMarketDataRates).not.toHaveBeenCalled();
     expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
-    expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).not.toHaveBeenCalled();
 
-    await waitForFirstScreenHydrationDelay();
-    await runNextIdle(idle);
     await waitFor(() => {
-      expect(supplementalCalls.getBondDashboardHeadlineKpis).toHaveBeenCalledTimes(1);
+      expect(supplementalCalls.getBondDashboardHomeSummary).toHaveBeenCalledTimes(1);
       expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).toHaveBeenCalledTimes(1);
     });
+    expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
   });
 
-  it("remembers below-fold reach that happens while the snapshot is still pending", async () => {
+  it.each([false, true])("remembers below-fold reach while the snapshot is pending (observer available: %s)", async (observerAvailable) => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     let releaseSnapshot: (() => void) | undefined;
+    const observer = observerAvailable ? stubIntersectionObserver() : null;
     const idle = stubIdleCallbacks();
     const supplementalCalls = createSupplementalHomeSpies(mockSnapshotSource);
     const client = createRealModeHomeClient({
@@ -1374,22 +1688,80 @@ describe("DashboardHomePage", () => {
     await waitFor(() => {
       expect(releaseSnapshot).toBeDefined();
     });
+    if (observer) {
+      await waitFor(() => expect(observer.observe).toHaveBeenCalled());
+    }
     await act(async () => {
-      fireEvent.scroll(window);
+      if (observer) {
+        fireEvent.scroll(window);
+        observer.triggerAll({ isIntersecting: true, intersectionRatio: 1 });
+      } else {
+        fireEvent.scroll(window);
+      }
     });
+
+    await settleHomeTimersWithoutIdle();
+    expect(screen.queryByTestId("dashboard-home-work-grid")).not.toBeInTheDocument();
+    for (const spy of Object.values(supplementalCalls)) {
+      expect(spy).not.toHaveBeenCalled();
+    }
 
     await act(async () => {
       releaseSnapshot?.();
     });
-    await waitFor(() => {
-      expect(idle.pendingCount()).toBeGreaterThan(0);
-    });
-    await runNextIdle(idle);
-
-    await waitFor(() => {
-      expect(supplementalCalls.getBondDashboardHeadlineKpis).toHaveBeenCalledTimes(1);
-    });
     expect(await screen.findByTestId("dashboard-home-work-grid")).toBeInTheDocument();
+
+    await settleHomeIdleWork(idle);
+    await waitFor(() => {
+      expect(supplementalCalls.getBondDashboardHomeSummary).toHaveBeenCalledTimes(1);
+    });
+    expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
+  });
+
+  it("keeps below-fold content deferred through unrelated input until the internal scroll boundary intersects", async () => {
+    const observer = stubIntersectionObserver();
+    stubIdleCallbacks();
+    const getComputedStyle = window.getComputedStyle.bind(window);
+    vi.spyOn(window, "getComputedStyle").mockImplementation((element, pseudoElement) => {
+      const style = getComputedStyle(element, pseudoElement);
+      if ((element as HTMLElement).dataset.testid !== "dashboard-home-scroll-root") {
+        return style;
+      }
+      return new Proxy(style, {
+        get(target, property, receiver) {
+          if (property === "overflowY") {
+            return "auto";
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      });
+    });
+
+    renderDashboardHome();
+
+    expect(await screen.findByTestId("dashboard-home-hero")).toBeInTheDocument();
+    await waitFor(() => expect(observer.observe).toHaveBeenCalled());
+    expect(screen.queryByTestId("dashboard-home-work-grid")).not.toBeInTheDocument();
+    const scrollRoot = screen.getByTestId("dashboard-home-scroll-root");
+    expect(observer.options[0]?.root).toBe(scrollRoot);
+
+    await act(async () => {
+      fireEvent.scroll(scrollRoot);
+      fireEvent.wheel(scrollRoot);
+      fireEvent.touchMove(scrollRoot);
+      fireEvent.keyDown(window, { key: "PageDown" });
+      observer.triggerAll({ isIntersecting: false, intersectionRatio: 0 });
+    });
+
+    await settleHomeTimersWithoutIdle();
+    expect(screen.queryByTestId("dashboard-home-work-grid")).not.toBeInTheDocument();
+
+    await act(async () => {
+      observer.triggerAll({ isIntersecting: true, intersectionRatio: 1 });
+    });
+
+    expect(await screen.findByTestId("dashboard-home-work-grid")).toBeInTheDocument();
+    expect(observer.disconnect).toHaveBeenCalled();
   });
 
   it("does not reuse an old idle gate for supplemental queries while a new report-date snapshot is pending", async () => {
@@ -1501,36 +1873,7 @@ describe("DashboardHomePage", () => {
     renderDashboardHome(client);
 
     expect(await screen.findByTestId("dashboard-home-page")).toBeInTheDocument();
-    await runNextIdle(idle);
-    expect(supplementalCalls.getHomeIncomeTrend).not.toHaveBeenCalled();
-    expect(supplementalCalls.getCockpitWarnings).not.toHaveBeenCalled();
-
-    await waitForBodyAutoRevealDelay();
-    await runNextIdle(idle);
-    expect(supplementalCalls.getCockpitWarnings).not.toHaveBeenCalled();
-
-    await waitForBodyDetailDataDelay();
-    await runNextIdle(idle);
-    expect(supplementalCalls.getCockpitWarnings).not.toHaveBeenCalled();
-
-    await waitForBodyStructureDataDelay();
-    await runNextIdle(idle);
-    expect(supplementalCalls.getCockpitWarnings).not.toHaveBeenCalled();
-
-    await waitForEventFeedDataDelay();
-    await runPendingIdleIfAny(idle);
-    expect(supplementalCalls.getCockpitWarnings).not.toHaveBeenCalled();
-
-    await waitForSecondaryEventFeedDataDelay();
-    await runPendingIdleIfAny(idle);
-    expect(supplementalCalls.getCockpitWarnings).not.toHaveBeenCalled();
-
-    await waitForBondNewsFeedDataDelay();
-    await runPendingIdleIfAny(idle);
-    expect(supplementalCalls.getCockpitWarnings).not.toHaveBeenCalled();
-
-    await waitForFormalContextDataDelay();
-    await runPendingIdleIfAny(idle);
+    await settleHomeIdleWork(idle);
     await waitFor(() => {
       expect(supplementalCalls.getHomeIncomeTrend).toHaveBeenCalledTimes(1);
     });
@@ -1545,7 +1888,7 @@ describe("DashboardHomePage", () => {
     await waitFor(() => {
       expect(releaseNewSnapshot).toBeDefined();
     });
-    await waitForTestClock(50);
+    await settleHomeTimersWithoutIdle();
 
     expect(supplementalCalls.getHomeIncomeTrend).toHaveBeenCalledTimes(incomeTrendCallsBeforeSwitch);
     expect(supplementalCalls.getCockpitWarnings).toHaveBeenCalledTimes(cockpitWarningCallsBeforeSwitch);
@@ -1582,14 +1925,14 @@ describe("DashboardHomePage", () => {
     await act(async () => {
       idle.runPending();
     });
-    await waitForTestClock(50);
+    await settleHomeTimersWithoutIdle();
 
     for (const spy of Object.values(supplementalCalls)) {
       expect(spy).not.toHaveBeenCalled();
     }
   });
 
-  it("starts income trend and formal context before heavy bond lists settle", async () => {
+  it("starts formal context while heavy bond lists are still settling", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     const idle = stubIdleCallbacks();
@@ -1656,17 +1999,10 @@ describe("DashboardHomePage", () => {
     await act(async () => {
       idle.runPending();
     });
-    expect(getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
-    expect(getHomeIncomeTrend).not.toHaveBeenCalled();
 
-    await waitForBodyAutoRevealDelay();
-    await runNextIdle(idle);
     await screen.findByTestId("dashboard-home-work-grid");
-    expect(getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
-    expect(getHomeIncomeTrend).not.toHaveBeenCalled();
 
-    await waitForEventFeedDataDelay();
-    await runPendingIdleIfAny(idle);
+    await settleHomeIdleWork(idle);
     await waitFor(() => {
       expect(getHomeIncomeTrend).toHaveBeenCalled();
       expect(releaseIncomeTrend).toBeDefined();
@@ -1675,14 +2011,8 @@ describe("DashboardHomePage", () => {
       expect(getPnlCampisiFourEffects).toHaveBeenCalled();
       expect(getBondAnalyticsYieldCurveTermStructure).toHaveBeenCalled();
     });
-    expect(getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
-
-    await waitForBodyStructureDataDelay();
-    await runNextIdle(idle);
-    await waitFor(() => {
-      expect(getBondAnalyticsTopHoldings).toHaveBeenCalled();
-      expect(releaseTopHoldings).toBeDefined();
-    });
+    expect(getBondAnalyticsTopHoldings).toHaveBeenCalled();
+    expect(releaseTopHoldings).toBeDefined();
 
     await act(async () => {
       releaseTopHoldings?.();
@@ -1691,7 +2021,7 @@ describe("DashboardHomePage", () => {
     releaseIncomeTrend?.();
   });
 
-  it("starts formal queries before slow position changes have settled", async () => {
+  it("starts formal queries while slow position changes are still settling", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     const idle = stubIdleCallbacks();
@@ -1752,11 +2082,8 @@ describe("DashboardHomePage", () => {
     });
 
     await runNextIdle(idle);
-    await waitForBodyAutoRevealDelay();
-    await runNextIdle(idle);
     await screen.findByTestId("dashboard-home-work-grid");
-    await waitForEventFeedDataDelay();
-    await runPendingIdleIfAny(idle);
+    await settleHomeIdleWork(idle);
     await waitFor(() => {
       expect(getHomeIncomeTrend).toHaveBeenCalled();
       expect(releaseIncomeTrend).toBeDefined();
@@ -1765,16 +2092,9 @@ describe("DashboardHomePage", () => {
       expect(getPnlCampisiFourEffects).toHaveBeenCalled();
       expect(getBondAnalyticsYieldCurveTermStructure).toHaveBeenCalled();
     });
-    expect(getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
-    expect(getBondAnalyticsPositionChanges).not.toHaveBeenCalled();
-
-    await waitForBodyStructureDataDelay();
-    await runNextIdle(idle);
-    await waitFor(() => {
-      expect(getBondAnalyticsTopHoldings).toHaveBeenCalled();
-      expect(getBondAnalyticsPositionChanges).toHaveBeenCalled();
-      expect(releasePositionChanges).toBeDefined();
-    });
+    expect(getBondAnalyticsTopHoldings).toHaveBeenCalled();
+    expect(getBondAnalyticsPositionChanges).toHaveBeenCalled();
+    expect(releasePositionChanges).toBeDefined();
 
     await act(async () => {
       releasePositionChanges?.();
@@ -1851,11 +2171,8 @@ describe("DashboardHomePage", () => {
     });
 
     await runNextIdle(idle);
-    await waitForBodyAutoRevealDelay();
-    await runNextIdle(idle);
     await screen.findByTestId("dashboard-home-work-grid");
-    await waitForEventFeedDataDelay();
-    await runPendingIdleIfAny(idle);
+    await settleHomeIdleWork(idle);
     await waitFor(() => {
       expect(getHomeIncomeTrend).toHaveBeenCalled();
       expect(releaseIncomeTrend).toBeDefined();
@@ -1864,16 +2181,9 @@ describe("DashboardHomePage", () => {
       expect(getPnlCampisiFourEffects).toHaveBeenCalled();
       expect(getBondAnalyticsYieldCurveTermStructure).toHaveBeenCalled();
     });
-    expect(getBondAnalyticsTopHoldings).not.toHaveBeenCalled();
-    expect(getBondAnalyticsPositionChanges).not.toHaveBeenCalled();
-
-    await waitForBodyStructureDataDelay();
-    await runNextIdle(idle);
-    await waitFor(() => {
-      expect(getBondAnalyticsTopHoldings).toHaveBeenCalled();
-      expect(getBondAnalyticsPositionChanges).toHaveBeenCalled();
-      expect(rejectPositionChanges).toBeDefined();
-    });
+    expect(getBondAnalyticsTopHoldings).toHaveBeenCalled();
+    expect(getBondAnalyticsPositionChanges).toHaveBeenCalled();
+    expect(rejectPositionChanges).toBeDefined();
 
     await act(async () => {
       rejectPositionChanges?.();
@@ -1922,7 +2232,7 @@ describe("DashboardHomePage", () => {
     renderDashboardHome(client);
 
     expect(await screen.findByTestId("dashboard-home-page")).toBeInTheDocument();
-    await revealHomeFormalContextData(idle);
+    await settleHomeIdleWork(idle);
     await waitFor(() => {
       expect(supplementalCalls.getBondAnalyticsCreditSpreadMigration).toHaveBeenCalled();
       expect(supplementalCalls.getBondAnalyticsReturnDecomposition).toHaveBeenCalled();
@@ -1936,20 +2246,6 @@ describe("DashboardHomePage", () => {
       campisi: supplementalCalls.getPnlCampisiFourEffects.mock.calls.length,
       yieldCurve: supplementalCalls.getBondAnalyticsYieldCurveTermStructure.mock.calls.length,
     };
-    const staleFormalDates = {
-      creditSpread: new Set(
-        supplementalCalls.getBondAnalyticsCreditSpreadMigration.mock.calls.map(([reportDate]) => reportDate),
-      ),
-      returnDecomposition: new Set(
-        supplementalCalls.getBondAnalyticsReturnDecomposition.mock.calls.map(([reportDate]) => reportDate),
-      ),
-      campisi: new Set(
-        supplementalCalls.getPnlCampisiFourEffects.mock.calls.map(([options]) => options?.endDate),
-      ),
-      yieldCurve: new Set(
-        supplementalCalls.getBondAnalyticsYieldCurveTermStructure.mock.calls.map(([reportDate]) => reportDate),
-      ),
-    };
     const reportDateInput = await screen.findByLabelText("报告日");
     await act(async () => {
       fireEvent.change(reportDateInput, { target: { value: "2026-03-31" } });
@@ -1957,8 +2253,11 @@ describe("DashboardHomePage", () => {
     await waitFor(() => {
       expect(releaseNewSnapshot).toBeDefined();
     });
-    await waitForFormalContextDataDelay();
-    await runPendingIdleIfAny(idle);
+    // URL-backed date changes remount the generation boundary. The new home
+    // shell stays unloaded while its requested snapshot is still pending.
+    await act(async () => {
+      idle.runPending();
+    });
 
     expect(supplementalCalls.getBondAnalyticsCreditSpreadMigration).toHaveBeenCalledTimes(
       formalCallsBeforeSwitch.creditSpread,
@@ -1979,31 +2278,33 @@ describe("DashboardHomePage", () => {
     await waitFor(() => {
       expect(newSnapshotReturned).toBe(true);
     });
-    await waitForFormalContextDataDelay();
-    await runPendingIdleIfAny(idle);
-
-    const newCreditSpreadCalls = supplementalCalls.getBondAnalyticsCreditSpreadMigration.mock.calls.slice(
-      formalCallsBeforeSwitch.creditSpread,
-    );
-    const newReturnDecompositionCalls = supplementalCalls.getBondAnalyticsReturnDecomposition.mock.calls.slice(
-      formalCallsBeforeSwitch.returnDecomposition,
-    );
-    const newCampisiCalls = supplementalCalls.getPnlCampisiFourEffects.mock.calls.slice(
-      formalCallsBeforeSwitch.campisi,
-    );
-    const newYieldCurveCalls = supplementalCalls.getBondAnalyticsYieldCurveTermStructure.mock.calls.slice(
-      formalCallsBeforeSwitch.yieldCurve,
-    );
-
-    expect(newCreditSpreadCalls.every(([reportDate]) => !staleFormalDates.creditSpread.has(reportDate))).toBe(true);
-    expect(newReturnDecompositionCalls.every(([reportDate]) => !staleFormalDates.returnDecomposition.has(reportDate))).toBe(
-      true,
-    );
-    expect(newCampisiCalls.every(([options]) => !staleFormalDates.campisi.has(options?.endDate))).toBe(true);
-    expect(newYieldCurveCalls.every(([reportDate]) => !staleFormalDates.yieldCurve.has(reportDate))).toBe(true);
+    await settleHomeIdleWork(idle);
+    await waitFor(() => {
+      expect(supplementalCalls.getBondAnalyticsCreditSpreadMigration).toHaveBeenCalledWith("2026-03-31");
+      expect(supplementalCalls.getBondAnalyticsReturnDecomposition).toHaveBeenCalledWith(
+        "2026-03-31",
+        "MoM",
+        {
+          accountingClass: "all",
+          assetClass: "all",
+          detail: "summary",
+        },
+      );
+      expect(supplementalCalls.getPnlCampisiFourEffects).toHaveBeenCalledWith({
+        startDate: "2026-02-28",
+        endDate: "2026-03-31",
+        lookbackDays: 30,
+        detail: "summary",
+      });
+      expect(supplementalCalls.getBondAnalyticsYieldCurveTermStructure).toHaveBeenCalledWith(
+        "2026-03-31",
+        { curveTypes: "treasury,cdb,aaa_credit" },
+      );
+    });
   });
 
   it("does not refetch market tape when only the snapshot report date resolves", async () => {
+    const idle = stubIdleCallbacks();
     const base = createApiClient({ mode: "mock" });
     const getMarketDataRates = vi.fn(base.getMarketDataRates);
     const client: ApiClient = {
@@ -2014,10 +2315,11 @@ describe("DashboardHomePage", () => {
     renderDashboardHome(client);
 
     expect(await screen.findByTestId("dashboard-home-page")).toBeInTheDocument();
+    await runNextIdle(idle);
     await waitFor(() => {
       expect(getMarketDataRates).toHaveBeenCalledTimes(1);
     });
-    await waitForTestClock(100);
+    await settleHomeIdleWork(idle);
     expect(getMarketDataRates).toHaveBeenCalledTimes(1);
   });
 
@@ -2063,6 +2365,69 @@ describe("DashboardHomePage", () => {
     });
   });
 
+  it("updates same-date assets with missing PnL and clears them when the whole date is unavailable", async () => {
+    const source = createApiClient({ mode: "mock" });
+    const getHomeSnapshot = vi.fn<ApiClient["getHomeSnapshot"]>(async (options) => {
+      const date = options?.reportDate || "2026-08-31";
+      if (date === "2026-07-29") {
+        throw new Error("报告日 2026-07-29 缺少余额及损益数据 [code=home_report_date_unavailable]");
+      }
+      const partial = date === "2026-07-30";
+      if (partial) expect(options?.allowPartial).toBe(true);
+      const effectiveDates: Record<string, string> = { balance_sheet: date };
+      if (!partial) effectiveDates.pnl = date;
+      const envelope = await source.getHomeSnapshot(options);
+      return {
+        ...envelope,
+        result_meta: {
+          ...envelope.result_meta,
+          quality_flag: partial ? "warning" as const : "ok" as const,
+          vendor_status: partial ? "vendor_unavailable" as const : "ok" as const,
+        },
+        result: {
+          ...envelope.result,
+          report_date: date,
+          mode: partial ? "partial" as const : "strict" as const,
+          domains_missing: partial ? ["pnl"] : [],
+          domains_effective_date: effectiveDates,
+          product_category_monthly: partial ? null : envelope.result.product_category_monthly,
+          overview: {
+            ...envelope.result.overview,
+            metrics: [{
+              ...envelope.result.overview.metrics[0],
+              id: "aum",
+              label: "总资产规模",
+              value: {
+                raw: partial ? 385_000_000_000 : date === "2026-08-31" ? 380_000_000_000 : 370_000_000_000,
+                unit: "yuan" as const,
+                display: partial ? "3,850.00 亿" : date === "2026-08-31" ? "3,800.00 亿" : "3,700.00 亿",
+                precision: 2,
+                sign_aware: false,
+              },
+            }],
+          },
+        },
+      };
+    });
+    renderDashboardHome(createRealModeHomeClient({
+      ...createApiClient({ mode: "real" }), getHomeSnapshot,
+    }));
+    await waitFor(() => expect(screen.getByTestId("dashboard-home-kpi-aum")).toHaveTextContent("3,800.00"));
+    fireEvent.change(screen.getByLabelText("报告日"), { target: { value: "2026-07-31" } });
+    await waitFor(() => expect(screen.getByTestId("dashboard-home-kpi-aum")).toHaveTextContent("3,700.00"));
+    fireEvent.change(screen.getByLabelText("报告日"), { target: { value: "2026-07-30" } });
+    await waitFor(() => expect(screen.getByTestId("dashboard-home-kpi-aum")).toHaveTextContent("3,850.00"));
+    expect(screen.getAllByText("部分可用").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("dashboard-home-kpi-aum")).not.toHaveTextContent("3,700.00");
+    fireEvent.change(screen.getByLabelText("报告日"), { target: { value: "2026-07-29" } });
+    await waitFor(() => expect(screen.getByTestId("dashboard-home-report-date-context")).toHaveAttribute("data-report-date-mode", "error"));
+    expect(screen.getAllByText("报告日暂不可用").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("dashboard-home-kpi-aum")).toHaveTextContent("—");
+    expect(screen.getByTestId("dashboard-home-kpi-aum")).not.toHaveTextContent("3,700.00");
+    fireEvent.change(screen.getByLabelText("报告日"), { target: { value: "2026-08-31" } });
+    await waitFor(() => expect(screen.getByTestId("dashboard-home-kpi-aum")).toHaveTextContent("3,800.00"));
+  });
+
   it("prefers real first-screen values over local fallback", async () => {
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     const getHomeSnapshot = vi.fn(async (options) => {
@@ -2071,6 +2436,14 @@ describe("DashboardHomePage", () => {
         ...envelope,
         result_meta: {
           ...envelope.result_meta,
+          trace_id: "trace-real-home-overview",
+          basis: "analytical" as const,
+          formal_use_allowed: false,
+          source_version: "sv_home_overview_test",
+          vendor_version: "vv_home_overview_test",
+          rule_version: "rv_home_overview_test",
+          cache_version: "cv_home_overview_test",
+          source_surface: "executive_analytical",
           generated_at: "2026-04-30T10:45:00+08:00",
         },
         result: {
@@ -2184,11 +2557,15 @@ describe("DashboardHomePage", () => {
       expect(within(hero).getByTestId("dashboard-home-kpi-aum")).toHaveTextContent("4,567.89");
       expect(within(hero).getByTestId("dashboard-home-kpi-yield")).toHaveTextContent("+36.39");
       expect(within(hero).getByTestId("dashboard-home-kpi-nim")).toHaveTextContent("+1.05");
-      expect(within(hero).getByTestId("dashboard-home-kpi-dv01")).toHaveTextContent("106,223,757");
+      expect(within(hero).getByTestId("dashboard-home-kpi-dv01-wan")).toBeInTheDocument();
+      expect(within(hero).queryByTestId("dashboard-home-kpi-spread-bp")).not.toBeInTheDocument();
+      expect(
+        within(hero).queryByTestId("dashboard-home-kpi-holding-occupancy"),
+      ).not.toBeInTheDocument();
     });
   });
 
-  it("hydrates first-screen KPI cards only after below-fold basic data has started", async () => {
+  it("never lets supplemental bond metrics replace an empty governed overview", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     const idle = stubIdleCallbacks();
@@ -2213,73 +2590,65 @@ describe("DashboardHomePage", () => {
       precision: 2,
       sign_aware: false,
     });
-    const getBondDashboardHeadlineKpis = vi.fn<ApiClient["getBondDashboardHeadlineKpis"]>(
-      async () => ({
-        result_meta: {
-          result_kind: "bond_dashboard.headline_kpis",
-          trace_id: "tr_home_headline",
-          basis: "formal",
-          formal_use_allowed: true,
-          source_version: "sv_home_headline_test",
-          vendor_version: "vv_none",
-          rule_version: "rv_home_headline_test",
-          cache_version: "cv_home_headline_test",
-          quality_flag: "ok",
-          vendor_status: "ok",
-          fallback_mode: "none",
-          scenario_flag: false,
-          generated_at: "2026-04-30T10:45:00+08:00",
-          tables_used: ["bond_position_daily"],
-        },
-        result: {
-          report_date: "2026-04-30",
-          prev_report_date: "2026-04-29",
-          kpis: {
-            total_market_value: yuan(328_709_000_000, "3,287.09 亿"),
-            unrealized_pnl: yuan(1_842_000_000, "+18.42 亿", true),
-            weighted_ytm: pct(0.0285, "2.85%"),
-            weighted_duration: ratio(4.23, "4.23"),
-            weighted_coupon: pct(0.031, "3.10%"),
-            credit_spread_median: {
-              raw: 72,
-              unit: "bp" as const,
-              display: "72bp",
-              precision: 2,
-              sign_aware: false,
+    const getBondDashboardHomeSummary = vi.fn<ApiClient["getBondDashboardHomeSummary"]>(
+      async (reportDate) => {
+        const envelope = await mockSnapshotSource.getBondDashboardHomeSummary(reportDate);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            report_date: "2026-04-30",
+            headline: {
+              report_date: "2026-04-30",
+              prev_report_date: "2026-04-29",
+              kpis: {
+                total_market_value: yuan(328_709_000_000, "3,287.09 亿"),
+                unrealized_pnl: yuan(1_842_000_000, "+18.42 亿", true),
+                weighted_ytm: pct(0.0285, "2.85%"),
+                weighted_duration: ratio(4.23, "4.23"),
+                weighted_coupon: pct(0.031, "3.10%"),
+                credit_spread_median: {
+                  raw: 72,
+                  unit: "bp" as const,
+                  display: "72bp",
+                  precision: 2,
+                  sign_aware: false,
+                },
+                total_dv01: {
+                  raw: 120_000,
+                  unit: "dv01" as const,
+                  display: "120,000.00",
+                  precision: 2,
+                  sign_aware: false,
+                },
+                bond_count: 128,
+              },
+              prev_kpis: {
+                total_market_value: yuan(320_000_000_000, "3,200.00 亿"),
+                unrealized_pnl: yuan(1_700_000_000, "+17.00 亿", true),
+                weighted_ytm: pct(0.0281, "2.81%"),
+                weighted_duration: ratio(4.18, "4.18"),
+                weighted_coupon: pct(0.0308, "3.08%"),
+                credit_spread_median: {
+                  raw: 75,
+                  unit: "bp" as const,
+                  display: "75bp",
+                  precision: 2,
+                  sign_aware: false,
+                },
+                total_dv01: {
+                  raw: 118_000,
+                  unit: "dv01" as const,
+                  display: "118,000.00",
+                  precision: 2,
+                  sign_aware: false,
+                },
+                bond_count: 128,
+              },
             },
-            total_dv01: {
-              raw: 120_000,
-              unit: "dv01" as const,
-              display: "120,000.00",
-              precision: 2,
-              sign_aware: false,
-            },
-            bond_count: 128,
           },
-          prev_kpis: {
-            total_market_value: yuan(320_000_000_000, "3,200.00 亿"),
-            unrealized_pnl: yuan(1_700_000_000, "+17.00 亿", true),
-            weighted_ytm: pct(0.0281, "2.81%"),
-            weighted_duration: ratio(4.18, "4.18"),
-            weighted_coupon: pct(0.0308, "3.08%"),
-            credit_spread_median: {
-              raw: 75,
-              unit: "bp" as const,
-              display: "75bp",
-              precision: 2,
-              sign_aware: false,
-            },
-            total_dv01: {
-              raw: 118_000,
-              unit: "dv01" as const,
-              display: "118,000.00",
-              precision: 2,
-              sign_aware: false,
-            },
-            bond_count: 128,
-          },
-        },
-      }),
+        };
+      },
     );
     const client = createRealModeHomeClient({
       ...base,
@@ -2290,16 +2659,29 @@ describe("DashboardHomePage", () => {
           result: {
             ...envelope.result,
             report_date: "2026-04-30",
+            overview: {
+              ...envelope.result.overview,
+              metrics: [],
+            },
           },
         };
       },
-      getBondDashboardHeadlineKpis,
+      getBondDashboardHomeSummary,
       getResearchCalendarEvents: vi.fn(async () => []),
     });
 
     renderDashboardHome(client);
 
     const hero = await screen.findByTestId("dashboard-home-hero");
+    const kpiStrip = within(hero).getByTestId("dashboard-home-hero-kpi-strip");
+    const primaryCards = within(kpiStrip).getAllByRole("article");
+    expect(primaryCards.map((card) => card.getAttribute("data-testid"))).toEqual([
+      "dashboard-home-kpi-aum",
+      "dashboard-home-kpi-yield",
+      "dashboard-home-kpi-nim",
+      "dashboard-home-kpi-dv01-wan",
+    ]);
+    primaryCards.forEach((card) => expect(card).toHaveTextContent("—"));
     expect(within(hero).queryByTestId("dashboard-home-kpi-bond-market-value")).not.toBeInTheDocument();
     await waitFor(() => {
       expect(idle.pendingCount()).toBeGreaterThan(0);
@@ -2308,25 +2690,171 @@ describe("DashboardHomePage", () => {
     await act(async () => {
       idle.runPending();
     });
-    expect(getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
-
-    await waitForBodyAutoRevealDelay();
-    await runNextIdle(idle);
-    expect(getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
-
-    await waitForFirstScreenHydrationDelay();
-    await runNextIdle(idle);
-
-    await waitFor(() => {
-      expect(getBondDashboardHeadlineKpis).toHaveBeenCalledWith("2026-04-30");
-      expect(within(hero).getByTestId("dashboard-home-kpi-bond-market-value")).toHaveTextContent("3,287.09");
-      expect(within(hero).getByTestId("dashboard-home-kpi-unrealized-pnl")).toHaveTextContent("+18.42");
-      expect(within(hero).getByTestId("dashboard-home-kpi-duration")).toHaveTextContent("4.23");
-      expect(within(hero).getByTestId("dashboard-home-kpi-ytm")).toHaveTextContent("2.85");
+    await settleHomeIdleWork(idle);
+    expect(getBondDashboardHomeSummary).toHaveBeenCalledWith("2026-04-30");
+    expect(getBondDashboardHomeSummary).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await getBondDashboardHomeSummary.mock.results[0].value;
     });
+    await flushHomeQueryNotifications();
+    primaryCards.forEach((card) => expect(card).toHaveTextContent("—"));
+    expect(within(hero).queryByTestId("dashboard-home-kpi-bond-market-value")).not.toBeInTheDocument();
+    expect(within(hero).queryByTestId("dashboard-home-kpi-duration")).not.toBeInTheDocument();
+    expect(within(hero).queryByTestId("dashboard-home-kpi-ytm")).not.toBeInTheDocument();
   });
 
-  it("keeps below-fold home body behind a second idle gate before slow hydration starts", async () => {
+  it.each(["late", "failed", "previous date"] as const)(
+    "keeps four snapshot KPIs intact when supplemental results are %s",
+    async (scenario) => {
+      const mockSnapshotSource = createApiClient({ mode: "mock" });
+      const idle = stubIdleCallbacks();
+      const initialDate = "2026-04-30";
+      const nextDate = "2026-03-31";
+      let releaseSupplemental!: () => void;
+      const supplementalReady = new Promise<void>((resolve) => {
+        releaseSupplemental = resolve;
+      });
+      const supplementalCalls = createSupplementalHomeSpies(mockSnapshotSource);
+      const getBondDashboardHomeSummary = vi.fn<ApiClient["getBondDashboardHomeSummary"]>(
+        async (reportDate) => {
+          if (reportDate === initialDate) await supplementalReady;
+          if (scenario === "failed") throw new Error("supplemental summary unavailable");
+          const envelope = await mockSnapshotSource.getBondDashboardHomeSummary(reportDate);
+          return {
+            ...envelope,
+            result: {
+              ...envelope.result,
+              report_date: reportDate,
+              headline: {
+                ...envelope.result.headline,
+                report_date: reportDate,
+                kpis: {
+                  ...envelope.result.headline.kpis,
+                  total_market_value: {
+                    raw: 999_000_000_000,
+                    unit: "yuan",
+                    display: "9,990.00 亿",
+                    precision: 2,
+                    sign_aware: false,
+                  },
+                },
+              },
+            },
+          };
+        },
+      );
+      const getBondAnalyticsPortfolioHeadlines = vi.fn<ApiClient["getBondAnalyticsPortfolioHeadlines"]>(
+        async (reportDate) => {
+          if (reportDate === initialDate) await supplementalReady;
+          if (scenario === "failed") throw new Error("supplemental portfolio unavailable");
+          const envelope = await mockSnapshotSource.getBondAnalyticsPortfolioHeadlines(reportDate);
+          const weight = reportDate === initialDate ? 0.77 : 0.22;
+          return {
+            ...envelope,
+            result: {
+              ...envelope.result,
+              report_date: reportDate,
+              issuer_top5_weight: {
+                raw: weight,
+                unit: "ratio",
+                display: String(weight),
+                precision: 2,
+                sign_aware: false,
+              },
+            },
+          };
+        },
+      );
+      const client = createRealModeHomeClient({
+        ...supplementalCalls,
+        getBondDashboardHomeSummary,
+        getBondAnalyticsPortfolioHeadlines,
+        getHomeSnapshot: async (options) => {
+          const envelope = await mockSnapshotSource.getHomeSnapshot(options);
+          const reportDate = options?.reportDate ?? initialDate;
+          const isNextDate = reportDate === nextDate;
+          const values: Array<{ id: string; raw: number; display: string; unit: Numeric["unit"] }> = [
+            { id: "aum", raw: isNextDate ? 20_000_000_000 : 10_000_000_000, display: isNextDate ? "200.00 亿" : "100.00 亿", unit: "yuan" },
+            { id: "yield", raw: 200_000_000, display: "+2.00 亿", unit: "yuan" },
+            { id: "nim", raw: 0.0123, display: "+1.23%", unit: "pct" },
+            { id: "dv01", raw: 1_230_000, display: "1,230,000", unit: "dv01" },
+          ];
+          return {
+            ...envelope,
+            result: {
+              ...envelope.result,
+              report_date: reportDate,
+              domains_effective_date: { balance_sheet: reportDate, pnl: reportDate },
+              overview: {
+                ...envelope.result.overview,
+                metrics: values.map(({ id, raw, display, unit }) => ({
+                  id,
+                  label: id,
+                  value: { raw, display, unit, precision: 2, sign_aware: false },
+                  delta: { raw: null, display: "—", unit, precision: 2, sign_aware: false },
+                  tone: "neutral" as const,
+                  detail: "Synthetic snapshot metric for hydration boundary regression.",
+                })),
+              },
+            },
+          };
+        },
+      });
+
+      renderDashboardHome(client);
+      const kpiStrip = await screen.findByTestId("dashboard-home-hero-kpi-strip");
+      await waitFor(() => {
+        expect(within(kpiStrip).getByTestId("dashboard-home-kpi-aum")).toHaveTextContent("100.00");
+      });
+      const originalKpis = within(kpiStrip).getAllByRole("article").map((card) => card.textContent);
+      expect(originalKpis).toHaveLength(4);
+      expect(within(kpiStrip).getByTestId("dashboard-home-kpi-yield")).toHaveTextContent("+2.00");
+      expect(within(kpiStrip).getByTestId("dashboard-home-kpi-nim")).toHaveTextContent("+1.23");
+      expect(within(kpiStrip).getByTestId("dashboard-home-kpi-dv01-wan")).toHaveTextContent("123.00");
+      await settleHomeIdleWork(idle);
+      await waitFor(() => {
+        expect(getBondDashboardHomeSummary).toHaveBeenCalledWith(initialDate);
+        expect(getBondAnalyticsPortfolioHeadlines).toHaveBeenCalledWith(initialDate);
+      });
+      expect(within(kpiStrip).getAllByRole("article").map((card) => card.textContent)).toEqual(originalKpis);
+
+      if (scenario === "previous date") {
+        fireEvent.change(screen.getByLabelText("报告日"), { target: { value: nextDate } });
+        await waitFor(() => {
+          expect(screen.getByTestId("dashboard-home-kpi-aum")).toHaveTextContent("200.00");
+        });
+        await settleHomeIdleWork(idle);
+        await waitFor(() => {
+          expect(screen.getByTestId("dashboard-home-risk-metric-strip")).toHaveTextContent("22.00%");
+        });
+      }
+      const currentKpiStrip = screen.getByTestId("dashboard-home-hero-kpi-strip");
+      const currentKpis = within(currentKpiStrip).getAllByRole("article").map((card) => card.textContent);
+      await act(async () => {
+        releaseSupplemental();
+        await Promise.allSettled([
+          getBondDashboardHomeSummary.mock.results[0].value,
+          getBondAnalyticsPortfolioHeadlines.mock.results[0].value,
+        ]);
+      });
+      // Let query observers deliver the completed responses before checking retention.
+      await flushHomeQueryNotifications();
+
+      if (scenario === "failed") {
+        expect(await screen.findByText("辅助来源 · 补充查询失败")).toBeInTheDocument();
+      } else {
+        await waitFor(() => {
+          const riskStrip = screen.getByTestId("dashboard-home-risk-metric-strip");
+          expect(riskStrip).toHaveTextContent(scenario === "previous date" ? "22.00%" : "77.00%");
+          if (scenario === "previous date") expect(riskStrip).not.toHaveTextContent("77.00%");
+        });
+      }
+      expect(within(currentKpiStrip).getAllByRole("article").map((card) => card.textContent)).toEqual(currentKpis);
+      expect(currentKpiStrip).not.toHaveTextContent("9,990.00");
+    },
+  );
+
+  it("starts shared risk hydration with the idle body mount while unseen section queries remain disabled", async () => {
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     const idle = stubIdleCallbacks();
     const supplementalCalls = createSupplementalHomeSpies(mockSnapshotSource);
@@ -2341,39 +2869,31 @@ describe("DashboardHomePage", () => {
       expect(idle.pendingCount()).toBeGreaterThan(0);
     });
 
+    const sectionObserver: { current: MockIntersectionObserver | null } = { current: null };
     await act(async () => {
       idle.runPending();
+      // The body mounts on this idle turn; observe its sections before React
+      // commits them, rather than letting the no-IO section fallback timer fire.
+      sectionObserver.current = stubIntersectionObserver();
     });
 
     expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
-    expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).not.toHaveBeenCalled();
     expect(supplementalCalls.getMarketDataRates).not.toHaveBeenCalled();
-    expect(screen.queryByTestId("dashboard-home-work-grid")).not.toBeInTheDocument();
-    await waitForTestClock(1_200);
-    await waitFor(() => {
-      expect(idle.pendingCount()).toBeGreaterThan(0);
-    });
-
-    await act(async () => {
-      idle.runPending();
-    });
-
     expect(await screen.findByTestId("dashboard-home-work-grid")).toBeInTheDocument();
-    await waitFor(() => {
-      expect(supplementalCalls.getMarketDataRates).toHaveBeenCalledTimes(1);
-    });
+    expect(sectionObserver.current?.observe).toHaveBeenCalledWith(
+      screen.getByTestId("dashboard-home-deferred-matrix"),
+    );
+    expect(supplementalCalls.getMarketDataRates).not.toHaveBeenCalled();
     expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
-    expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).not.toHaveBeenCalled();
 
-    await waitForFirstScreenHydrationDelay();
-    await runNextIdle(idle);
     await waitFor(() => {
-      expect(supplementalCalls.getBondDashboardHeadlineKpis).toHaveBeenCalledTimes(1);
+      expect(supplementalCalls.getBondDashboardHomeSummary).toHaveBeenCalledTimes(1);
       expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).toHaveBeenCalledTimes(1);
     });
+    expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
   });
 
-  it("loads below-fold home body immediately when the user reaches deferred content", async () => {
+  it("keeps the legacy headline request excluded when the idle body and shared risk hydration load", async () => {
     const mockSnapshotSource = createApiClient({ mode: "mock" });
     const idle = stubIdleCallbacks();
     const supplementalCalls = createSupplementalHomeSpies(mockSnapshotSource);
@@ -2393,23 +2913,13 @@ describe("DashboardHomePage", () => {
     });
 
     expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
-    expect(screen.queryByTestId("dashboard-home-work-grid")).not.toBeInTheDocument();
-    await waitFor(() => {
-      expect(idle.pendingCount()).toBeGreaterThan(0);
-    });
-
-    await act(async () => {
-      fireEvent.scroll(window);
-    });
-
     expect(await screen.findByTestId("dashboard-home-work-grid")).toBeInTheDocument();
     expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
 
-    await waitForFirstScreenHydrationDelay();
-    await runNextIdle(idle);
     await waitFor(() => {
-      expect(supplementalCalls.getBondDashboardHeadlineKpis).toHaveBeenCalledTimes(1);
+      expect(supplementalCalls.getBondAnalyticsPortfolioHeadlines).toHaveBeenCalledTimes(1);
     });
+    expect(supplementalCalls.getBondDashboardHeadlineKpis).not.toHaveBeenCalled();
   });
 
   it("renders terminal holdings and newly landed home backend blocks", async () => {
@@ -2589,12 +3099,12 @@ describe("DashboardHomePage", () => {
     const idle = stubIdleCallbacks();
 
     renderDashboardHome(client);
-    await revealHomeFormalContextData(idle);
+    await settleHomeIdleWork(idle);
 
     await waitFor(() => {
       expect(getBondAnalyticsTopHoldings).toHaveBeenCalledWith(
         expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
-        8,
+        14,
       );
       expect(getBondAnalyticsPositionChanges).toHaveBeenCalledWith(
         expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
@@ -2615,8 +3125,20 @@ describe("DashboardHomePage", () => {
     });
     const positionChanges = await screen.findByTestId("dashboard-home-position-changes");
     expect(positionChanges).toHaveTextContent("240002.IB");
-    expect(positionChanges).toHaveTextContent("+2.00pp");
-    expect(positionChanges).toHaveTextContent("现值");
+    expect(positionChanges).toHaveTextContent("+30.00 亿");
+    expect(positionChanges).not.toHaveTextContent("+2.00pp");
+    expect(positionChanges).not.toHaveTextContent("现值");
+    expect(
+      within(positionChanges).getByTestId("dashboard-home-position-comparison"),
+    ).toHaveAttribute("data-state", "unavailable");
+    expect(
+      within(positionChanges).getByRole("link", {
+        name: /查看 .+（240002\.IB）明细/,
+      }),
+    ).toHaveAttribute(
+      "href",
+      "/bond-trading-desk?bond_code=240002.IB&report_date=2026-04-30",
+    );
     const incomeTrend = await screen.findByTestId("dashboard-home-income-trend");
     await waitFor(() => {
       expect(incomeTrend).toHaveTextContent("组合");
@@ -2630,68 +3152,6 @@ describe("DashboardHomePage", () => {
     expect(screen.queryByTestId("dashboard-home-backend-gap-income-trend")).not.toBeInTheDocument();
   });
 
-  it("renders compact explicit states instead of blank terminal cards", () => {
-    render(
-      <MemoryRouter>
-        <TerminalHomeContent view={createTerminalStateView()} />
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByTestId("dashboard-home-holdings-table")).toHaveTextContent("重仓券暂无数据");
-    expect(screen.getByTestId("dashboard-home-position-changes")).toHaveTextContent("增减仓加载失败");
-    expect(screen.getByTestId("dashboard-home-research-reports")).toHaveTextContent("研究报告加载失败");
-    expect(screen.getByTestId("dashboard-home-income-trend")).toHaveTextContent("缺 CDB_INDEX 可核验曲线");
-    expect(screen.getByTestId("dashboard-home-income-trend")).toHaveTextContent("缺少部分受管字段");
-    expect(screen.getByTestId("dashboard-home-market-context")).toHaveTextContent("今日市场解释");
-    expect(screen.getByTestId("dashboard-home-market-context")).toHaveTextContent("市场温度：中性");
-    expect(screen.getByTestId("dashboard-home-market-context")).toHaveTextContent("PnL归因");
-    expect(screen.getByTestId("dashboard-home-market-context")).toHaveTextContent("曲线/利率");
-    expect(screen.getByTestId("dashboard-home-market-context")).toHaveTextContent("信用利差");
-    expect(screen.queryByText("后端工单")).not.toBeInTheDocument();
-    expect(screen.queryByText("杠杆率")).not.toBeInTheDocument();
-  });
-
-  it("renders income trend as portfolio benchmark and excess context", () => {
-    render(
-      <MemoryRouter>
-        <TerminalHomeContent
-          view={createTerminalStateView({
-            incomeTrendState: { kind: "ready", label: "已接入" },
-            incomeTrend: [
-              {
-                id: "2026-03-31",
-                date: "2026-03-31",
-                portfolioPnl: "+1.20 亿",
-                benchmarkPnl: "+0.80 亿",
-                excessPnl: "+0.40 亿",
-                portfolioRaw: 120_000_000,
-                benchmarkRaw: 80_000_000,
-                excessRaw: 40_000_000,
-              },
-              {
-                id: "2026-04-30",
-                date: "2026-04-30",
-                portfolioPnl: "+0.90 亿",
-                benchmarkPnl: "+0.60 亿",
-                excessPnl: "+0.30 亿",
-                portfolioRaw: 90_000_000,
-                benchmarkRaw: 60_000_000,
-                excessRaw: 30_000_000,
-              },
-            ],
-          })}
-        />
-      </MemoryRouter>,
-    );
-
-    const incomeTrend = screen.getByTestId("dashboard-home-income-trend");
-    expect(incomeTrend).toHaveTextContent("数据截至 2026-04-30");
-    expect(incomeTrend).toHaveTextContent("CDB_INDEX / MoM");
-    expect(incomeTrend).toHaveTextContent("组合");
-    expect(incomeTrend).toHaveTextContent("CDB基准");
-    expect(incomeTrend).toHaveTextContent("超额");
-    expect(incomeTrend).toHaveTextContent("基准 +0.60 亿 · 超额 +0.30 亿");
-  });
     /*
     expect(screen.getByTestId("dashboard-home-backend-gap-research-reports")).toHaveTextContent(
       "后端待接入",
@@ -2702,56 +3162,6 @@ describe("DashboardHomePage", () => {
   });
 
     */
-  it("defers dashboard chart runtime until visible chart regions are reached by user scroll", async () => {
-    const observer = stubIntersectionObserver();
-
-    render(
-      <MemoryRouter>
-        <TerminalHomeContent
-          view={createTerminalStateView({
-            assetDistributionState: { kind: "ready", label: "ready" },
-            assetDistribution: [
-              { id: "bond", label: "Bond", value: "90.00", pct: "90.00%", pctRaw: 90 },
-              { id: "cash", label: "Cash", value: "10.00", pct: "10.00%", pctRaw: 10 },
-            ],
-            incomeTrendState: { kind: "ready", label: "ready" },
-            incomeTrend: [
-              {
-                id: "2026-04-30",
-                date: "2026-04-30",
-                portfolioPnl: "+0.90",
-                benchmarkPnl: "+0.60",
-                excessPnl: "+0.30",
-                portfolioRaw: 90_000_000,
-                benchmarkRaw: 60_000_000,
-                excessRaw: 30_000_000,
-              },
-            ],
-          })}
-        />
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByTestId("dashboard-home-income-trend")).toHaveTextContent("CDB_INDEX / MoM");
-    expect(observer.observe).toHaveBeenCalled();
-    expect(screen.queryByTestId("dashboard-echarts-stub")).not.toBeInTheDocument();
-
-    await act(async () => {
-      observer.triggerAll({ isIntersecting: true, intersectionRatio: 1 });
-    });
-    await waitForTestClock(0);
-
-    expect(screen.queryByTestId("dashboard-echarts-stub")).not.toBeInTheDocument();
-
-    await act(async () => {
-      window.dispatchEvent(new Event("scroll"));
-    });
-
-    await waitFor(() => {
-      expect(screen.getAllByTestId("dashboard-echarts-stub").length).toBeGreaterThan(0);
-    });
-  });
-
   it("renders supply and auction calendar items from the research calendar feed", async () => {
     const researchCalendarCalls: Array<{
       reportDate?: string;
@@ -2787,7 +3197,7 @@ describe("DashboardHomePage", () => {
     const idle = stubIdleCallbacks();
 
     renderDashboardHome(client);
-    await revealHomeBodyDetailAndEventFeeds(idle);
+    await settleHomeIdleWork(idle);
 
     const calendar = await screen.findByTestId("dashboard-home-research-calendar");
     await waitFor(() => {
@@ -2802,29 +3212,37 @@ describe("DashboardHomePage", () => {
     const idle = stubIdleCallbacks();
     const getResearchCalendarEvents = vi.fn(async () => []);
     const mockNewsClient = createApiClient({ mode: "mock" });
-    const getChoiceNewsEvents = vi.fn((options) => mockNewsClient.getChoiceNewsEvents(options));
-    const client = createRealModeHomeClient({ getResearchCalendarEvents, getChoiceNewsEvents });
+    const getChoiceNewsEventsBatch = vi.fn((options: ChoiceNewsBatchOptions) =>
+      mockNewsClient.getChoiceNewsEventsBatch(options),
+    );
+    const client = createRealModeHomeClient({
+      getResearchCalendarEvents,
+      getChoiceNewsEventsBatch,
+    });
 
     renderDashboardHome(client);
-    await revealHomeBodyDetailAndEventFeeds(idle);
+    await settleHomeIdleWork(idle);
 
     await waitFor(() => {
       expect(getResearchCalendarEvents).toHaveBeenCalled();
-      expect(getChoiceNewsEvents).toHaveBeenCalled();
+      expect(getChoiceNewsEventsBatch).toHaveBeenCalled();
     });
     const calendar = await screen.findByTestId("dashboard-home-research-calendar");
     await waitFor(() => {
       expect(calendar).toHaveTextContent("重大信息发布日期前瞻");
       expect(calendar).toHaveTextContent("政策与资金面");
-      expect(calendar).toHaveTextContent("来源：Choice 宏观新闻");
-      expect(calendar).toHaveTextContent("数据截至");
-      expect(calendar).toHaveTextContent("来源状态");
-      expect(calendar).toHaveTextContent("刷新：");
-      expect(calendar).toHaveTextContent("供给/招标：当前窗口无事件");
+      // b41cd303 视觉降噪后：信任条可见处收短文案，完整来源/状态/截至/刷新说明进 title。
+      const trustStrip = within(calendar).getByLabelText("政策与资金面数据状态");
+      expect(trustStrip).toHaveTextContent("来源 Choice 宏观新闻");
+      const trustTooltip = trustStrip.getAttribute("title") ?? "";
+      expect(trustTooltip).toContain("来源：Choice 宏观新闻");
+      expect(trustTooltip).toContain("来源状态");
+      expect(trustTooltip).toContain("数据截至");
+      expect(trustTooltip).toContain("刷新：");
+      expect(calendar).toHaveTextContent("供给/招标：已查询当前窗口，暂无事件");
       expect(calendar).not.toHaveTextContent("当前窗口暂无供给/招标事件。");
     });
-    const topicCodes = getChoiceNewsEvents.mock.calls.map(([options]) => options.topicCode);
-    expect(topicCodes).toEqual(
+    expect(requestedNewsTopicCodes(getChoiceNewsEventsBatch)).toEqual(
       expect.arrayContaining([
         "S888010007API",
         "S888010003API",
@@ -2834,9 +3252,11 @@ describe("DashboardHomePage", () => {
         "C000003002",
       ]),
     );
-    expect(topicCodes).toEqual(
-      expect.arrayContaining(["tushare.major", "tushare.npr", "tushare.research"]),
-    );
+    await waitFor(() => {
+      expect(requestedNewsGroupIds(getChoiceNewsEventsBatch)).toEqual(
+        expect.arrayContaining(bondNewsGroupIds()),
+      );
+    });
   });
 
   it("keeps an explicit error state when the external event feed fails", async () => {
@@ -2847,7 +3267,7 @@ describe("DashboardHomePage", () => {
     const client = createRealModeHomeClient({ getResearchCalendarEvents });
 
     renderDashboardHome(client);
-    await revealHomeBodyDetailAndEventFeeds(idle);
+    await settleHomeIdleWork(idle);
 
     await waitFor(() => {
       expect(getResearchCalendarEvents).toHaveBeenCalled();

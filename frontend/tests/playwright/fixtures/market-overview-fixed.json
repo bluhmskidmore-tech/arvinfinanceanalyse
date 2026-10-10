@@ -1,0 +1,245 @@
+{
+  "version": "market-design-fixture-1",
+  "synthetic": true,
+  "observationDate": "2026-09-04",
+  "comparisonDate": "2026-09-03",
+  "curve": {
+    "tenors": [
+      "2Y",
+      "5Y",
+      "10Y"
+    ],
+    "current": [
+      1.25,
+      1.42,
+      1.68
+    ],
+    "previous": [
+      1.255,
+      1.425,
+      1.69
+    ]
+  },
+  "dates": [
+    "08-10",
+    "08-11",
+    "08-12",
+    "08-13",
+    "08-14",
+    "08-17",
+    "08-18",
+    "08-19",
+    "08-20",
+    "08-21",
+    "08-24",
+    "08-25",
+    "08-26",
+    "08-27",
+    "08-28",
+    "08-31",
+    "09-01",
+    "09-02",
+    "09-03",
+    "09-04"
+  ],
+  "funding": [
+    1.4,
+    1.39,
+    1.39,
+    1.4,
+    1.38,
+    1.38,
+    1.37,
+    null,
+    1.38,
+    1.43,
+    1.43,
+    1.45,
+    1.41,
+    1.39,
+    1.38,
+    1.41,
+    1.39,
+    1.38,
+    1.39,
+    1.37
+  ],
+  "rates10Y": [
+    1.71,
+    1.72,
+    1.72,
+    1.71,
+    1.7,
+    1.7,
+    1.7,
+    1.69,
+    1.69,
+    1.68,
+    1.68,
+    1.69,
+    1.7,
+    1.7,
+    1.69,
+    1.69,
+    1.68,
+    1.68,
+    1.69,
+    1.68
+  ],
+  "rates2Y": [
+    1.26,
+    1.26,
+    1.25,
+    1.25,
+    1.24,
+    1.24,
+    1.24,
+    1.25,
+    1.24,
+    1.24,
+    1.25,
+    1.25,
+    1.26,
+    1.26,
+    1.26,
+    1.25,
+    1.25,
+    1.25,
+    1.255,
+    1.25
+  ],
+  "cross": [
+    {
+      "label": "Brent 原油",
+      "from": "08-28",
+      "to": "09-01",
+      "value": 6.99
+    },
+    {
+      "label": "中证全债",
+      "from": "09-03",
+      "to": "09-04",
+      "value": 0.34
+    },
+    {
+      "label": "USD/CNY",
+      "from": "09-03",
+      "to": "09-04",
+      "value": -0.03
+    },
+    {
+      "label": "沪深300",
+      "from": "09-03",
+      "to": "09-04",
+      "value": -0.1
+    },
+    {
+      "label": "铜",
+      "from": "09-03",
+      "to": "09-04",
+      "value": -0.33
+    }
+  ],
+  "normalScenario": {
+    "synthetic": true,
+    "scenarioKey": "parallel_rate_up_10bp",
+    "curveObservationDate": "2026-09-04",
+    "actualRiskDate": "2026-09-04",
+    "metricId": "MTR-RSK-001R",
+    "regulatoryDv01YuanPerBp": 125000,
+    "shockBp": 10,
+    "estimatedImpactYuan": -1250000,
+    "totalPositionCount": 120,
+    "includedPositionCount": 100,
+    "excludedPositionCount": 20,
+    "missingRiskPositionCount": 0,
+    "humanReviewRequired": true
+  },
+  "normalPolicyReference": {
+    "synthetic": true,
+    "valuePct": 1.4,
+    "effectiveFrom": "2026-09-01",
+    "effectiveTo": null,
+    "validityStatus": "verified",
+    "displayedFundingSeries": "FDR007",
+    "exactDr007Available": false,
+    "targetPolicyDeviationBp": null
+  },
+  "homeSummaryRevision": "v1.2",
+  "homeMacro": [
+    {
+      "label": "CPI 同比",
+      "value": "0.3%",
+      "change": "+0.2 个百分点",
+      "period": "指标期 2026-07 · 发布 08-10",
+      "current": 0.3,
+      "previous": 0.1,
+      "changeUnit": "percentage_point",
+      "periodKey": "2026-07",
+      "publishedAt": "2026-08-10",
+      "synthetic": true
+    },
+    {
+      "label": "PPI 同比",
+      "value": "-2.4%",
+      "change": "+0.3 个百分点",
+      "period": "指标期 2026-07 · 发布 08-10",
+      "current": -2.4,
+      "previous": -2.7,
+      "changeUnit": "percentage_point",
+      "periodKey": "2026-07",
+      "publishedAt": "2026-08-10",
+      "synthetic": true
+    },
+    {
+      "label": "制造业 PMI",
+      "value": "49.8",
+      "change": "+0.4 点",
+      "period": "指标期 2026-08 · 发布 08-31",
+      "current": 49.8,
+      "previous": 49.4,
+      "changeUnit": "point",
+      "periodKey": "2026-08",
+      "publishedAt": "2026-08-31",
+      "synthetic": true
+    },
+    {
+      "label": "社融存量同比",
+      "value": "8.5%",
+      "change": "-0.2 个百分点",
+      "period": "指标期 2026-07 · 发布 08-13",
+      "current": 8.5,
+      "previous": 8.7,
+      "changeUnit": "percentage_point",
+      "periodKey": "2026-07",
+      "publishedAt": "2026-08-13",
+      "synthetic": true
+    }
+  ],
+  "homeEvents": [
+    {
+      "topic": "流动性",
+      "title": "公开市场操作公告",
+      "detail": "关注净投放与到期规模，结合资金价格核对。",
+      "dates": "事件 09-04 · 接收 09-04 · 示例来源",
+      "synthetic": true,
+      "source": "synthetic"
+    },
+    {
+      "topic": "增长与融资",
+      "title": "实体融资与景气数据解读",
+      "detail": "结合 PMI 与社融观察需求变化，跟进长端利率。",
+      "dates": "事件 09-03 · 接收 09-04 · 示例来源",
+      "synthetic": true,
+      "source": "synthetic"
+    },
+    {
+      "topic": "海外与商品",
+      "title": "海外政策与原油供给动态",
+      "detail": "关注汇率与能源成本传导，核对各自观察日期。",
+      "dates": "事件 09-03 · 接收 09-03 · 示例来源",
+      "synthetic": true,
+      "source": "synthetic"
+    }
+  ]
+}

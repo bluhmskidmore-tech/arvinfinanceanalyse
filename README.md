@@ -23,9 +23,25 @@ MOSS V3 是一个以固定收益分析、经营分析和治理追踪为核心的
 关键约束：
 
 - `backend/app/core_finance/` 是正式金融计算唯一入口。
-- `backend/app/api/` 负责参数校验、鉴权、编排和响应映射。
+- `backend/app/api/` 负责参数校验、**授权**、编排和响应映射。
 - `backend/app/tasks/` 是 DuckDB / 物化写入入口。
 - `frontend/` 负责消费结果和展示，不应补算正式金融指标。
+
+关于「授权」的准确边界（**当前仓库有授权，没有认证**）：
+
+- 授权（authorization）确实存在：`backend/app/security/auth_context.py::ensure_user_allowed` 做基于
+  `resource`/`action`/`scope` 的 RBAC 判定，`backend/app/api/deps.py` 把它接进路由依赖。
+- 认证（authentication）**不存在**：仓库里没有 API Key、Bearer/JWT、会话或网关令牌校验。身份取自
+  `X-User-Id` / `X-User-Role` 请求头（且只有显式打开 `MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST` 才被信任）
+  → `MOSS_USER_ID` / `MOSS_USER_ROLE` 环境变量 → 兜底常量 `anonymous` / `viewer`。
+- `validate_auth_startup_guardrails()` 只在 `environment != "development"` 时生效；`environment` 默认值
+  就是 `development`（`backend/app/governance/settings.py`），所以默认本地运行时全部守卫被跳过。
+- 两种运行姿态，都不构成认证：
+  - 信任开关关闭（默认）——请求头被忽略，所有请求共用同一个进程级身份（环境变量或
+    `anonymous`/`viewer`），RBAC 实际上是在对一个固定身份判权，不区分调用方。
+  - 信任开关打开（开发/测试常态，`scripts/backend_release_suite.py` 就会设 `=1`）——任何调用方
+    都能用请求头自称任意 `user_id` 和 `role`，服务端不做任何校验。
+- 不要把现有 RBAC 当成「已鉴权」，也不要在它之上做安全性判断或对外暴露。
 
 ## 仓库地图
 
@@ -68,19 +84,28 @@ powershell -ExecutionPolicy Bypass -File scripts/dev-worker.ps1
 powershell -ExecutionPolicy Bypass -File scripts/dev-frontend.ps1
 ```
 
+前端源码开发使用独立入口：在 `frontend/` 运行 `npm run dev:source`，默认地址为 `http://127.0.0.1:5890`，支持热更新。这个入口保留维护期启动守卫，不修改 `5888` 已选择的验收构建；终端会显示数据模式和 API 代理地址。开发、局部检查和验收步骤见 [前端开发工作流](docs/frontend-development.md)。
+
 ### Docker Compose
 
 ```bash
 docker compose up api worker frontend postgres redis minio
 ```
 
+启动前必须提供 `MOSS_POSTGRES_PASSWORD`、`MOSS_MINIO_ROOT_USER`、`MOSS_MINIO_ROOT_PASSWORD`
+（compose 文件用 `${VAR:?...}` 声明为必填，没有写死的凭据）。
+
+MinIO 社区版已改为[仅源码分发](https://github.com/minio/minio/tree/7aac2a2c5b7c882e68c1ce017d8256be2feea27f)。Compose 首次启动会从固定官方提交构建 `moss-minio:7aac2a2c5b7c`，需要访问 GitHub、Go 模块代理及官方 Go/Alpine 镜像仓库；构建上下文仅为 `docker/minio`，不会把应用源码、`.env` 或业务数据发送给构建器。
+
 `docker-compose.yml` 中的容器端口基线是：
 
-- API: `8000`
-- Frontend: `5173`
+- API: `8000`（仅容器内端口，`api` 服务没有 `ports:` 映射，宿主机不能直接访问；由 `frontend` 容器代理）
+- Frontend: `5173`（映射到 `127.0.0.1:${MOSS_FRONTEND_PORT:-5173}`）
 - Postgres: `5432`
 - Redis: `6379`
 - MinIO: `9000` / `9001`
+
+Postgres / Redis / MinIO 均只绑定 `127.0.0.1`，宿主机端口可用 `MOSS_POSTGRES_PORT` 等变量覆盖，详见 [docs/CONFIGURATION.md](docs/CONFIGURATION.md)。
 
 ## 常用验证
 
@@ -96,12 +121,20 @@ npm run build
 
 ### 后端
 
-```bash
-python -m pytest -q
-python scripts/backend_release_suite.py
+**先看解释器**：不要用裸 `python`。很多机器上 `python` 会被无关 venv 遮蔽（本机就解析到一个没装
+pytest 的 agent venv）。最坏情况不是报错退出，而是解析到另一个装了 pytest 但依赖版本不同的环境，
+给出一个与本仓库无关的绿灯。统一用仓库自己的 `.venv`：
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe scripts\backend_release_suite.py
 ```
 
-`python scripts/backend_release_suite.py` 是当前 repo-wide Phase 2 formal-compute mainline 的 canonical backend gate。
+POSIX 下对应 `.venv/bin/python`；CI 里 `uv sync --frozen` 已把 venv 前置进 `PATH`，那里的裸 `python`
+才是安全的。同一纪律见 `scripts/README.md` 与 `docs/GLOBAL_DATA_REFRESH_RUNBOOK.md`。
+
+`python scripts/backend_release_suite.py` 是当前 repo-wide Phase 2 formal-compute mainline 的
+canonical backend gate（这是门禁的**名字**，本机执行时按上面的形式加解释器前缀）。
 
 ## 文档索引
 

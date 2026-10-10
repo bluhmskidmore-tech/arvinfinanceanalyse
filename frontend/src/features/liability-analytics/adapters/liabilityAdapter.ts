@@ -1,4 +1,5 @@
-import type { LiabilityCounterpartyPayload, Numeric } from "../../../api/contracts";
+import type { Numeric } from "../../../api/contracts";
+import type { LiabilityCounterpartyPayload } from "../../../api/liabilityAdbContracts";
 
 import type { LiabilityCpRow, LiabilityTypeRow } from "../components/LiabilityCounterpartyBlock";
 import { numericYuanRaw, shareOfTotalNumeric } from "../utils/money";
@@ -7,6 +8,10 @@ export type LiabilityCounterpartyState = { kind: "loading" } | { kind: "error" }
 
 export type LiabilityCounterpartyVM = {
   totalValue: Numeric;
+  top10Share: Numeric | null;
+  hhi: Numeric | null;
+  populationCount: number | null;
+  isTruncated: boolean;
   rows: LiabilityCpRow[];
   byType: LiabilityTypeRow[];
 };
@@ -91,7 +96,15 @@ export function adaptLiabilityCounterparty(input: AdaptLiabilityCounterpartyInpu
     name: x.name,
     value: x.value ?? null,
   }));
-  const vm: LiabilityCounterpartyVM = { totalValue: p.total_value, rows, byType };
+  const vm: LiabilityCounterpartyVM = {
+    totalValue: p.total_value,
+    top10Share: p.top10_share ?? null,
+    hhi: p.hhi ?? null,
+    populationCount: p.population_count ?? null,
+    isTruncated: p.is_truncated ?? false,
+    rows,
+    byType,
+  };
   const totalRaw = numericYuanRaw(p.total_value);
   const kind = totalRaw !== null && totalRaw === 0 && rows.length === 0 ? "empty" : "ok";
   return { vm, state: { kind } };

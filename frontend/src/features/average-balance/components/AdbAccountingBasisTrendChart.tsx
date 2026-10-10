@@ -1,18 +1,26 @@
-import ReactECharts from "../../../lib/echarts";
+import { ChartCard } from "../../../components/charts/ChartCard";
+import {
+  CHART_CARD_HEIGHTS,
+  type ChartCardHeight,
+} from "../../../components/charts/chartCardScale";
+import { nocturneChartTheme } from "../../../components/charts/chartTheme";
 import type { AdbAccountingBasisDailyAvgTrendItem } from "../../../api/contracts";
+import { EM_DASH } from "../../../utils/format";
 
 const YI = 100_000_000;
 
 export type AdbAccountingBasisTrendChartProps = {
   trend: AdbAccountingBasisDailyAvgTrendItem[];
-  height?: number;
+  title: string;
+  height?: ChartCardHeight;
+  flat?: boolean;
 };
 
 function collectBuckets(trend: AdbAccountingBasisDailyAvgTrendItem[]): string[] {
   const set = new Set<string>();
   for (const item of trend) {
     for (const row of item.rows) {
-      const b = (row.basis_bucket || "").trim() || "—";
+      const b = (row.basis_bucket || "").trim() || EM_DASH;
       set.add(b);
     }
   }
@@ -20,30 +28,36 @@ function collectBuckets(trend: AdbAccountingBasisDailyAvgTrendItem[]): string[] 
 }
 
 function buildOption(trend: AdbAccountingBasisDailyAvgTrendItem[]) {
-  const labels = trend.map((t) => t.report_month || t.report_date?.slice(0, 7) || "—");
+  const labels = trend.map((t) => t.report_month || t.report_date?.slice(0, 7) || EM_DASH);
   const buckets = collectBuckets(trend);
-  const series = buckets.map((bucket) => ({
+  const categoricalPalette = nocturneChartTheme.categoricalPalette;
+  const series = buckets.map((bucket, index) => ({
     name: bucket,
     type: "line" as const,
     symbol: "circle",
     symbolSize: 4,
+    itemStyle: { color: categoricalPalette[index % categoricalPalette.length] },
+    lineStyle: { color: categoricalPalette[index % categoricalPalette.length] },
     data: trend.map((t) => {
-      const row = t.rows.find((r) => (r.basis_bucket || "").trim() === bucket);
+      const row = t.rows.find((r) => ((r.basis_bucket || "").trim() || EM_DASH) === bucket);
       if (!row) return null;
       if (
         row.daily_avg_balance === null ||
         row.daily_avg_balance === undefined ||
         Number.isNaN(row.daily_avg_balance)
-      ) return null;
+      ) {
+        return null;
+      }
       return row.daily_avg_balance / YI;
     }),
   }));
 
-  return {
+  return nocturneChartTheme.createLineChartOption({
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "cross" },
-      formatter: (items: { seriesName: string; value: number | null; dataIndex: number }[]) => {
+      formatter: (params: unknown) => {
+        const items = Array.isArray(params) ? params as Array<{ seriesName: string; value: number | null; dataIndex: number }> : [];
         if (!items.length) return "";
         const idx = items[0].dataIndex;
         const header = `<strong>${labels[idx]}</strong>`;
@@ -53,28 +67,37 @@ function buildOption(trend: AdbAccountingBasisDailyAvgTrendItem[]) {
         return [header, ...lines].join("<br/>");
       },
     },
-    legend: { data: buckets, top: 0, type: "scroll" },
-    grid: { left: 56, right: 24, top: 48, bottom: 36 },
+    legend: { data: buckets },
+    grid: { left: 56, right: 24, top: 48 },
     xAxis: {
       type: "category",
       data: labels,
-      axisLabel: { fontSize: 11 },
       boundaryGap: false,
     },
     yAxis: {
       type: "value",
       axisLabel: { formatter: (v: number) => `${v.toFixed(0)}亿` },
-      splitLine: { lineStyle: { type: "dashed", color: "#e5e7eb" } },
+      splitLine: { lineStyle: { type: "dashed", color: nocturneChartTheme.splitLine.lineStyle.color } },
     },
     series,
-  };
+  });
 }
 
 /** 会计分桶日均余额按月的走势；数据来自后端 trend。 */
 export default function AdbAccountingBasisTrendChart({
   trend,
-  height = 300,
+  title,
+  height = CHART_CARD_HEIGHTS.hero,
+  flat = false,
 }: AdbAccountingBasisTrendChartProps) {
-  if (!trend.length) return null;
-  return <ReactECharts option={buildOption(trend)} style={{ width: "100%", height }} notMerge lazyUpdate />;
+  return (
+    <ChartCard
+      flat={flat}
+      title={title}
+      unit="亿元"
+      height={height}
+      legendRows={2}
+      option={trend.length ? buildOption(trend) : null}
+    />
+  );
 }

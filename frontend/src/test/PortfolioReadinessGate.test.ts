@@ -99,6 +99,53 @@ describe("portfolio readiness gate", () => {
     expect(gate.riskClosureFact).toBe("同日闭合 2026-05-31");
   });
 
+  it("reports one meta_date blocker per distinct date when all metadata date fields carry the same value", () => {
+    const gate = buildGate({
+      sources: [
+        source("债券总览"),
+        source("风险指标"),
+        source("资产负债", "2026-05-31", {
+          resolved_report_date: "2026-05-30",
+          as_of_date: "2026-05-30",
+          requested_report_date: "2026-05-30",
+        }),
+        source("损益归因"),
+      ],
+      riskMeta: {
+        resolved_report_date: "2026-05-30",
+        as_of_date: "2026-05-30",
+        requested_report_date: "2026-05-30",
+      },
+    });
+
+    expect(gate.blockingReasons.filter((reason) => reason.includes("meta_date="))).toEqual([
+      "资产负债 meta_date=2026-05-30",
+    ]);
+    expect(gate.blockingReasons.filter((reason) => reason.includes("meta_date=")).length).toBe(1);
+    expect(gate.riskClosureFact.split("；").filter((part) => part.includes("meta_date=")).length).toBe(1);
+    expect(gate.riskClosureFact).toContain("风险闭合证据 meta_date=2026-05-30");
+  });
+
+  it("still lists every distinct mismatched metadata date", () => {
+    const gate = buildGate({
+      sources: [
+        source("债券总览"),
+        source("风险指标"),
+        source("资产负债", "2026-05-31", {
+          resolved_report_date: "2026-05-30",
+          as_of_date: "2026-05-29",
+          requested_report_date: "2026-05-31",
+        }),
+        source("损益归因"),
+      ],
+    });
+
+    expect(gate.blockingReasons.filter((reason) => reason.includes("meta_date="))).toEqual([
+      "资产负债 meta_date=2026-05-30",
+      "资产负债 meta_date=2026-05-29",
+    ]);
+  });
+
   it("blocks decision-grade evidence when any metadata date field differs", () => {
     const gate = buildGate({
       sources: [

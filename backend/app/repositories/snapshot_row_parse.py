@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import logging
-from datetime import date
+import unicodedata
+from datetime import date, datetime
 from decimal import Decimal
 from uuid import uuid4
 
 import xlrd
+
+from backend.app.core_finance.safe_decimal import _THOUSANDS_SEPARATOR_RE
+from backend.app.core_finance.source_rules import describe_source_file
 from backend.app.repositories.currency_codes import normalize_currency_code
-from backend.app.services.source_rules import describe_source_file
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +32,7 @@ ZQTZ_ISSUER = "授信客户名称"
 ZQTZ_FAIR_VALUE = "公允价值"
 ZQTZ_AMORTIZED = "摊余成本"
 ZQTZ_ACCRUED = "应计利息"
+ZQTZ_INTEREST_RECEIVABLE_PAYABLE = "应收/应付利息"
 ZQTZ_FACE_VALUE = "面值"
 ZQTZ_INTEREST_MODE = "计息方式"
 ZQTZ_COUPON = "利率"
@@ -55,6 +59,20 @@ TYW_MATURITY = "到期日"
 TYW_PLEDGED = "质押债券号"
 
 _LIABILITY_PRODUCTS = frozenset({"同业拆入", "同业存放", "卖出回购证券", "卖出回购票据"})
+
+
+def _normalized_header(header: str) -> str:
+    """Fold full-width punctuation and any inner whitespace onto one comparable key."""
+    return "".join(unicodedata.normalize("NFKC", header).split())
+
+
+def _resolve_header(headers: list[str], canonical: str) -> str | None:
+    """Return the sheet header matching `canonical` allowing width/whitespace variants."""
+    target = _normalized_header(canonical)
+    for header in headers:
+        if header and _normalized_header(header) == target:
+            return header
+    return None
 
 
 def _text(row: dict[str, object], key: str) -> str:
@@ -93,7 +111,11 @@ def _decimal(value: object) -> Decimal | None:
         return None
     if isinstance(value, (int, float)):
         return Decimal(str(float(value)))
-    text = str(value).strip().replace(",", "")
+    text = str(value).strip()
+    if "," in text:
+        if not _THOUSANDS_SEPARATOR_RE.fullmatch(text):
+            return None
+        text = text.replace(",", "")
     if not text:
         return None
     try:
@@ -103,9 +125,53 @@ def _decimal(value: object) -> Decimal | None:
         return None
 
 
-def _decimal_required(value: object) -> Decimal:
+def _decimal_required(
+    value: object,
+    *,
+    family: str,
+    header: str,
+    row_number: int,
+    headers: list[str],
+) -> Decimal:
     parsed = _decimal(value)
-    return parsed if parsed is not None else Decimal("0")
+    if parsed is None or not parsed.is_finite():
+        column = headers.index(header) + 1 if header in headers else "missing"
+        raise ValueError(
+            f"{family} required amount invalid: header={header}, "
+            f"row={row_number}, column={column}"
+        )
+    return parsed
+
+
+def _zqtz_maturity_date(
+    book: xlrd.Book,
+    value: object,
+    *,
+    row_number: int,
+    column_number: int,
+) -> str | None:
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    if isinstance(value, str):
+        raw_text = value.strip()
+        try:
+            parsed = date.fromisoformat(raw_text).isoformat()
+        except ValueError:
+            try:
+                parsed = datetime.fromisoformat(raw_text).date().isoformat()
+            except ValueError:
+                parsed = None
+    else:
+        parsed = None if isinstance(value, bool) else _cell_to_iso_date(book, value)
+    try:
+        if parsed is None:
+            raise ValueError("date could not be parsed")
+        date.fromisoformat(parsed)
+    except ValueError as exc:
+        raise ValueError(
+            f"ZQTZ maturity_date invalid: row={row_number}, column={column_number}"
+        ) from exc
+    return parsed
 
 
 def parse_zqtz_snapshot_rows_from_bytes(
@@ -119,7 +185,13 @@ def parse_zqtz_snapshot_rows_from_bytes(
     book = xlrd.open_workbook(file_contents=file_bytes)
     sheet = book.sheet_by_index(0)
     headers = [str(sheet.cell_value(1, column)).strip() for column in range(sheet.ncols)]
+    if ZQTZ_MATURITY not in headers:
+        raise ValueError("ZQTZ required column missing: maturity_date")
+    if headers.count(ZQTZ_MATURITY) != 1:
+        raise ValueError("ZQTZ required column ambiguous: maturity_date")
+    maturity_column = headers.index(ZQTZ_MATURITY) + 1
     metadata = describe_source_file(source_file)
+    interest_receivable_header = _resolve_header(headers, ZQTZ_INTEREST_RECEIVABLE_PAYABLE)
     rows_out: list[dict[str, object]] = []
 
     for row_index in range(2, sheet.nrows):
@@ -128,8 +200,16 @@ def parse_zqtz_snapshot_rows_from_bytes(
             for column in range(sheet.ncols)
             if headers[column]
         }
+        if not any(_text(raw_row, header) for header in headers):
+            continue
         report_cell = raw_row.get(ZQTZ_DATE)
-        report_date = metadata.report_date or _cell_to_iso_date(book, report_cell)
+        sheet_date = _cell_to_iso_date(book, report_cell)
+        if metadata.report_date and sheet_date and metadata.report_date != sheet_date:
+            raise ValueError(
+                f"ZQTZ source date mismatch: file={metadata.report_date}, sheet={sheet_date}, "
+                f"row={row_index + 1}; verify the source before materialization."
+            )
+        report_date = metadata.report_date or sheet_date
         if not report_date:
             continue
 
@@ -140,6 +220,14 @@ def parse_zqtz_snapshot_rows_from_bytes(
         account_category = _text(raw_row, ZQTZ_ACCOUNT_CATEGORY)
         asset_class = _text(raw_row, ZQTZ_ASSET_CLASS)
         issuance_markers = (business_kind, business_one, account_category, asset_class)
+        # Human: caliber-issuance_exclusion-justified -- known duplicate of the
+        # canonical issuance/liability check in
+        # backend/app/core_finance/config/classification_rules.py::is_bond_liability.
+        # NOTE: this flag IS formal-facing -- downstream balance/ADB/liability
+        # services consume is_issuance_like for asset/liability scope splits,
+        # which is exactly why this dual-caliber shim must stay registered here.
+        # Unifying it with the canonical helper is tracked under PRD Q-PRD-5's
+        # reconciliation-gate cadence; this marker only closes the audit-scan blind spot.
         is_issuance_like = any("发行类债" in marker or marker == "发行类债劵" for marker in issuance_markers)
 
         overdue_raw = _decimal(_text(raw_row, ZQTZ_OVERDUE_DAYS) or raw_row.get(ZQTZ_OVERDUE_DAYS))
@@ -161,13 +249,47 @@ def parse_zqtz_snapshot_rows_from_bytes(
                 "industry_name": _text(raw_row, ZQTZ_INDUSTRY) or None,
                 "rating": _text(raw_row, ZQTZ_RATING) or None,
                 "currency_code": normalize_currency_code(raw_row.get(ZQTZ_CURRENCY)),
-                "face_value_native": _decimal_required(raw_row.get(ZQTZ_FACE_VALUE)),
-                "market_value_native": _decimal_required(raw_row.get(ZQTZ_FAIR_VALUE)),
-                "amortized_cost_native": _decimal_required(raw_row.get(ZQTZ_AMORTIZED)),
-                "accrued_interest_native": _decimal_required(raw_row.get(ZQTZ_ACCRUED)),
+                "face_value_native": _decimal_required(
+                    raw_row.get(ZQTZ_FACE_VALUE),
+                    family="ZQTZ",
+                    header=ZQTZ_FACE_VALUE,
+                    row_number=row_index + 1,
+                    headers=headers,
+                ),
+                "market_value_native": _decimal_required(
+                    raw_row.get(ZQTZ_FAIR_VALUE),
+                    family="ZQTZ",
+                    header=ZQTZ_FAIR_VALUE,
+                    row_number=row_index + 1,
+                    headers=headers,
+                ),
+                "amortized_cost_native": _decimal_required(
+                    raw_row.get(ZQTZ_AMORTIZED),
+                    family="ZQTZ",
+                    header=ZQTZ_AMORTIZED,
+                    row_number=row_index + 1,
+                    headers=headers,
+                ),
+                "accrued_interest_native": _decimal_required(
+                    raw_row.get(ZQTZ_ACCRUED),
+                    family="ZQTZ",
+                    header=ZQTZ_ACCRUED,
+                    row_number=row_index + 1,
+                    headers=headers,
+                ),
+                "interest_receivable_payable": (
+                    _decimal(raw_row.get(interest_receivable_header))
+                    if interest_receivable_header
+                    else None
+                ),
                 "coupon_rate": _decimal(raw_row.get(ZQTZ_COUPON)),
                 "ytm_value": _decimal(raw_row.get(ZQTZ_YTM)),
-                "maturity_date": _cell_to_iso_date(book, raw_row.get(ZQTZ_MATURITY)),
+                "maturity_date": _zqtz_maturity_date(
+                    book,
+                    raw_row.get(ZQTZ_MATURITY),
+                    row_number=row_index + 1,
+                    column_number=maturity_column,
+                ),
                 "next_call_date": _cell_to_iso_date(book, raw_row.get(ZQTZ_NEXT_CALL)),
                 "overdue_days": overdue_days,
                 "is_issuance_like": bool(is_issuance_like),
@@ -208,6 +330,8 @@ def parse_tyw_snapshot_rows_from_bytes(
             for column in range(sheet.ncols)
             if headers[column]
         }
+        if not any(_text(raw_row, header) for header in headers):
+            continue
         product_type = _text(raw_row, TYW_PRODUCT)
         position_side = "liability" if product_type in _LIABILITY_PRODUCTS else "asset"
 
@@ -222,8 +346,20 @@ def parse_tyw_snapshot_rows_from_bytes(
                 "special_account_type": _text(raw_row, TYW_SPECIAL_ACCOUNT) or None,
                 "core_customer_type": _text(raw_row, TYW_CORE_CUSTOMER) or None,
                 "currency_code": normalize_currency_code(raw_row.get(TYW_CURRENCY)),
-                "principal_native": _decimal_required(raw_row.get(TYW_PRINCIPAL)),
-                "accrued_interest_native": _decimal_required(raw_row.get(TYW_ACCRUED)),
+                "principal_native": _decimal_required(
+                    raw_row.get(TYW_PRINCIPAL),
+                    family="TYW",
+                    header=TYW_PRINCIPAL,
+                    row_number=row_index + 1,
+                    headers=headers,
+                ),
+                "accrued_interest_native": _decimal_required(
+                    raw_row.get(TYW_ACCRUED),
+                    family="TYW",
+                    header=TYW_ACCRUED,
+                    row_number=row_index + 1,
+                    headers=headers,
+                ),
                 "funding_cost_rate": _decimal(raw_row.get(TYW_RATE)),
                 "maturity_date": _cell_to_iso_date(book, raw_row.get(TYW_MATURITY)),
                 "pledged_bond_code": _text(raw_row, TYW_PLEDGED) or None,

@@ -6,7 +6,35 @@ from typing import Literal
 RoutePolicyClass = Literal["public", "internal", "admin"]
 RoutePolicyState = Literal["active", "reserved"]
 
-ADMIN_SCOPE_ACTIONS = frozenset({"backfill", "delete", "execute", "import", "refresh", "write"})
+ADMIN_SCOPE_ACTIONS = frozenset(
+    {"approve", "backfill", "delete", "execute", "import", "refresh", "write"}
+)
+# Every admin-class action is high risk: allow decisions bypass the scope-decision
+# cache (a revoke takes effect on the next check) and a grant bound to the viewer role
+# is refused. Keeping this equal to ADMIN_SCOPE_ACTIONS means approve/delete/backfill/
+# import cannot silently fall into the cached, viewer-grantable tier; a test pins the
+# set against every admin-class entry of POLICY_SCOPE_SEMANTICS.
+HIGH_RISK_SCOPE_ACTIONS = ADMIN_SCOPE_ACTIONS
+ROLE_POLICY_CLASSES: dict[str, RoutePolicyClass] = {
+    "admin": "admin",
+    "developer": "internal",
+    "ops": "internal",
+    "reader": "internal",
+    "reviewer": "internal",
+    "viewer": "internal",
+}
+_POLICY_CLASS_RANK: dict[RoutePolicyClass, int] = {
+    "public": 0,
+    "internal": 1,
+    "admin": 2,
+}
+
+
+def role_meets_policy_class(role: str | None, required_class: RoutePolicyClass) -> bool:
+    normalized_role = (role or "").strip().casefold()
+    # Unknown roles default to public-only so a future enforcement switch fails closed.
+    role_class = ROLE_POLICY_CLASSES.get(normalized_role, "public")
+    return _POLICY_CLASS_RANK[role_class] >= _POLICY_CLASS_RANK[required_class]
 
 
 @dataclass(frozen=True)
@@ -22,7 +50,9 @@ POLICY_SCOPE_SEMANTICS: dict[tuple[str, str], RoutePolicySemantics] = {
     ("accounting_asset_movement", "refresh"): RoutePolicySemantics("admin", "Balance movement owner"),
     ("adb_analysis", "backfill"): RoutePolicySemantics("admin", "Average balance owner"),
     ("adb_analysis", "read"): RoutePolicySemantics("internal", "Average balance owner"),
+    ("agent", "execute"): RoutePolicySemantics("admin", "Agent workbench owner"),
     ("agent", "read"): RoutePolicySemantics("internal", "Agent workbench owner"),
+    ("agent", "write"): RoutePolicySemantics("admin", "Agent workbench owner"),
     ("balance_analysis", "read"): RoutePolicySemantics("internal", "Balance analysis owner"),
     ("balance_analysis", "refresh"): RoutePolicySemantics("admin", "Balance analysis owner"),
     ("balance_analysis.decision_status", "write"): RoutePolicySemantics("admin", "Balance governance owner"),
@@ -35,6 +65,7 @@ POLICY_SCOPE_SEMANTICS: dict[tuple[str, str], RoutePolicySemantics] = {
     ("credit_spread_analysis", "read"): RoutePolicySemantics("internal", "Bond analytics owner"),
     ("cube", "read"): RoutePolicySemantics("internal", "Query surface owner"),
     ("dashboard", "read"): RoutePolicySemantics("internal", "Executive cockpit owner"),
+    ("data_health", "read"): RoutePolicySemantics("internal", "Platform health owner"),
     ("executive", "read"): RoutePolicySemantics("internal", "Executive cockpit owner"),
     ("external_data", "read"): RoutePolicySemantics("internal", "Market data owner"),
     ("formal_pnl", "refresh"): RoutePolicySemantics("admin", "Formal PnL owner"),
@@ -55,14 +86,17 @@ POLICY_SCOPE_SEMANTICS: dict[tuple[str, str], RoutePolicySemantics] = {
     ("macro_toolkit.source_backfill", "refresh"): RoutePolicySemantics("admin", "Macro tooling owner"),
     ("macro_vendor", "read"): RoutePolicySemantics("internal", "Macro observation owner"),
     ("macro_vendor.choice_series", "refresh"): RoutePolicySemantics("admin", "Macro observation owner"),
+    ("market_data.macro_etf_strategy", "read"): RoutePolicySemantics("internal", "Market data owner"),
     ("market_data.livermore", "read"): RoutePolicySemantics("internal", "Market data owner"),
     ("market_data.livermore_gate_supplement", "refresh"): RoutePolicySemantics("admin", "Market data owner"),
     ("market_data.livermore_position_snapshot", "import"): RoutePolicySemantics("admin", "Market data owner"),
     ("market_data_ncd_proxy", "read"): RoutePolicySemantics("internal", "Market data owner"),
     ("pnl", "read"): RoutePolicySemantics("internal", "Formal PnL owner"),
     ("pnl_attribution", "read"): RoutePolicySemantics("internal", "PnL attribution owner"),
+    ("pnl_by_business.adjustment", "approve"): RoutePolicySemantics("admin", "Business PnL owner"),
     ("pnl_by_business.adjustment", "write"): RoutePolicySemantics("admin", "Business PnL owner"),
     ("positions", "read"): RoutePolicySemantics("internal", "Positions owner"),
+    ("pretrade_checklist", "read"): RoutePolicySemantics("internal", "Market data owner"),
     ("product_category_pnl", "read"): RoutePolicySemantics("internal", "Product category PnL owner"),
     ("product_category_pnl", "refresh"): RoutePolicySemantics("admin", "Product category PnL owner"),
     ("product_category_pnl.adjustment", "write"): RoutePolicySemantics("admin", "Product category PnL owner"),
@@ -73,4 +107,6 @@ POLICY_SCOPE_SEMANTICS: dict[tuple[str, str], RoutePolicySemantics] = {
     ("risk_tensor", "read"): RoutePolicySemantics("internal", "Risk tensor owner"),
     ("source_preview.source_foundation", "read"): RoutePolicySemantics("internal", "Reports and data owner"),
     ("source_preview.source_foundation", "refresh"): RoutePolicySemantics("admin", "Reports and data owner"),
+    ("strategy_reports", "read"): RoutePolicySemantics("internal", "Market data owner"),
+    ("team_performance", "read"): RoutePolicySemantics("internal", "Team performance workbook owner"),
 }

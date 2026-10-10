@@ -1,0 +1,5 @@
+.market-source-context {display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px;border:1px solid var(--dh-api-line);border-radius:8px;background:var(--dh-api-panel);color:var(--dh-api-ink);overflow-wrap:anywhere}
+.market-source-context p {margin:6px 0}
+.market-source-context small {color:var(--dh-api-muted)}
+.market-source-context a {color:var(--dh-api-blue);min-height:44px;display:inline-flex;align-items:center;flex-shrink:0}
+@media(max-width:767px){.market-source-context{align-items:flex-start;flex-direction:column}}

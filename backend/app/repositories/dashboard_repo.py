@@ -6,6 +6,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import duckdb
+from backend.app.core_finance.rate_units import NEGATIVE_YIELD_DIRTY_FLOOR
 from backend.app.repositories.bond_analytics_repo import FACT_TABLE
 from backend.app.repositories.duckdb_repo import DuckDBRepository
 
@@ -16,9 +17,26 @@ _BOND_YTM_NORM = (
     "(case when ytm is null then null "
     "when ytm > 1 and ytm <= 100 then ytm / 100.0 else ytm end)"
 )
+# 合法负收益率的脏值下界（百分数口径，含端点），单一来源是
+# core_finance.rate_units.NEGATIVE_YIELD_DIRTY_FLOOR（小数 −0.20 → 百分数 −20）。
+_ZQTZ_YTM_NEGATIVE_FLOOR_PERCENT = Decimal(str(NEGATIVE_YIELD_DIRTY_FLOOR)) * 100
+# zqtz 余额事实的 ytm_value 为百分数口径：无条件 /100；[−20, 20] 之外（年利率低于 −20%
+# 或高于 20%）视为脏数据置 NULL，区间内的负值是合法负收益率、按观测值参与加权。对齐
+# core_finance.rate_units.normalize_percent_rate_to_decimal(negative_floor=
+# NEGATIVE_YIELD_DIRTY_FLOOR) 的权威口径（旧 `>1 and <=100` 启发式会把 ≤1% 低票息券
+# 当小数直通放大百倍）。
 _ZQTZ_YTM_NORM = (
     "(case when ytm_value is null then null "
-    "when ytm_value > 1 and ytm_value <= 100 then ytm_value / 100.0 else ytm_value end)"
+    f"when ytm_value < {_ZQTZ_YTM_NEGATIVE_FLOOR_PERCENT} or ytm_value > 20 then null "
+    "else ytm_value / 100.0 end)"
+)
+# 加权 YTM 分母只计入「归一后利率非 NULL」的行：缺失≠0，缺失/脏值市值不得稀释
+# 加权收益率（与 _TYW_RATE_WEIGHT、positions_repo 的 rate_den 同一模式）。
+_ZQTZ_YTM_WEIGHT = (
+    f"(case when {_ZQTZ_YTM_NORM} is null then 0 else coalesce(market_value_amount, 0) end)"
+)
+_BOND_YTM_WEIGHT = (
+    f"(case when {_BOND_YTM_NORM} is null then 0 else coalesce(market_value, 0) end)"
 )
 _TYW_RATE_NORM = (
     "(case when funding_cost_rate is null then null "
@@ -36,6 +54,8 @@ _ASSET_PRED = (
 
 
 CoreMetricResult = tuple[Decimal, Decimal | None, list[tuple[str, Decimal, Decimal | None]], bool]
+
+
 
 
 def _normalize_dates(report_dates: list[str]) -> list[str]:
@@ -100,8 +120,9 @@ class DashboardRepository(DuckDBRepository):
         if self.guard_path_exists and not Path(self.path).exists():
             return empty_context
 
-        conn = duckdb.connect(self.path, read_only=True)
-        try:
+        with self.scoped_connection() as conn:
+            if conn is None:
+                return empty_context
             context = {key: list(value) for key, value in empty_context.items()}
             existing_tables = _existing_tables_conn(
                 conn,
@@ -177,14 +198,13 @@ class DashboardRepository(DuckDBRepository):
                 if key in context and report_date is not None:
                     context[key].append(str(report_date))
             return context
-        finally:
-            conn.close()
 
     def list_merged_report_dates(self) -> list[str]:
         if self.guard_path_exists and not Path(self.path).exists():
             return []
-        conn = duckdb.connect(self.path, read_only=True)
-        try:
+        with self.scoped_connection() as conn:
+            if conn is None:
+                return []
             parts: list[str] = []
             if _table_exists_conn(conn, ZQTZ_FACT):
                 parts.append(
@@ -203,8 +223,6 @@ class DashboardRepository(DuckDBRepository):
             inner = " union ".join(parts)
             rows = conn.execute(f"select distinct d from ({inner}) t order by d desc").fetchall()
             return [str(r[0]) for r in rows if r[0] is not None]
-        finally:
-            conn.close()
 
     def fetch_bond_core_metrics(
         self,
@@ -213,8 +231,9 @@ class DashboardRepository(DuckDBRepository):
         """CNY formal bond balance total MV, weighted YTM, top-3 bond_type rows."""
         if self.guard_path_exists and not Path(self.path).exists():
             return Decimal("0"), None, [], False
-        conn = duckdb.connect(self.path, read_only=True)
-        try:
+        with self.scoped_connection() as conn:
+            if conn is None:
+                return _empty_core_metric_result()
             if _table_exists_conn(conn, ZQTZ_FACT):
                 balance_rows = conn.execute(
                     f"""
@@ -231,7 +250,7 @@ class DashboardRepository(DuckDBRepository):
                           count(*),
                           coalesce(sum(market_value_amount), 0),
                           sum(({_ZQTZ_YTM_NORM}) * market_value_amount)
-                            / nullif(sum(market_value_amount), 0)
+                            / nullif(sum({_ZQTZ_YTM_WEIGHT}), 0)
                         from {ZQTZ_FACT}
                         where cast(report_date as varchar) = ?
                           and currency_basis = 'CNY'
@@ -249,7 +268,7 @@ class DashboardRepository(DuckDBRepository):
                           cast(bond_type as varchar) as bt,
                           coalesce(sum(market_value_amount), 0) as smv,
                           sum(({_ZQTZ_YTM_NORM}) * market_value_amount)
-                            / nullif(sum(market_value_amount), 0) as wytm
+                            / nullif(sum({_ZQTZ_YTM_WEIGHT}), 0) as wytm
                         from {ZQTZ_FACT}
                         where cast(report_date as varchar) = ?
                           and currency_basis = 'CNY'
@@ -281,7 +300,7 @@ class DashboardRepository(DuckDBRepository):
                   count(*),
                   coalesce(sum(market_value), 0),
                   sum(({_BOND_YTM_NORM}) * market_value)
-                    / nullif(sum(market_value), 0)
+                    / nullif(sum({_BOND_YTM_WEIGHT}), 0)
                 from {FACT_TABLE}
                 where cast(report_date as varchar) = ?
                 """,
@@ -296,7 +315,7 @@ class DashboardRepository(DuckDBRepository):
                 select
                   cast(bond_type as varchar) as bt,
                   coalesce(sum(market_value), 0) as smv,
-                  sum(({_BOND_YTM_NORM}) * market_value) / nullif(sum(market_value), 0) as wytm
+                  sum(({_BOND_YTM_NORM}) * market_value) / nullif(sum({_BOND_YTM_WEIGHT}), 0) as wytm
                 from {FACT_TABLE}
                 where cast(report_date as varchar) = ?
                   and bond_type is not null
@@ -316,8 +335,6 @@ class DashboardRepository(DuckDBRepository):
                 for r in rows3
             ]
             return tot, wy, top3, has_rows
-        finally:
-            conn.close()
 
     def fetch_bond_core_metrics_for_dates(self, report_dates: list[str]) -> dict[str, CoreMetricResult]:
         """Batch variant of fetch_bond_core_metrics, preserving the same source preference."""
@@ -328,8 +345,9 @@ class DashboardRepository(DuckDBRepository):
         if self.guard_path_exists and not Path(self.path).exists():
             return results
 
-        conn = duckdb.connect(self.path, read_only=True)
-        try:
+        with self.scoped_connection() as conn:
+            if conn is None:
+                return {}
             placeholders = ", ".join(["?"] * len(dates))
             if _table_exists_conn(conn, ZQTZ_FACT):
                 balance_rows = conn.execute(
@@ -348,7 +366,7 @@ class DashboardRepository(DuckDBRepository):
                           count(*) as row_count,
                           coalesce(sum(market_value_amount), 0) as smv,
                           sum(({_ZQTZ_YTM_NORM}) * market_value_amount)
-                            / nullif(sum(market_value_amount), 0) as wytm
+                            / nullif(sum({_ZQTZ_YTM_WEIGHT}), 0) as wytm
                         from {ZQTZ_FACT}
                         where cast(report_date as varchar) in ({placeholders})
                           and currency_basis = 'CNY'
@@ -375,7 +393,7 @@ class DashboardRepository(DuckDBRepository):
                             cast(bond_type as varchar) as bt,
                             coalesce(sum(market_value_amount), 0) as smv,
                             sum(({_ZQTZ_YTM_NORM}) * market_value_amount)
-                              / nullif(sum(market_value_amount), 0) as wytm
+                              / nullif(sum({_ZQTZ_YTM_WEIGHT}), 0) as wytm
                           from {ZQTZ_FACT}
                           where cast(report_date as varchar) in ({placeholders})
                             and currency_basis = 'CNY'
@@ -427,7 +445,7 @@ class DashboardRepository(DuckDBRepository):
                   cast(report_date as varchar) as d,
                   count(*) as row_count,
                   coalesce(sum(market_value), 0) as smv,
-                  sum(({_BOND_YTM_NORM}) * market_value) / nullif(sum(market_value), 0) as wytm
+                  sum(({_BOND_YTM_NORM}) * market_value) / nullif(sum({_BOND_YTM_WEIGHT}), 0) as wytm
                 from {FACT_TABLE}
                 where cast(report_date as varchar) in ({placeholders})
                 group by cast(report_date as varchar)
@@ -451,7 +469,7 @@ class DashboardRepository(DuckDBRepository):
                     cast(report_date as varchar) as d,
                     cast(bond_type as varchar) as bt,
                     coalesce(sum(market_value), 0) as smv,
-                    sum(({_BOND_YTM_NORM}) * market_value) / nullif(sum(market_value), 0) as wytm
+                    sum(({_BOND_YTM_NORM}) * market_value) / nullif(sum({_BOND_YTM_WEIGHT}), 0) as wytm
                   from {FACT_TABLE}
                   where cast(report_date as varchar) in ({placeholders})
                     and bond_type is not null
@@ -469,7 +487,7 @@ class DashboardRepository(DuckDBRepository):
                 """,
                 fallback_dates,
             ).fetchall()
-            tops: dict[str, list[tuple[str, Decimal, Decimal | None]]] = {}
+            tops = {}
             for row in rows3:
                 tops.setdefault(str(row[0]), []).append(
                     (
@@ -483,8 +501,6 @@ class DashboardRepository(DuckDBRepository):
                     tot, wy, _, has_rows = results[d]
                     results[d] = (tot, wy, top3, has_rows)
             return results
-        finally:
-            conn.close()
 
     def fetch_tyw_core_metrics(
         self,
@@ -495,8 +511,9 @@ class DashboardRepository(DuckDBRepository):
         """Principal total + funding-cost weighted avg + top-3 counterparty rows (CNY formal TYW)."""
         if self.guard_path_exists and not Path(self.path).exists():
             return Decimal("0"), None, [], False
-        conn = duckdb.connect(self.path, read_only=True)
-        try:
+        with self.scoped_connection() as conn:
+            if conn is None:
+                return _empty_core_metric_result()
             if not _table_exists_conn(conn, TYW_FACT):
                 return Decimal("0"), None, [], False
             side_sql = _ASSET_PRED if asset_side else f"NOT ({_ASSET_PRED})"
@@ -544,8 +561,6 @@ class DashboardRepository(DuckDBRepository):
                 for r in rows3
             ]
             return tot, wr, top3, has_rows
-        finally:
-            conn.close()
 
     def fetch_tyw_core_metrics_for_dates(
         self,
@@ -560,8 +575,9 @@ class DashboardRepository(DuckDBRepository):
         if self.guard_path_exists and not Path(self.path).exists():
             return results
 
-        conn = duckdb.connect(self.path, read_only=True)
-        try:
+        with self.scoped_connection() as conn:
+            if conn is None:
+                return {}
             if not _table_exists_conn(conn, TYW_FACT):
                 return results
             side_sql = _ASSET_PRED if asset_side else f"NOT ({_ASSET_PRED})"
@@ -632,5 +648,3 @@ class DashboardRepository(DuckDBRepository):
                     tot, wr, _, has_rows = results[d]
                     results[d] = (tot, wr, top3, has_rows)
             return results
-        finally:
-            conn.close()

@@ -2,9 +2,31 @@
 useDefault = true
 
 [[allowlists]]
-description = "Generated repo snapshots and local artifact directories"
+description = "Mypy historical replay source digests are SHA256 evidence, not API keys"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^scripts[/\\]mypy_baseline\.json$''']
+regexTarget = "line"
+regexes = [
+  '''^\s*"backend/app/agent/runtime/action_token\.py": "(?:c75cc8bd9733fc0c15e0712d656fa1eb07f2df07183326672b35d9a584807209)",?\s*$''',
+  '''^\s*"backend/app/schemas/auth_context\.py": "(?:d79b2be306ef9cbbb0be277f020784a11195522c39e40c8188c962c3932e5b6c)",?\s*$''',
+  '''^\s*"backend/app/security/auth_context\.py": "(?:0e0de5fc081600ee7f5765a9edf0d7fabacc22dba0e68c9011965f94b1a6b196)",?\s*$''',
+  '''^\s*"backend/app/security/auth_stub\.py": "(?:e6102423547d8d6a7c8ae704b8ceebcfffc01b567dbb49b188dd95598d59540b)",?\s*$''',
+  '''^\s*"scripts/api_contract_check\.py": "(?:062f96f042f2c5bcaa38e4028cea0b6d5b7721e0be36f687647c2e12d2aad84e)",?\s*$''',
+  '''^\s*"scripts/api_surface\.py": "(?:34d1bd87aaef55279747eada4942939b02312d40249b9998a96457d2fdaa083c)",?\s*$''',
+  '''^\s*"scripts/audit_visual_tokens\.baseline\.json": "(?:67775fbf9176035bd6e7a943ccd7af94c2d6c966d84ccf84e3dfc274329ffda3)",?\s*$''',
+  '''^\s*"scripts/audit_visual_tokens\.mjs": "(?:9f05e594cd6c9ab4b839bfc069bb19c0d3ec0e5e3d04b7ab4ef54620b84bc793)",?\s*$''',
+  '''^\s*"scripts/backend_api_inventory\.py": "(?:486e266e0590d9992801ffd03d8438374b466a87364fa0443274e2557751f8ea)",?\s*$''',
+  '''^\s*"scripts/codemod_ib_to_dh_api\.mjs": "(?:21bb6b5305f0a3295a2ce76de27b571e43365b1de151ec3c6aeeab507ecbaf08)",?\s*$''',
+  '''^\s*"scripts/dev-agent-api\.cmd": "(?:7fdfd1693b4fd66389a7d4c467dbebf21fa0b09e0be41e111b5c4aa3a61033ed)",?\s*$''',
+  '''^\s*"scripts/dev-agent-api\.ps1": "(?:140f6df41ff3e6f559f559c90bc720159f3a4a03c8dd24972cc29d68b520ce29)",?\s*$''',
+  '''^\s*"scripts/dev-api\.ps1": "(?:a8bcc9e26e540d2a4eb54cfa1b3a1f8a6503e16c8d3dc374759fc282c0f8d2ff)",?\s*$''',
+  '''^\s*"scripts/refresh_local_secret_hygiene_snapshot\.py": "(?:2fa775587d4026af84e03eedddf27fa18ceae0907df8fbb36d2dd465cdbc007f)",?\s*$''',
+]
+
+[[allowlists]]
+description = "Local generated artifact and runtime directories"
 paths = [
-  '''^audit_pack/source_snapshot/''',
   '''^\.codex-tmp/''',
   '''^\.codex-pr-logs/''',
   '''^\.omx/''',
@@ -33,7 +55,7 @@ paths = [
 description = "Business identifier fields named key are not credentials"
 regexTarget = "match"
 regexes = [
-  '''(?i)(^|[^A-Za-z0-9_])["']?(key|kpiKey|decisionKey|decision_key|component_key)["']?\s*(:|={1,3})\s*["'][A-Za-z0-9._:/-]+["']''',
+  '''(?i)(^|[^A-Za-z0-9_])["']?(key|kpiKey|decisionKey|decision_key|component_key|cache_key|idempotency_key|base_idempotency_key|lineage_idempotency_key|candidate_idempotency_key|readiness_evidence_key|evidence_pack_key)["']?\s*(:|={1,3})\s*["'][A-Za-z0-9._:/-]+["']''',
 ]
 
 [[allowlists]]

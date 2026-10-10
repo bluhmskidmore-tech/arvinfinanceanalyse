@@ -5,10 +5,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
+from backend.app.core_finance.source_rules import describe_source_file
 from backend.app.repositories.object_store_repo import ObjectStoreRepository
 from backend.app.repositories.source_manifest_repo import SourceManifestRepository
 from backend.app.schemas.ingest import IngestManifestRow, IngestRunSummary
-from backend.app.services.source_rules import describe_source_file
 
 
 def _iter_data_input_scan_paths(data_root: Path) -> list[Path]:
@@ -91,11 +91,16 @@ class IngestService:
         for row in rows:
             source_path = Path(str(row["file_path"]))
             source_key = source_path.relative_to(self.data_root).as_posix()
-            archive_info = self.object_store_repo.archive_file(
-                source_path,
+            payload = source_path.read_bytes()
+            source_version = f"sv_{hashlib.sha256(payload).hexdigest()[:12]}"
+            if source_version != row["source_version"]:
+                raise ValueError(f"Input changed after scan; rescan before archiving: {source_path.name}")
+            archive_info = self.object_store_repo.archive_bytes(
+                payload,
                 source_name=str(row["source_name"]),
                 source_key=source_key,
                 ingest_batch_id=ingest_batch_id,
+                suffix=source_path.suffix,
             )
             merged = {
                 **row,

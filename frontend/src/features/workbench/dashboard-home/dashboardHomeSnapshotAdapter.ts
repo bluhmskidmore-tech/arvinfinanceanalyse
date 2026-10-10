@@ -15,8 +15,10 @@ import type { Tone } from "../../../utils/tone";
 import {
   sanitizeMetricDetail,
   sanitizeMetricLabel,
-} from "../../executive-dashboard/lib/sanitizeMetricCopy";
+} from "./lib/sanitizeMetricCopy";
+import type { HomeProductCategoryHeadline } from "./dashboardHomeFirstScreenTypes";
 
+import { EM_DASH } from "../../../utils/format";
 type HomeSnapshotMetricTone = "positive" | "neutral" | "warning" | "negative";
 
 export type HomeSnapshotOverviewMetricVM = {
@@ -61,6 +63,8 @@ export type HomeSnapshotAdapterOutput = {
   };
   verdict: VerdictPayload | null;
   domainsEffectiveDate: Record<string, string>;
+  domainsMissing: readonly string[];
+  productCategoryHeadline: HomeProductCategoryHeadline;
   datesDiverged: boolean;
 };
 
@@ -301,6 +305,149 @@ function datesDiverged(domains: Record<string, string>): boolean {
   return uniqueDates.size > 1;
 }
 
+const PRODUCT_CATEGORY_GAP = EM_DASH;
+
+function isGovernedNumeric(value: Numeric | null | undefined): boolean {
+  return value?.raw != null && Number.isFinite(value.raw);
+}
+
+function governedDisplay(value: Numeric | null | undefined): string {
+  if (!isGovernedNumeric(value)) {
+    return PRODUCT_CATEGORY_GAP;
+  }
+  const display = value?.display?.trim();
+  return display && display !== "--" && display !== PRODUCT_CATEGORY_GAP
+    ? display
+    : PRODUCT_CATEGORY_GAP;
+}
+
+function governedDetail(value: string | null | undefined): string {
+  return value?.trim() || "对应快照字段未下发";
+}
+
+/** 构成口径以产品分类损益页为准，title 补一条下钻指引。 */
+function withProductCategoryCaveat(detail: string): string {
+  return `${detail}（口径详见产品分类损益页）`;
+}
+
+const OPERATING_INCOME_METRIC_ID = "ytd-operating-income";
+
+const OPERATING_INCOME_PENDING_DETAIL =
+  "正式财务指标「集团营业收入」已登记，但生产来源未接入（source_status=formal_pending），" +
+  "按治理规则系统值须留空，且不能用 QDB 分析值顶替；" +
+  "快照 operating_income 当前与年度汇总损益同源（grand_total.business_net_income），不是营业收入。";
+
+/** QDB 总账候选口径的营业收入，由首屏补充查询异步取回；取不到时该格保持「未接入」占位。 */
+export type HomeOperatingRevenueCandidate = {
+  /** 已按显示精度格式化的金额，例如 `90.56 亿`。 */
+  display: string;
+  status: "ok" | "warning" | "manual_default" | "error";
+  reportMonth: string;
+};
+
+function operatingRevenueCandidateDetail(
+  candidate: HomeOperatingRevenueCandidate,
+): string {
+  const base =
+    `母公司营业收入（可自动口径）= 利息净收入 + 非息净收入合计，` +
+    `取自 QDB 总账候选指标 ${candidate.reportMonth}；` +
+    `候选值不具备正式使用权限，不含并表抵销、子公司营业收入与手工调整，` +
+    `与正式表的「集团营业收入」不是同一口径。`;
+  return candidate.status === "ok"
+    ? base
+    : `${base}本期计算状态为 ${candidate.status}：存在未录入的人工调整项或未观测到的规则科目，这些输入按 0 参与计算。`;
+}
+
+/**
+ * 把候选营业收入合入产品分类摘要。候选值来自 qdb_gl 分析面，首页快照本身是
+ * analytical 面（formal_use_allowed=false），因此这里只做展示合并，不进入任何正式计算链。
+ */
+export function applyOperatingRevenueCandidate(
+  headline: HomeProductCategoryHeadline,
+  candidate: HomeOperatingRevenueCandidate | null | undefined,
+): HomeProductCategoryHeadline {
+  const display = candidate?.display?.trim();
+  if (!candidate || !display) {
+    return headline;
+  }
+  return {
+    ...headline,
+    metrics: headline.metrics.map((metric) =>
+      metric.id === OPERATING_INCOME_METRIC_ID
+        ? {
+            ...metric,
+            label: "年度营业收入 · 母公司候选",
+            value: display,
+            detail: operatingRevenueCandidateDetail(candidate),
+          }
+        : metric,
+    ),
+  };
+}
+
+function productCategoryState(args: {
+  hasAnyPayload: boolean;
+  isComplete: boolean;
+  meta: ResultMeta | null;
+  isLoading: boolean;
+  isError: boolean;
+}): HomeProductCategoryHeadline["state"] {
+  if (args.isLoading) return "loading";
+  if (args.isError) return "error";
+  if (!args.hasAnyPayload) return "empty";
+  if (!args.isComplete) return "partial";
+  if (
+    args.meta?.quality_flag === "stale" ||
+    args.meta?.vendor_status === "vendor_stale"
+  ) {
+    return "stale";
+  }
+  return "ready";
+}
+
+function buildProductCategoryHeadline(
+  result: HomeSnapshotPayload | undefined,
+  input: HomeSnapshotAdapterInput,
+  meta: ResultMeta | null,
+): HomeProductCategoryHeadline {
+  const ytd = result?.product_category_ytd ?? null;
+  const monthly = result?.product_category_monthly ?? null;
+  const hasAnyPayload = Boolean(ytd || monthly);
+  const governedValues = [
+    ytd?.summary_pnl,
+    ytd?.operating_income,
+    ytd?.intermediate_business_income,
+    monthly?.monthly_income,
+  ];
+  const isComplete = Boolean(
+    ytd && monthly && governedValues.every((value) => isGovernedNumeric(value)),
+  );
+  // 快照的 `operating_income` 是 `summary_pnl` 的副本（同一 grand_total.business_net_income），
+  // 产品分类读模型里没有营业收入这一列。真口径「集团营业收入」登记在 formal_financial_indicators
+  // 且 source_status=formal_pending，治理规则要求系统值留空、禁止用 QDB 分析值顶替，所以这格
+  // 显式占位而不取 `operating_income`。该字段仍参与 governedValues 完整性校验，与后端契约保持一致。
+  // 占位随后可被 applyOperatingRevenueCandidate 换成 QDB 母公司候选口径（另一口径，非集团正式值）。
+  const metrics: HomeProductCategoryHeadline["metrics"] = hasAnyPayload
+    ? [
+        { id: "ytd-summary-pnl", label: "年度汇总损益", value: governedDisplay(ytd?.summary_pnl), detail: withProductCategoryCaveat(governedDetail(ytd?.summary_pnl_detail)) },
+        { id: OPERATING_INCOME_METRIC_ID, label: "年度营业收入 · 未接入", value: PRODUCT_CATEGORY_GAP, detail: OPERATING_INCOME_PENDING_DETAIL },
+        { id: "ytd-intermediate-business-income", label: "年度中间业务收入", value: governedDisplay(ytd?.intermediate_business_income), detail: governedDetail(ytd?.intermediate_business_income_detail) },
+        { id: "monthly-income", label: "本月收入", value: governedDisplay(monthly?.monthly_income), detail: governedDetail(monthly?.monthly_income_detail) },
+      ]
+    : [];
+
+  return {
+    state: productCategoryState({
+      hasAnyPayload,
+      isComplete,
+      meta,
+      isLoading: input.isLoading,
+      isError: input.isError,
+    }),
+    metrics,
+  };
+}
+
 export function adaptHomeSnapshotForFirstScreen(
   input: HomeSnapshotAdapterInput,
 ): HomeSnapshotAdapterOutput {
@@ -309,6 +456,8 @@ export function adaptHomeSnapshotForFirstScreen(
   const overview = result?.overview;
   const attribution = result?.attribution;
   const domainsEffectiveDate = result?.domains_effective_date ?? {};
+  const domainsMissing = Array.isArray(result?.domains_missing) ? result.domains_missing : [];
+  const productCategoryHeadline = buildProductCategoryHeadline(result, input, meta);
 
   return {
     overview: {
@@ -339,6 +488,8 @@ export function adaptHomeSnapshotForFirstScreen(
     },
     verdict: sanitizeVerdict(result?.verdict),
     domainsEffectiveDate,
+    domainsMissing,
+    productCategoryHeadline,
     datesDiverged: datesDiverged(domainsEffectiveDate),
   };
 }

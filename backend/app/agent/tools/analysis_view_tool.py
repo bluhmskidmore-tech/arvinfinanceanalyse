@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from collections.abc import Callable
 from typing import Any, Literal, cast
 from uuid import uuid4
@@ -7,7 +9,30 @@ from uuid import uuid4
 from backend.app.agent.runtime.action_token import agent_action_confirmation_token
 from backend.app.agent.runtime.financial_workflow_catalog import (
     FinancialWorkflow,
-    resolve_financial_workflow,
+    list_financial_workflows,
+)
+from backend.app.agent.runtime.local_request_resolution import (
+    LocalRequestResolution,
+    _semantic_report_date,
+    resolve_local_request,
+)
+from backend.app.agent.runtime.local_request_resolution import (
+    has_explicit_local_agent_context as _has_explicit_local_agent_context,
+)
+from backend.app.agent.runtime.local_request_resolution import (
+    is_explicit_local_agent_intent as _is_explicit_local_agent_intent,
+)
+from backend.app.agent.runtime.local_request_resolution import (
+    is_plain_analysis_chat_question as _is_plain_analysis_chat_question,
+)
+from backend.app.agent.runtime.ontology_bindings import (
+    ONTOLOGY_BINDING_REVISION,
+    ontology_content_revision,
+    ontology_reference_payload,
+)
+from backend.app.agent.runtime.research_workflow_catalog import (
+    ResearchWorkflow,
+    list_research_workflows,
 )
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.agent.schemas.agent_response import (
@@ -15,11 +40,45 @@ from backend.app.agent.schemas.agent_response import (
     AgentDrill,
     AgentEnvelope,
     AgentResultMeta,
+    AgentSemanticContext,
+    AgentSemanticReference,
     AgentSuggestedAction,
 )
 from backend.app.agent.tools.evidence_tool import EvidenceTool
 from backend.app.schemas.cube_query import CubeQueryRequest
+from backend.app.schemas.result_meta import SourceSurface
 from backend.app.services.cube_query_service import CubeQueryService
+
+
+def _safe_execution_error_detail(exc: Exception) -> str:
+    """Keep controlled error categories while withholding source-bearing exception text."""
+    message = str(exc)
+    detail = "Analysis execution failed."
+    if isinstance(exc, ValueError):
+        if message == "No governed report dates are available for this query.":
+            detail = "No governed report dates are available for this query."
+        elif message.startswith("GitNexus repo_path is outside allowed roots: "):
+            detail = "GitNexus repo_path is outside allowed roots."
+        else:
+            date_error = re.fullmatch(
+                r"Requested report_date=(\d{4}-\d{2}-\d{2}) is not in available governed dates "
+                r"\[(?:'\d{4}-\d{2}-\d{2}'(?:, )?)*\]\.",
+                message,
+            )
+            if date_error is not None:
+                detail = f"Requested report_date={date_error.group(1)} is not in available governed dates."
+    elif isinstance(exc, RuntimeError):
+        if message == "Formal pnl storage is unavailable.":
+            detail = "Formal pnl storage is unavailable."
+        elif message == (
+            "agent action confirmation token requires a non-empty "
+            "payload.confirmation_scope.user_id; refusing to issue an unbound "
+            "token (fail-closed). Ensure the request context carries the "
+            "authenticated user_id."
+        ):
+            detail = "Action confirmation requires payload.confirmation_scope.user_id (fail-closed)."
+    return f"{detail} (error_type={type(exc).__name__})"
+
 
 _HELP_ITEMS = [
     "GitNexus / 仓库图谱 / 代码关系 / context / processes",
@@ -35,52 +94,8 @@ _HELP_ITEMS = [
     "cube query",
 ]
 
-_INTENT_PATTERNS: list[tuple[str, tuple[str, ...]]] = [
-    ("gitnexus_status", ("gitnexus", "仓库图谱", "代码图谱", "repo graph", "code graph", "影响分析", "context", "processes")),
-    ("product_pnl", ("产品损益", "ftp")),
-    ("pnl_bridge", ("桥接", "归因", "拆解", "bridge", "attribution")),
-    ("risk_tensor", ("风险张量", "krd")),
-    ("duration_risk", ("久期", "dv01", "duration")),
-    ("credit_exposure", ("信用", "利差", "集中度", "credit", "spread", "concentration")),
-    ("portfolio_overview", ("组合概览", "资产规模", "总览", "portfolio overview", "market value", "portfolio value", "asset size")),
-    ("pnl_summary", ("损益", "收益", "pnl")),
-    ("market_data", ("宏观", "利率", "市场数据", "macro", "market data", "macro data", "rates data")),
-    ("news", ("新闻", "事件", "news", "headline", "latest news")),
-]
-
-_PAGE_DEFAULT_INTENTS = {
-    "dashboard": "portfolio_overview",
-    "bond-dashboard": "portfolio_overview",
-    "balance-analysis": "portfolio_overview",
-    "pnl-attribution": "pnl_summary",
-    "product-category-pnl": "product_pnl",
-    "risk-tensor": "risk_tensor",
-    "bond-analytics": "duration_risk",
-    "market-data": "market_data",
-    "stock-analysis": "market_data",
-}
-
-_ANALYSIS_CHAT_PATTERNS = (
-    "analysis",
-    "analyze",
-    "explain",
-    "summarize",
-    "summary",
-    "judge",
-    "risk",
-    "what does this mean",
-    "continue",
-    "follow up",
-    "\u5206\u6790",
-    "\u89e3\u91ca",
-    "\u603b\u7ed3",
-    "\u5224\u65ad",
-    "\u98ce\u9669",
-    "\u7ed3\u8bba",
-    "\u8bf4\u660e",
-    "\u7ee7\u7eed",
-    "\u8ffd\u95ee",
-)
+# 意图/页面/分析话术模式表的唯一权威来源是
+# backend/app/agent/runtime/local_request_resolution.py；本文件不再持有副本。
 
 _GOVERNED_PATHS = (
     ("portfolio_overview", "Portfolio overview"),
@@ -106,24 +121,54 @@ _GOVERNED_PATHS_ZH = (
     ("news", "\u65b0\u95fb\u4e8b\u4ef6"),
 )
 
-_LOCAL_GOVERNED_INTENTS = frozenset(intent for intent, _label in _GOVERNED_PATHS)
-
-
 def is_explicit_local_agent_intent(intent: str) -> bool:
-    return intent.strip().lower() in _LOCAL_GOVERNED_INTENTS
+    return _is_explicit_local_agent_intent(intent)
+
+
+def has_explicit_local_agent_context(context: dict[str, Any] | None) -> bool:
+    return _has_explicit_local_agent_context(context)
+
+
+def _optional_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
+
+
+def _requested_report_date(request: AgentQueryRequest) -> str | None:
+    current_filters = request.context.get("current_filters")
+    if not isinstance(current_filters, dict):
+        current_filters = {}
+    page_current_filters = request.page_context.current_filters if request.page_context else {}
+    selected = next((
+        container[key]
+        for key in ("report_date", "date")
+        for container in (request.filters, request.context, current_filters, page_current_filters)
+        if container.get(key) is not None and str(container[key]).strip()
+    ), None)
+    # Match the local handlers while retaining the existing filter precedence.
+    date_request = AgentQueryRequest(
+        question=request.question,
+        filters={"report_date": selected} if selected is not None else {},
+    )
+    report_date, error = _semantic_report_date(date_request, request.question)
+    if error is not None:
+        raise ValueError(error)
+    return report_date
+
+
+def _request_with_report_date(
+    request: AgentQueryRequest,
+    report_date: str,
+) -> AgentQueryRequest:
+    context = dict(request.context)
+    context["report_date"] = report_date
+    return request.model_copy(update={"context": context})
 
 
 def is_plain_analysis_chat_question(question: str) -> bool:
-    normalized = str(question or "").strip().lower()
-    if not normalized:
-        return False
-    if not any(pattern in normalized for pattern in _ANALYSIS_CHAT_PATTERNS):
-        return False
-    return not any(
-        keyword.lower() in normalized
-        for _intent, keywords in _INTENT_PATTERNS
-        for keyword in keywords
-    )
+    return _is_plain_analysis_chat_question(question)
 
 
 class AnalysisViewTool:
@@ -137,19 +182,134 @@ class AnalysisViewTool:
         intent_handlers: dict[str, Callable[[AgentQueryRequest], dict[str, Any]]] | None = None,
     ) -> None:
         self._duckdb_path = duckdb_path
+        # governance_dir 仅为构造兼容保留；audit 挂接发生在 service 层。
         self._governance_dir = governance_dir or ""
         self._cube_query_service = cube_query_service or CubeQueryService()
         self._intent_handlers = dict(intent_handlers or {})
         self._evidence = EvidenceTool()
+        # 当前请求的确认 token 作用域（user/run），在每次 execute 开头刷新。
+        self._action_scope: dict[str, str] | None = None
+
+    def _result_meta(
+        self,
+        *,
+        request: AgentQueryRequest,
+        result_kind: str,
+        formal_use_allowed: bool,
+        source_version: str,
+        rule_version: str,
+        cache_version: str,
+        quality_flag: Literal["ok", "warning", "error", "stale"],
+        evidence: Any,
+        trace_id: str | None = None,
+        basis: Literal["formal", "scenario", "analytical", "ledger"] | None = None,
+        amount_currency_basis: str | None = None,
+        amount_currency_basis_note: str | None = None,
+        vendor_version: str = "vv_none",
+        cache_key: str | None = None,
+        vendor_status: Literal["ok", "vendor_stale", "vendor_unavailable"] = "ok",
+        fallback_mode: Literal["none", "latest_snapshot"] = "none",
+        requested_report_date: str | None = None,
+        resolved_report_date: str | None = None,
+        scenario_flag: bool | None = None,
+        as_of_date: str | None = None,
+        date_basis: str | None = None,
+        fallback_date: str | None = None,
+        tables_used: list[str] | None = None,
+        filters_applied: dict[str, Any] | None = None,
+        sql_executed: list[str] | None = None,
+        evidence_rows: int | None = None,
+        next_drill: list[AgentDrill] | None = None,
+        source_surface: SourceSurface | None = None,
+        generated_at: Any | None = None,
+        data_built_at: Any | None = None,
+    ) -> AgentResultMeta:
+        optional_fields: dict[str, Any] = {}
+        if generated_at is not None:
+            optional_fields["generated_at"] = generated_at
+        if data_built_at is not None:
+            optional_fields["data_built_at"] = data_built_at
+        return AgentResultMeta(
+            trace_id=trace_id or self._trace_id(result_kind),
+            basis=basis or request.basis,
+            result_kind=result_kind,
+            formal_use_allowed=formal_use_allowed,
+            amount_currency_basis=amount_currency_basis,
+            amount_currency_basis_note=amount_currency_basis_note,
+            source_version=source_version,
+            vendor_version=vendor_version,
+            rule_version=rule_version,
+            cache_version=cache_version,
+            cache_key=cache_key,
+            quality_flag=quality_flag,
+            vendor_status=vendor_status,
+            fallback_mode=fallback_mode,
+            requested_report_date=requested_report_date,
+            resolved_report_date=resolved_report_date,
+            scenario_flag=request.basis == "scenario" if scenario_flag is None else scenario_flag,
+            as_of_date=as_of_date,
+            date_basis=date_basis,
+            fallback_date=fallback_date,
+            tables_used=evidence.tables_used if tables_used is None else tables_used,
+            filters_applied=evidence.filters_applied if filters_applied is None else filters_applied,
+            sql_executed=evidence.sql_executed if sql_executed is None else sql_executed,
+            evidence_rows=evidence.evidence_rows if evidence_rows is None else evidence_rows,
+            next_drill=[] if next_drill is None else next_drill,
+            source_surface=source_surface,
+            **optional_fields,
+        )
 
     def execute(self, request: AgentQueryRequest) -> AgentEnvelope:
-        workflow = resolve_financial_workflow(request.question, request.context)
+        self._action_scope = self._confirmation_scope(request)
+        scope_violation = self._suggested_action_scope_violation(request)
+        if scope_violation is not None:
+            return self._error_envelope(
+                request=request,
+                intent="action_scope",
+                detail=scope_violation,
+            )
+        resolution = resolve_local_request(request)
+        if resolution.reason == "unknown_workflow":
+            return self._unknown_workflow_envelope(request)
+        if resolution.semantic_status == "clarification_required":
+            return self._semantic_clarification_envelope(request, resolution)
+        if resolution.semantic_status == "unsupported":
+            return self._semantic_unsupported_envelope(request, resolution)
+        if resolution.semantic_status == "unavailable":
+            return self._semantic_unavailable_envelope(request, resolution)
+        if resolution.semantic_operation == "definition":
+            return self._semantic_definition_envelope(request, resolution)
+
+        workflow_mode = str(request.context.get("workflow_mode") or "").strip().lower()
+        workflow = resolution.financial_workflow
         if workflow is not None:
-            if str(request.context.get("workflow_mode") or "").strip().lower() == "execute":
+            mode_violation = self._workflow_mode_violation(workflow_mode)
+            if mode_violation is not None:
+                return self._error_envelope(
+                    request=request,
+                    intent=f"workflow.{workflow.workflow_id}",
+                    detail=mode_violation,
+                )
+            if workflow_mode == "execute":
                 return self._execute_workflow_envelope(request, workflow)
             return self._workflow_envelope(request, workflow)
 
-        intent = self._resolve_intent(request)
+        research_workflow = resolution.research_workflow
+        if research_workflow is not None:
+            mode_violation = self._workflow_mode_violation(workflow_mode)
+            if mode_violation is not None:
+                return self._error_envelope(
+                    request=request,
+                    intent=f"workflow.{research_workflow.workflow_id}",
+                    detail=mode_violation,
+                )
+            explicit_intent = str(request.context.get("intent") or "").strip().lower().replace("-", "_")
+            # 显式 context.intent 保持既有直接执行语义；其余入口与 financial workflow 对齐：默认 plan，execute 需显式声明。
+            if workflow_mode == "execute" or explicit_intent == research_workflow.workflow_id:
+                return self._execute_research_workflow(request, research_workflow)
+            return self._research_workflow_plan_envelope(request, research_workflow)
+
+        intent = resolution.intent or "unknown"
         try:
             if intent == "cube_query":
                 return self._cube_query(request)
@@ -165,88 +325,194 @@ class AnalysisViewTool:
                 intent=intent,
                 payload=handler(request),
             )
-        except Exception as exc:
-            return self._error_envelope(request=request, intent=intent, detail=str(exc))
-
-    def _resolve_intent(self, request: AgentQueryRequest) -> str:
-        explicit_intent = str(request.context.get("intent") or "").strip().lower()
-        if explicit_intent == "cube_query" or "cube_query" in request.context:
-            return "cube_query"
-        if explicit_intent in self._intent_handlers:
-            return explicit_intent
-
-        normalized = str(request.question or "").strip().lower()
-        for intent, keywords in _INTENT_PATTERNS:
-            if intent in self._intent_handlers and any(keyword.lower() in normalized for keyword in keywords):
-                return intent
-        follow_up_intent = self._conversation_intent(request)
-        if follow_up_intent is not None:
-            return follow_up_intent
-        if self._is_page_context_question(normalized):
-            page_intent = self._page_default_intent(request)
-            if page_intent is not None:
-                return page_intent
-        if self._is_analysis_chat_question(normalized):
-            return "analysis_chat"
-        return "unknown"
-
-    def _conversation_intent(self, request: AgentQueryRequest) -> str | None:
-        conversation = request.context.get("conversation")
-        if not isinstance(conversation, dict):
-            return None
-        turns = conversation.get("recent_turns")
-        if not isinstance(turns, list):
-            return None
-        for turn in reversed(turns):
-            if not isinstance(turn, dict):
-                continue
-            for value in (turn.get("result_kind"), turn.get("trace_id"), turn.get("answer")):
-                intent = self._intent_from_text(value)
-                if intent is not None:
-                    return intent
-        return None
-
-    def _intent_from_text(self, value: Any) -> str | None:
-        text = str(value or "").strip().lower()
-        if not text:
-            return None
-        for intent in self._intent_handlers:
-            if f"agent.{intent}" in text:
-                return intent
-        return None
-
-    def _page_default_intent(self, request: AgentQueryRequest) -> str | None:
-        if request.page_context is None:
-            return None
-        page_id = request.page_context.page_id.strip().lower()
-        intent = _PAGE_DEFAULT_INTENTS.get(page_id)
-        if intent in self._intent_handlers:
-            return intent
-        return None
-
-    def _is_page_context_question(self, normalized_question: str) -> bool:
-        if not normalized_question:
-            return False
-        return any(
-            token in normalized_question
-            for token in (
-                "当前页",
-                "当前页面",
-                "这个页面",
-                "本页",
-                "页面",
-                "current page",
-                "this page",
+        except Exception as exc:  # noqa: BLE001 - Arbitrary read-only handlers must return an error envelope with formal use denied.
+            semantic_reason_code = None
+            if resolution.semantic_operation == "value" and (
+                isinstance(exc, ValueError)
+                or (
+                    isinstance(exc, RuntimeError)
+                    and str(exc).strip() == "Formal pnl storage is unavailable."
+                )
+            ):
+                semantic_reason_code = "upstream_data_unavailable"
+            return self._error_envelope(
+                request=request,
+                intent=intent,
+                detail=_safe_execution_error_detail(exc),
+                semantic_reason_code=semantic_reason_code,
             )
-        )
 
-    def _is_analysis_chat_question(self, normalized_question: str) -> bool:
-        return is_plain_analysis_chat_question(normalized_question)
-
-    def _workflow_envelope(
+    def _semantic_definition_envelope(
         self,
         request: AgentQueryRequest,
-        workflow: FinancialWorkflow,
+        resolution: LocalRequestResolution,
+    ) -> AgentEnvelope:
+        references = self._semantic_references(resolution)
+        if not references:
+            return self._semantic_unavailable_envelope(request, resolution)
+        reference = references[0]
+        authority = "、".join(reference.authority) if reference.authority else "未提供出处"
+        detail_parts = [reference.business_definition]
+        if reference.unit:
+            detail_parts.append(f"单位：{reference.unit}")
+        if reference.time_semantics:
+            detail_parts.append(f"时间语义：{reference.time_semantics}")
+        detail_parts.append(f"出处：{authority}")
+        answer = "；".join(detail_parts) + "。"
+        return self._semantic_no_data_envelope(
+            request=request,
+            resolution=resolution,
+            answer=answer,
+            cards=[
+                AgentCard(
+                    type="metric_definition",
+                    title=reference.name,
+                    data=reference.model_dump(mode="python"),
+                    metric_id=reference.entity_id,
+                )
+            ],
+            result_kind="agent.ontology_definition",
+            result_check="not_applicable",
+            references=references,
+        )
+
+    def _semantic_clarification_envelope(
+        self,
+        request: AgentQueryRequest,
+        resolution: LocalRequestResolution,
+    ) -> AgentEnvelope:
+        references = self._semantic_references(resolution)
+        reason_code = resolution.semantic_reason_code or "clarification_required"
+        if reason_code == "report_date_required":
+            answer = "请提供一个明确的 YYYY-MM-DD 报告日后再查询该指标。"
+        elif reason_code in {"report_date_conflict", "invalid_report_date"}:
+            answer = "报告日无效或相互冲突，请只提供一个真实的 YYYY-MM-DD 报告日。"
+        elif reason_code == "operation_conflict":
+            answer = "请明确本次是查看指标定义，还是查询指定报告日的指标数值。"
+        elif reason_code == "operation_required":
+            answer = "请明确要查看指标定义，或提供 YYYY-MM-DD 报告日查询数值。"
+        elif reason_code == "explicit_intent_semantic_conflict":
+            answer = "请求指定了损益取数，但问题是在询问指标定义；请移除取数 intent 后重试。"
+        elif reason_code == "ambiguous_metric_alias":
+            answer = "“利息收入”可能对应不同口径；请明确 514、MTR-PNL-001 或正式 PnL 范围。"
+        elif reason_code == "negated_metric_reference":
+            answer = "当前问题否定了已识别指标，请明确实际要查询的指标和报告日。"
+        elif reason_code == "multiple_intents":
+            answer = (
+                "本次问题同时命中多个不同业务口径，系统未替你挑选其中一个。"
+                "请明确这次要看哪一项，或分开提问。"
+            )
+        elif reason_code == "negated_intent_reference":
+            answer = "当前问题否定了识别到的业务口径，请明确本次实际要查看的内容。"
+        elif reason_code == "relative_date_requires_explicit_report_date":
+            answer = (
+                "“今日/昨日”等相对日期无法确定报告日，系统未取最新日期代替。"
+                "请提供一个明确的 YYYY-MM-DD 报告日。"
+            )
+        else:
+            names = "、".join(reference.name for reference in references)
+            answer = (
+                f"“收益”可能指 {names}。请明确指标，并在查询数值时提供 YYYY-MM-DD 报告日。"
+                if names
+                else "请明确要查询的指标，并提供 YYYY-MM-DD 报告日。"
+            )
+        cards = [
+            AgentCard(
+                type="metric_candidate",
+                title=reference.name,
+                data={"entity_id": reference.entity_id},
+                metric_id=reference.entity_id,
+            )
+            for reference in references
+        ]
+        return self._semantic_no_data_envelope(
+            request=request,
+            resolution=resolution,
+            answer=answer,
+            cards=cards,
+            result_kind="agent.ontology_clarification",
+            result_check="blocked",
+            references=references,
+        )
+
+    def _semantic_unsupported_envelope(
+        self,
+        request: AgentQueryRequest,
+        resolution: LocalRequestResolution,
+    ) -> AgentEnvelope:
+        references = self._semantic_references(resolution)
+        if resolution.semantic_reason_code == "unsupported_query_scope":
+            answer = (
+                "当前正式损益 Ontology 能力只支持 overview 的全量单报告日读取，"
+                "尚不支持组合、币种、账户筛选，或剔除、扣除部分对象。"
+                "本次未调用正式取数，请明确是否查询全量范围。"
+            )
+        elif resolution.semantic_reason_code == "unsupported_period_query":
+            answer = (
+                "当前能力只支持单个报告日的指标数值，不支持最近若干天、月初至今等期间查询。"
+                "本次未调用正式取数，请明确一个 YYYY-MM-DD 报告日，并移除期间条件。"
+            )
+        elif resolution.semantic_reason_code == "unsupported_derived_operation":
+            answer = (
+                "当前能力只支持指标原值，尚不支持占比、比例、平均值等派生计算。"
+                "本次未调用正式取数；如需原值，请指定指标和一个 YYYY-MM-DD 报告日。"
+            )
+        elif resolution.semantic_reason_code == "unsupported_metric":
+            answer = (
+                "首期正式损益 Ontology 尚未纳入 517 资本利得指标。"
+                "本次未调用正式取数，请改查已支持的 514 利息收入、516 公允价值变动或正式总损益。"
+            )
+        else:
+            answer = (
+                "当前能力支持指标定义和单个报告日数值查询；期间比较、趋势或原因归因"
+                "需要明确比较期间及对应的受治理分析能力。"
+            )
+        return self._semantic_no_data_envelope(
+            request=request,
+            resolution=resolution,
+            answer=answer,
+            cards=[],
+            result_kind="agent.ontology_unsupported",
+            result_check="blocked",
+            references=references,
+        )
+
+    def _semantic_unavailable_envelope(
+        self,
+        request: AgentQueryRequest,
+        resolution: LocalRequestResolution,
+    ) -> AgentEnvelope:
+        unavailable_resolution = LocalRequestResolution(
+            route="local",
+            reason="ontology_unavailable",
+            intent="ontology_unavailable",
+            semantic_status="unavailable",
+            metric_id=resolution.metric_id,
+            metric_candidates=resolution.metric_candidates,
+            semantic_reason_code=(
+                resolution.semantic_reason_code or "ontology_unavailable"
+            ),
+        )
+        return self._semantic_no_data_envelope(
+            request=request,
+            resolution=unavailable_resolution,
+            answer="指标语义或已核对绑定当前不可用，系统未执行正式损益取数。",
+            cards=[],
+            result_kind="agent.ontology_unavailable",
+            result_check="blocked",
+            references=[],
+        )
+
+    def _semantic_no_data_envelope(
+        self,
+        *,
+        request: AgentQueryRequest,
+        resolution: LocalRequestResolution,
+        answer: str,
+        cards: list[AgentCard],
+        result_kind: str,
+        result_check: Literal["blocked", "not_applicable"],
+        references: list[AgentSemanticReference],
     ) -> AgentEnvelope:
         evidence = self._evidence.build_evidence(
             tables_used=[],
@@ -254,24 +520,119 @@ class AnalysisViewTool:
             row_count=0,
             quality_flag="warning",
         )
+        result_meta = self._result_meta(
+            request=request,
+            result_kind=result_kind,
+            formal_use_allowed=False,
+            source_version=self._semantic_ontology_revision() or "sv_ontology_unavailable",
+            rule_version=ONTOLOGY_BINDING_REVISION,
+            cache_version="cv_agent_ontology_v1",
+            quality_flag="warning",
+            evidence=evidence,
+            requested_report_date=resolution.report_date,
+            resolved_report_date=None,
+            scenario_flag=False,
+            tables_used=[],
+            filters_applied={},
+            sql_executed=[],
+            evidence_rows=0,
+            next_drill=[],
+        )
+        semantic_context = AgentSemanticContext(
+            status=resolution.semantic_status or "unavailable",
+            result_check=result_check,
+            references=references,
+            ontology_revision=self._semantic_ontology_revision(),
+            binding_revision=ONTOLOGY_BINDING_REVISION,
+            reason_code=resolution.semantic_reason_code,
+        )
+        return AgentEnvelope(
+            **self._finalize_envelope(
+                answer=answer,
+                cards=cards,
+                evidence=evidence,
+                result_meta=result_meta,
+                next_drill=[],
+                semantic_context=semantic_context,
+            )
+        )
+
+    def _semantic_references(
+        self,
+        resolution: LocalRequestResolution,
+    ) -> list[AgentSemanticReference]:
+        metric_ids = resolution.metric_candidates
+        if not metric_ids and resolution.metric_id:
+            metric_ids = (resolution.metric_id,)
+        references: list[AgentSemanticReference] = []
+        for metric_id in metric_ids:
+            try:
+                references.append(
+                    AgentSemanticReference.model_validate(
+                        ontology_reference_payload(metric_id)
+                    )
+                )
+            except (KeyError, OSError, TypeError, ValueError):
+                continue
+        return references
+
+    @staticmethod
+    def _semantic_ontology_revision() -> str | None:
+        try:
+            return ontology_content_revision()
+        except (OSError, TypeError, ValueError):
+            return None
+
+    def _unknown_workflow_envelope(self, request: AgentQueryRequest) -> AgentEnvelope:
+        """显式传入的 workflow_id 未命中目录：返回错误 envelope，不静默降级到问题扫描。"""
+        requested_workflow_id = str(request.context.get("workflow_id") or "").strip()
+        known_workflow_ids = [
+            workflow.workflow_id for workflow in list_financial_workflows()
+        ] + [workflow.workflow_id for workflow in list_research_workflows()]
+        return self._error_envelope(
+            request=request,
+            intent="unknown_workflow",
+            detail=(
+                f"Unrecognized workflow_id '{requested_workflow_id}'. "
+                f"Known workflows: {', '.join(known_workflow_ids)}."
+            ),
+        )
+
+    @staticmethod
+    def _workflow_mode_violation(workflow_mode: str) -> str | None:
+        """workflow_mode 仅接受空值 / plan / execute；其他值不再静默按 plan 处理。"""
+        if workflow_mode in ("", "plan", "execute"):
+            return None
+        return (
+            f"Unsupported workflow_mode '{workflow_mode}'; "
+            "expected 'plan' or 'execute'."
+        )
+
+    def _workflow_envelope(
+        self,
+        request: AgentQueryRequest,
+        workflow: FinancialWorkflow,
+    ) -> AgentEnvelope:
+        requested_report_date = _requested_report_date(request)
+        evidence = self._evidence.build_evidence(
+            tables_used=[],
+            filters_applied={},
+            row_count=0,
+            quality_flag="warning",
+        )
         next_intent = workflow.mapped_intents[0] if workflow.mapped_intents else ""
-        result_meta = AgentResultMeta(
-            trace_id=self._trace_id(f"agent.workflow.{workflow.workflow_id}"),
-            basis=request.basis,
+        result_meta = self._result_meta(
+            request=request,
             result_kind=f"agent.workflow.{workflow.workflow_id}",
             formal_use_allowed=False,
             source_version="sv_anthropic_financial_workflow_reference",
-            vendor_version="vv_none",
             rule_version="rv_agent_financial_workflow_catalog_v1",
             cache_version=f"cv_agent_workflow_{workflow.workflow_id}_v1",
             quality_flag="warning",
-            vendor_status="ok",
-            fallback_mode="none",
+            evidence=evidence,
+            requested_report_date=requested_report_date,
+            resolved_report_date=None,
             scenario_flag=request.basis == "scenario",
-            tables_used=evidence.tables_used,
-            filters_applied=evidence.filters_applied,
-            sql_executed=evidence.sql_executed,
-            evidence_rows=evidence.evidence_rows,
             next_drill=[],
         )
         cards = [
@@ -304,10 +665,10 @@ class AnalysisViewTool:
         ]
         suggested_actions = []
         if next_intent:
-            payload = {
-                "intent": next_intent,
-                "workflow_id": workflow.workflow_id,
-            }
+            # payload 契约：仅携带 intent。回传 context 时走 explicit intent 路径直接执行
+            # 第一个 mapped intent；不携带 workflow_id，避免回传后再次命中 workflow 解析
+            # 而返回 plan 卡（与动作标签 "Execute first mapped intent" 语义一致）。
+            payload = {"intent": next_intent}
             suggested_actions.append(
                 self._suggested_action(
                     action_type="execute_intent",
@@ -342,10 +703,22 @@ class AnalysisViewTool:
         detail_rows: list[dict[str, Any]] = []
         tables_used: list[str] = []
         filters_applied: dict[str, Any] = {}
+        sql_executed: list[str] = []
         evidence_rows = 0
         failed_intents: list[str] = []
+        degraded_intents: list[str] = []
+        requested_report_date = _requested_report_date(request)
+        workflow_pinned_report_date: str | None = requested_report_date
+        successful_resolved_report_dates: list[str] = []
+        successful_child_count = 0
 
         for index, intent in enumerate(workflow.mapped_intents, start=1):
+            step_request = (
+                _request_with_report_date(request, workflow_pinned_report_date)
+                if workflow_pinned_report_date is not None
+                else request
+            )
+            step_requested_report_date = _requested_report_date(step_request)
             handler = self._intent_handlers.get(intent)
             if handler is None:
                 failed_intents.append(intent)
@@ -364,17 +737,19 @@ class AnalysisViewTool:
                         "intent": intent,
                         "status": "missing",
                         "message": "No registered MOSS intent handler.",
+                        "requested_report_date": step_requested_report_date,
+                        "resolved_report_date": None,
                     }
                 )
                 continue
 
             try:
                 envelope = self._payload_envelope(
-                    request=request,
+                    request=step_request,
                     intent=intent,
-                    payload=handler(request),
+                    payload=handler(step_request),
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - Record failed workflow children while preserving independent read-only steps.
                 failed_intents.append(intent)
                 step_rows.append(
                     self._workflow_step_row(
@@ -390,10 +765,26 @@ class AnalysisViewTool:
                         "order": index,
                         "intent": intent,
                         "status": "error",
-                        "message": str(exc),
+                        "message": _safe_execution_error_detail(exc),
+                        "requested_report_date": step_requested_report_date,
+                        "resolved_report_date": None,
                     }
                 )
                 continue
+
+            child_requested_report_date = (
+                envelope.result_meta.requested_report_date or step_requested_report_date
+            )
+            child_resolved_report_date = (
+                envelope.result_meta.resolved_report_date
+                or _optional_text(envelope.evidence.filters_applied.get("report_date"))
+            )
+            successful_child_count += 1
+            if child_resolved_report_date is not None:
+                successful_resolved_report_dates.append(child_resolved_report_date)
+                if requested_report_date is None and workflow_pinned_report_date is None:
+                    workflow_pinned_report_date = child_resolved_report_date
+                    filters_applied["workflow_pinned_report_date"] = child_resolved_report_date
 
             step_rows.append(
                 self._workflow_step_row(
@@ -417,44 +808,77 @@ class AnalysisViewTool:
                     "tables_used": envelope.evidence.tables_used,
                     "evidence_rows": envelope.evidence.evidence_rows,
                     "card_count": len(envelope.cards),
+                    "requested_report_date": child_requested_report_date,
+                    "resolved_report_date": child_resolved_report_date,
                 }
             )
             evidence_rows += envelope.evidence.evidence_rows
             for table in envelope.evidence.tables_used:
                 if table not in tables_used:
                     tables_used.append(table)
+            for statement in envelope.evidence.sql_executed:
+                if statement not in sql_executed:
+                    sql_executed.append(statement)
             for key, value in envelope.evidence.filters_applied.items():
                 filters_applied[f"{intent}.{key}"] = value
             if envelope.result_meta.quality_flag != "ok":
-                failed_intents.append(intent)
+                degraded_intents.append(intent)
 
-        quality_flag: Literal["ok", "warning", "error", "stale"] = "warning" if failed_intents else "ok"
+        # 全部步骤硬失败（missing/error，无任何 status=ok 的结果）时整体与
+        # 步骤 quality_flag 升为 error，避免「全失败仍 warning」的矛盾展示；
+        # 部分失败保持既有 warning 语义。
+        all_steps_failed = bool(workflow.mapped_intents) and not any(
+            row.get("status") == "ok" for row in step_rows
+        )
+        if all_steps_failed:
+            for row in step_rows:
+                row["quality_flag"] = "error"
+        quality_flag: Literal["ok", "warning", "error", "stale"] = (
+            "error" if all_steps_failed else "warning" if failed_intents or degraded_intents else "ok"
+        )
+        unique_resolved_report_dates = list(
+            dict.fromkeys(successful_resolved_report_dates)
+        )
+        resolved_report_date = (
+            unique_resolved_report_dates[0]
+            if successful_child_count > 0
+            and successful_child_count == len(workflow.mapped_intents)
+            and len(successful_resolved_report_dates) == successful_child_count
+            and len(unique_resolved_report_dates) == 1
+            else None
+        )
+        if failed_intents:
+            filters_applied["workflow_failed_intents"] = list(failed_intents)
+        if degraded_intents:
+            filters_applied["workflow_degraded_intents"] = list(degraded_intents)
         evidence = self._evidence.build_evidence(
             tables_used=tables_used,
             filters_applied=filters_applied,
             row_count=evidence_rows,
             quality_flag=quality_flag,
+            sql_executed=sql_executed,
         )
-        result_meta = AgentResultMeta(
-            trace_id=self._trace_id(f"agent.workflow.{workflow.workflow_id}"),
-            basis=request.basis,
+        result_meta = self._result_meta(
+            request=request,
             result_kind=f"agent.workflow.{workflow.workflow_id}",
             formal_use_allowed=False,
             source_version="sv_anthropic_financial_workflow_reference",
-            vendor_version="vv_none",
             rule_version="rv_agent_financial_workflow_catalog_v1",
             cache_version=f"cv_agent_workflow_{workflow.workflow_id}_v1",
             quality_flag=quality_flag,
-            vendor_status="ok",
-            fallback_mode="none",
+            evidence=evidence,
+            requested_report_date=requested_report_date,
+            resolved_report_date=resolved_report_date,
             scenario_flag=request.basis == "scenario",
-            tables_used=evidence.tables_used,
-            filters_applied=evidence.filters_applied,
-            sql_executed=evidence.sql_executed,
-            evidence_rows=evidence.evidence_rows,
             next_drill=[],
         )
         cards = [
+            self._workflow_memo_card(
+                workflow_title=workflow.title,
+                workflow_id=workflow.workflow_id,
+                step_rows=step_rows,
+                detail_rows=detail_rows,
+            ),
             AgentCard(
                 type="workflow_execution",
                 title="Workflow Execution Steps",
@@ -472,10 +896,28 @@ class AnalysisViewTool:
             ),
         ]
 
-        if failed_intents:
+        if all_steps_failed:
+            answer = (
+                f"Failed to execute financial workflow '{workflow.title}' ({workflow.workflow_id}): "
+                f"all mapped intents failed ({', '.join(failed_intents)}). "
+                "No governed intent produced a result. "
+                "The workflow summary is not a formal financial result."
+            )
+        elif failed_intents:
             answer = (
                 f"Executed financial workflow '{workflow.title}' ({workflow.workflow_id}) with warnings. "
-                f"Failed or degraded intents: {', '.join(failed_intents)}. "
+                f"Failed intents: {', '.join(failed_intents)}. "
+                + (
+                    f"Degraded intents: {', '.join(degraded_intents)}. "
+                    if degraded_intents
+                    else ""
+                )
+                + "The workflow summary is not a formal financial result."
+            )
+        elif degraded_intents:
+            answer = (
+                f"Executed financial workflow '{workflow.title}' ({workflow.workflow_id}) with data quality warnings. "
+                f"Degraded intents: {', '.join(degraded_intents)}. "
                 "The workflow summary is not a formal financial result."
             )
         else:
@@ -494,6 +936,167 @@ class AnalysisViewTool:
                 next_drill=[],
                 suggested_actions=[],
             )
+        )
+
+    def _execute_research_workflow(
+        self,
+        request: AgentQueryRequest,
+        workflow: ResearchWorkflow,
+    ) -> AgentEnvelope:
+        handler = self._intent_handlers.get(workflow.workflow_id)
+        if handler is None:
+            return self._error_envelope(
+                request=request,
+                intent=workflow.workflow_id,
+                detail="No registered research workflow handler.",
+            )
+        try:
+            return self._payload_envelope(
+                request=request,
+                intent=workflow.workflow_id,
+                payload=handler(request),
+            )
+        except Exception as exc:  # noqa: BLE001 - Research handlers must emit a non-formal error envelope on any execution failure.
+            return self._error_envelope(
+                request=request,
+                intent=workflow.workflow_id,
+                detail=_safe_execution_error_detail(exc),
+            )
+
+    def _research_workflow_plan_envelope(
+        self,
+        request: AgentQueryRequest,
+        workflow: ResearchWorkflow,
+    ) -> AgentEnvelope:
+        evidence = self._evidence.build_evidence(
+            tables_used=[],
+            filters_applied={},
+            row_count=0,
+            quality_flag="warning",
+        )
+        result_meta = self._result_meta(
+            request=request,
+            result_kind=f"agent.workflow.{workflow.workflow_id}",
+            formal_use_allowed=False,
+            source_version=workflow.source_version,
+            rule_version=workflow.rule_version,
+            cache_version=workflow.cache_version,
+            quality_flag="warning",
+            evidence=evidence,
+            scenario_flag=request.basis == "scenario",
+            next_drill=[],
+        )
+        cards = [
+            AgentCard(
+                type="workflow_plan",
+                title="Workflow Plan",
+                data={
+                    "workflow_id": workflow.workflow_id,
+                    "title": workflow.title,
+                    "description": workflow.description,
+                    "category": workflow.category,
+                    "source": "moss_research_workflow_catalog",
+                    "output_kind": workflow.result_kind,
+                    "phase": "plan_only",
+                },
+            ),
+            AgentCard(
+                type="workflow_intents",
+                title="Mapped MOSS Intents",
+                data=[{"order": 1, "intent": workflow.workflow_id}],
+            ),
+            AgentCard(
+                type="governance_notes",
+                title="Governance Notes",
+                data=[{"note": note} for note in workflow.governance_notes],
+            ),
+        ]
+        suggested_actions = [
+            self._suggested_action(
+                action_type="execute_intent",
+                label=f"Execute research workflow: {workflow.workflow_id}",
+                payload={
+                    "intent": workflow.workflow_id,
+                    "workflow_id": workflow.workflow_id,
+                    "workflow_mode": "execute",
+                },
+                requires_confirmation=True,
+            )
+        ]
+        return AgentEnvelope(
+            **self._finalize_envelope(
+                answer=(
+                    f"Identified research workflow '{workflow.title}' ({workflow.workflow_id}). "
+                    "This response is a workflow plan only, not a formal financial result. "
+                    "Set context.workflow_mode=\"execute\" (or use the suggested action) to run the governed "
+                    f"research intent: {workflow.workflow_id}."
+                ),
+                cards=cards,
+                evidence=evidence,
+                result_meta=result_meta,
+                next_drill=[],
+                suggested_actions=suggested_actions,
+            )
+        )
+
+    def _workflow_memo_card(
+        self,
+        *,
+        workflow_title: str,
+        workflow_id: str,
+        step_rows: list[dict[str, Any]],
+        detail_rows: list[dict[str, Any]],
+    ) -> AgentCard:
+        """纯模板化 memo 合成（不调用 LLM）：仅重排既有子 envelope 结论，不新增取数或计算。"""
+        # 使用已按 child result_meta -> evidence fallback 解析后的结构化日期，
+        # 避免 memo 与顶层 / child result_meta 展示不同的日期。
+        report_dates_by_intent: dict[str, str] = {}
+        for row in detail_rows:
+            if row.get("status") != "ok":
+                continue
+            intent = _optional_text(row.get("intent"))
+            resolved_report_date = _optional_text(row.get("resolved_report_date"))
+            if intent is not None and resolved_report_date is not None:
+                report_dates_by_intent[intent] = resolved_report_date
+        unique_report_dates = list(dict.fromkeys(report_dates_by_intent.values()))
+        if not unique_report_dates:
+            report_date_line = "报告日期：未提供"
+        elif len(unique_report_dates) == 1:
+            report_date_line = f"报告日期：{unique_report_dates[0]}"
+        else:
+            per_intent_dates = "；".join(
+                f"{intent}={value}" for intent, value in report_dates_by_intent.items()
+            )
+            report_date_line = f"报告日期：子意图日期不一致（{per_intent_dates}）"
+        conclusion_lines: list[str] = []
+        for row in detail_rows:
+            intent = str(row.get("intent") or "")
+            if row.get("status") == "ok":
+                first_sentence = str(row.get("answer") or "").strip().splitlines()[0] if str(row.get("answer") or "").strip() else "已返回结果。"
+                conclusion_lines.append(f"- {intent}: {first_sentence}")
+            else:
+                conclusion_lines.append(
+                    f"- {intent}: 执行失败（{row.get('status')}）：{row.get('message', '')}"
+                )
+        quality_lines = [
+            f"- {row['intent']}: quality_flag={row['quality_flag']}（status={row['status']}）"
+            for row in step_rows
+            if str(row.get("quality_flag")) != "ok" or str(row.get("status")) != "ok"
+        ]
+        sections = [
+            f"## Workflow Memo：{workflow_title}（{workflow_id}）",
+            report_date_line,
+            "",
+            "### 分步结论",
+            *conclusion_lines,
+        ]
+        if quality_lines:
+            sections.extend(["", "### 数据质量提示", *quality_lines])
+        sections.extend(["", "非正式结果，仅供分析参考（formal_use_allowed=false）。"])
+        return AgentCard(
+            type="markdown",
+            title="Workflow Memo",
+            value="\n".join(sections),
         )
 
     def _workflow_step_row(
@@ -522,11 +1125,15 @@ class AnalysisViewTool:
         cube_request = CubeQueryRequest(**payload)
         cube_response = self._cube_query_service.execute(cube_request, self._duckdb_path)
         table_name = CubeQueryService.table_name_for(cube_response.fact_table)
-        filters_applied = {
+        filters_applied: dict[str, Any] = {
             path.dimension: path.current_filter
             for path in cube_response.drill_paths
             if path.current_filter
         }
+        # WHERE 恒含 report_date（cube_query_service.build_where_clause），一并披露
+        # 请求锚点，避免 cube 路径成为零披露的动态 SQL 执行面。
+        filters_applied["report_date"] = cube_response.report_date
+        filters_applied["fact_table"] = cube_response.fact_table
         next_drill = [
             AgentDrill(dimension=path.dimension, label=path.label)
             for path in cube_response.drill_paths
@@ -540,17 +1147,39 @@ class AnalysisViewTool:
             filters_applied=filters_applied,
             row_count=len(cube_response.rows),
             quality_flag=cube_response.result_meta.quality_flag,
+            sql_executed=self._cube_query_sql_disclosure(cube_request, table_name),
         )
         cube_meta = cube_response.result_meta.model_dump(mode="python")
-        for key in ("tables_used", "filters_applied", "evidence_rows", "next_drill"):
-            cube_meta.pop(key, None)
-        result_meta = AgentResultMeta(
-            **cube_meta,
-            tables_used=evidence.tables_used,
-            filters_applied=evidence.filters_applied,
-            sql_executed=evidence.sql_executed,
-            evidence_rows=evidence.evidence_rows,
+        result_meta = self._result_meta(
+            request=request,
+            trace_id=str(cube_meta["trace_id"]),
+            basis=cast(Literal["formal", "scenario", "analytical", "ledger"], cube_meta["basis"]),
+            result_kind=str(cube_meta["result_kind"]),
+            formal_use_allowed=bool(cube_meta["formal_use_allowed"]),
+            amount_currency_basis=_optional_text(cube_meta.get("amount_currency_basis")),
+            amount_currency_basis_note=_optional_text(cube_meta.get("amount_currency_basis_note")),
+            source_version=str(cube_meta["source_version"]),
+            vendor_version=str(cube_meta.get("vendor_version") or "vv_none"),
+            rule_version=str(cube_meta["rule_version"]),
+            cache_version=str(cube_meta["cache_version"]),
+            cache_key=_optional_text(cube_meta.get("cache_key")),
+            quality_flag=cast(Literal["ok", "warning", "error", "stale"], cube_meta["quality_flag"]),
+            vendor_status=cast(
+                Literal["ok", "vendor_stale", "vendor_unavailable"],
+                cube_meta.get("vendor_status") or "ok",
+            ),
+            fallback_mode=cast(Literal["none", "latest_snapshot"], cube_meta.get("fallback_mode") or "none"),
+            requested_report_date=_optional_text(cube_meta.get("requested_report_date")),
+            resolved_report_date=_optional_text(cube_meta.get("resolved_report_date")),
+            scenario_flag=bool(cube_meta.get("scenario_flag", False)),
+            as_of_date=_optional_text(cube_meta.get("as_of_date")),
+            date_basis=_optional_text(cube_meta.get("date_basis")),
+            fallback_date=_optional_text(cube_meta.get("fallback_date")),
+            evidence=evidence,
             next_drill=next_drill,
+            source_surface=cast(SourceSurface | None, _optional_text(cube_meta.get("source_surface"))),
+            generated_at=cube_meta.get("generated_at"),
+            data_built_at=cube_meta.get("data_built_at"),
         )
         return AgentEnvelope(
             **self._finalize_envelope(
@@ -574,6 +1203,34 @@ class AnalysisViewTool:
             )
         )
 
+    def _cube_query_sql_disclosure(
+        self,
+        cube_request: CubeQueryRequest,
+        table_name: str,
+    ) -> list[str]:
+        """仅用于披露（sql_executed）：与 CubeQueryService 执行链路同源的只读
+        参数化模板。where 由 build_where_clause 生成（恒含 report_date = ?，
+        过滤值全部保持 `?` 绑定占位），维度/度量/表名均已过服务端白名单校验；
+        实际绑定值见 evidence.filters_applied。此处从不执行任何语句。"""
+        filters = self._cube_query_service.validate_filters(cube_request)
+        where_sql, _params = self._cube_query_service.build_where_clause(
+            cube_request.report_date,
+            filters,
+        )
+        dimensions = self._cube_query_service.validate_dimensions(cube_request)
+        measure_specs = self._cube_query_service.parse_measures(cube_request)
+        select_parts = list(dimensions) + [
+            f"{spec.sql} as {spec.alias}" for spec in measure_specs
+        ]
+        group_sql = f" group by {', '.join(dimensions)}" if dimensions else ""
+        return [
+            f"select count(*) from {table_name}{where_sql}",
+            (
+                f"select {', '.join(select_parts)} from {table_name}"
+                f"{where_sql}{group_sql} limit ? offset ?"
+            ),
+        ]
+
     def _analysis_chat_envelope(self, request: AgentQueryRequest) -> AgentEnvelope:
         filters_applied = self._analysis_chat_filters(request)
         is_chinese = self._is_chinese_text(request.question)
@@ -583,23 +1240,16 @@ class AnalysisViewTool:
             row_count=0,
             quality_flag="warning",
         )
-        result_meta = AgentResultMeta(
-            trace_id=self._trace_id("agent.analysis_chat"),
-            basis=request.basis,
+        result_meta = self._result_meta(
+            request=request,
             result_kind="agent.analysis_chat",
             formal_use_allowed=False,
             source_version="sv_agent_local_analysis_chat",
-            vendor_version="vv_none",
             rule_version="rv_agent_local_analysis_chat_v1",
             cache_version="cv_agent_local_analysis_chat_v1",
             quality_flag="warning",
-            vendor_status="ok",
-            fallback_mode="none",
+            evidence=evidence,
             scenario_flag=request.basis == "scenario",
-            tables_used=evidence.tables_used,
-            filters_applied=evidence.filters_applied,
-            sql_executed=evidence.sql_executed,
-            evidence_rows=evidence.evidence_rows,
             next_drill=[],
         )
         cards = [
@@ -742,43 +1392,68 @@ class AnalysisViewTool:
             filters_applied=dict(payload.get("filters_applied", {})),
             row_count=int(payload.get("row_count", 0)),
             quality_flag=str(payload.get("quality_flag") or "warning"),
+            sql_executed=list(payload.get("sql_executed", [])),
         )
-        result_meta = AgentResultMeta(
+        result_meta = self._result_meta(
+            request=request,
             trace_id=str(payload.get("trace_id") or self._trace_id(f"agent.{intent}")),
             basis=cast(Literal["formal", "scenario", "analytical", "ledger"], payload.get("basis") or request.basis),
             result_kind=str(payload.get("result_kind") or f"agent.{intent}"),
             formal_use_allowed=bool(payload.get("formal_use_allowed", False)),
+            amount_currency_basis=_optional_text(payload.get("amount_currency_basis")),
+            amount_currency_basis_note=_optional_text(payload.get("amount_currency_basis_note")),
             source_version=str(payload.get("source_version") or "sv_agent_unknown"),
             vendor_version=str(payload.get("vendor_version") or "vv_none"),
             rule_version=str(payload.get("rule_version") or "rv_agent_mvp_v1"),
             cache_version=str(payload.get("cache_version") or f"cv_agent_{intent}_v1"),
+            cache_key=_optional_text(payload.get("cache_key")),
             quality_flag=cast(Literal["ok", "warning", "error", "stale"], payload.get("quality_flag") or "warning"),
             vendor_status=cast(
                 Literal["ok", "vendor_stale", "vendor_unavailable"],
                 payload.get("vendor_status") or "ok",
             ),
             fallback_mode=cast(Literal["none", "latest_snapshot"], payload.get("fallback_mode") or "none"),
+            requested_report_date=_optional_text(payload.get("requested_report_date")),
+            resolved_report_date=_optional_text(payload.get("resolved_report_date")),
             scenario_flag=bool(payload.get("scenario_flag", False)),
-            tables_used=evidence.tables_used,
-            filters_applied=evidence.filters_applied,
-            sql_executed=evidence.sql_executed,
-            evidence_rows=evidence.evidence_rows,
+            as_of_date=_optional_text(payload.get("as_of_date")),
+            date_basis=_optional_text(payload.get("date_basis")),
+            fallback_date=_optional_text(payload.get("fallback_date")),
+            evidence=evidence,
             next_drill=next_drill,
+            source_surface=cast(SourceSurface | None, _optional_text(payload.get("source_surface"))),
+            generated_at=payload.get("generated_at"),
+            data_built_at=payload.get("data_built_at"),
         )
+        semantic_context_payload = payload.get("semantic_context")
+        semantic_context = (
+            semantic_context_payload
+            if isinstance(semantic_context_payload, AgentSemanticContext)
+            else AgentSemanticContext.model_validate(semantic_context_payload)
+            if isinstance(semantic_context_payload, dict)
+            else None
+        )
+        answer_mode = str(payload.get("answer_mode") or "business").strip().lower()
+        raw_answer = str(payload.get("answer") or "")
         return AgentEnvelope(
             **self._finalize_envelope(
-                answer=self._business_answer(
-                    conclusion=str(payload.get("answer") or ""),
-                    cards=cards,
-                    evidence=evidence,
-                    result_meta=result_meta,
-                    next_drill=next_drill,
+                answer=(
+                    raw_answer
+                    if answer_mode == "raw"
+                    else self._business_answer(
+                        conclusion=raw_answer,
+                        cards=cards,
+                        evidence=evidence,
+                        result_meta=result_meta,
+                        next_drill=next_drill,
+                    )
                 ),
                 cards=cards,
                 evidence=evidence,
                 result_meta=result_meta,
                 next_drill=next_drill,
                 suggested_actions=suggested_actions,
+                semantic_context=semantic_context,
             )
         )
 
@@ -789,16 +1464,15 @@ class AnalysisViewTool:
             row_count=0,
             quality_flag="warning",
         )
-        result_meta = AgentResultMeta(
-            trace_id=self._trace_id("agent.unknown"),
-            basis=request.basis,
+        result_meta = self._result_meta(
+            request=request,
             result_kind="agent.unknown",
             formal_use_allowed=False,
             source_version="sv_agent_unknown",
-            vendor_version="vv_none",
             rule_version="rv_agent_mvp_v1",
             cache_version="cv_agent_unknown_v1",
             quality_flag="warning",
+            evidence=evidence,
             scenario_flag=False,
             tables_used=[],
             filters_applied={},
@@ -828,6 +1502,7 @@ class AnalysisViewTool:
         request: AgentQueryRequest,
         intent: str,
         detail: str,
+        semantic_reason_code: str | None = None,
     ) -> AgentEnvelope:
         evidence = self._evidence.build_evidence(
             tables_used=[],
@@ -835,16 +1510,15 @@ class AnalysisViewTool:
             row_count=0,
             quality_flag="error",
         )
-        result_meta = AgentResultMeta(
-            trace_id=self._trace_id(f"agent.{intent}"),
-            basis=request.basis,
+        result_meta = self._result_meta(
+            request=request,
             result_kind=f"agent.{intent}",
             formal_use_allowed=False,
             source_version="sv_agent_error",
-            vendor_version="vv_none",
             rule_version="rv_agent_mvp_v1",
             cache_version=f"cv_agent_{intent}_v1",
             quality_flag="error",
+            evidence=evidence,
             scenario_flag=False,
             tables_used=[],
             filters_applied=evidence.filters_applied,
@@ -852,6 +1526,20 @@ class AnalysisViewTool:
             evidence_rows=0,
             next_drill=[],
         )
+        semantic_context: AgentSemanticContext | None = None
+        try:
+            resolution = resolve_local_request(request)
+            if resolution.semantic_status is not None:
+                semantic_context = AgentSemanticContext(
+                    status=resolution.semantic_status,
+                    result_check="blocked",
+                    references=self._semantic_references(resolution),
+                    ontology_revision=self._semantic_ontology_revision(),
+                    binding_revision=ONTOLOGY_BINDING_REVISION,
+                    reason_code=semantic_reason_code or "metric_execution_failed",
+                )
+        except (TypeError, ValueError):
+            semantic_context = None
         return AgentEnvelope(
             **self._finalize_envelope(
                 answer=f"{intent} 查询失败：{detail}",
@@ -859,6 +1547,7 @@ class AnalysisViewTool:
                 evidence=evidence,
                 result_meta=result_meta,
                 next_drill=[],
+                semantic_context=semantic_context,
             )
         )
 
@@ -947,16 +1636,61 @@ class AnalysisViewTool:
             )
         )
 
+    def _confirmation_scope(self, request: AgentQueryRequest) -> dict[str, str] | None:
+        """从服务端注入的 context 提取 token 作用域（客户端提交的 run_id 已在 API 层剥离）。"""
+        scope: dict[str, str] = {}
+        user_id = str(request.context.get("user_id") or "").strip()
+        if user_id:
+            scope["user_id"] = user_id
+        run_id = str(request.context.get("run_id") or "").strip()
+        if run_id:
+            scope["run_id"] = run_id
+        return scope or None
+
+    def _suggested_action_scope_violation(self, request: AgentQueryRequest) -> str | None:
+        """user 维度强制校验；run_id 仅随 scope 记录供审计追溯（确认发生在新请求/新 run 中）。
+
+        scope 位于 action payload 内，受既有确认 token HMAC 保护，客户端无法篡改。
+        无 scope 的确认类动作已在签发侧拒发、在路由 token 校验点拒绝（fail-closed）；
+        本层对无 scope 上下文保持透传，仅覆盖非确认类动作回显。
+        """
+        action = request.context.get("suggested_action")
+        if not isinstance(action, dict):
+            return None
+        payload = action.get("payload")
+        if not isinstance(payload, dict):
+            return None
+        scope = payload.get("confirmation_scope")
+        if not isinstance(scope, dict):
+            return None
+        issued_user = str(scope.get("user_id") or "").strip()
+        if not issued_user:
+            return None
+        current_user = str(request.context.get("user_id") or "").strip()
+        if issued_user == current_user:
+            return None
+        return (
+            "Suggested action confirmation is bound to user scope "
+            f"'{issued_user}' and cannot be executed as '{current_user or 'unknown'}'."
+        )
+
     def _ensure_action_confirmation_token(self, action: AgentSuggestedAction) -> AgentSuggestedAction:
         if not action.requires_confirmation or action.confirmation_token:
             return action
+        payload = dict(action.payload)
+        if self._action_scope and "confirmation_scope" not in payload:
+            payload["confirmation_scope"] = dict(self._action_scope)
+        # 签发 fail-closed：payload 仍缺 confirmation_scope.user_id 时（请求
+        # 上下文没有 user_id），agent_action_confirmation_token 会拒绝签发并抛错，
+        # 防止产生可被任意用户重放的未绑定 token。
         return action.model_copy(
             update={
+                "payload": payload,
                 "confirmation_token": self._confirmation_token_for_action(
                     action_type=action.type,
                     label=action.label,
-                    payload=action.payload,
-                )
+                    payload=payload,
+                ),
             }
         )
 
@@ -1059,7 +1793,14 @@ class AnalysisViewTool:
         result_meta,
         next_drill: list[AgentDrill],
         suggested_actions: list[AgentSuggestedAction] | None = None,
+        semantic_context: AgentSemanticContext | None = None,
     ) -> dict[str, Any]:
+        result_meta = result_meta.model_copy(
+            update={
+                "evidence_strength": evidence.evidence_strength,
+                "quality_flag": evidence.quality_flag,
+            }
+        )
         return {
             "answer": answer,
             "cards": [card.model_dump(mode="python") for card in cards],
@@ -1069,4 +1810,9 @@ class AnalysisViewTool:
             "suggested_actions": [
                 action.model_dump(mode="python") for action in (suggested_actions or [])
             ],
+            "semantic_context": (
+                semantic_context.model_dump(mode="python")
+                if semantic_context is not None
+                else None
+            ),
         }

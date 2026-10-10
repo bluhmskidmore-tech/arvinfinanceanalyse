@@ -28,8 +28,13 @@
 
 .data-quality-banner__details summary {
   cursor: pointer;
+  color: var(--dh-api-ink);
   font-size: 12px;
-  opacity: 0.8;
+  opacity: 1;
+  /* axe target-size：可点击 summary 触达目标不低于 24px。 */
+  display: flex;
+  align-items: center;
+  min-height: 24px;
 }
 
 .data-quality-banner__list {

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import tomllib
@@ -14,14 +15,18 @@ def test_supply_chain_security_assets_exist():
     expected = [
         ROOT / ".gitleaks.toml",
         ROOT / "scripts" / "supply_chain_security_scan.py",
+        ROOT / "scripts" / "osv_reconciliation_gate.py",
         ROOT / "docs" / "SUPPLY_CHAIN_SECURITY_SCANNING.md",
+        ROOT / "docs" / "audits" / "osv-reconciliation-records.json",
     ]
 
     missing = [str(path) for path in expected if not path.exists()]
-    assert not missing, "Missing expected supply-chain security assets:\n" + "\n".join(missing)
+    assert not missing, "Missing expected supply-chain security assets:\n" + "\n".join(
+        missing
+    )
 
 
-def test_gitleaks_config_extends_defaults_with_narrow_generated_artifact_allowlists():
+def test_gitleaks_config_extends_defaults_without_tracked_source_snapshot_allowlist():
     config = tomllib.loads((ROOT / ".gitleaks.toml").read_text(encoding="utf-8"))
 
     assert config["extend"]["useDefault"] is True
@@ -33,7 +38,7 @@ def test_gitleaks_config_extends_defaults_with_narrow_generated_artifact_allowli
         for path_pattern in allowlist.get("paths", [])
     )
 
-    assert "audit_pack/source_snapshot" in allowlist_paths
+    assert "audit_pack/source_snapshot" not in allowlist_paths
     assert ".codex-tmp" in allowlist_paths
     assert ".omx" in allowlist_paths
     assert "data" in allowlist_paths
@@ -53,7 +58,48 @@ def test_gitleaks_config_extends_defaults_with_narrow_generated_artifact_allowli
     )
     assert "regulatory_dv01" in allowlist_regexes
     assert "dominant_krd_bucket" in allowlist_regexes
+    assert "cache_key" in allowlist_regexes
+    assert "idempotency_key" in allowlist_regexes
+    assert "candidate_idempotency_key" in allowlist_regexes
+    assert "readiness_evidence_key" in allowlist_regexes
+    assert "evidence_pack_key" in allowlist_regexes
     assert "apiKey" not in allowlist_regexes
+
+
+def test_legacy_source_snapshot_is_removed_from_the_repository():
+    assert not (ROOT / "audit_pack" / "source_snapshot").exists()
+
+
+def test_mypy_source_digest_allowlist_requires_exact_file_rule_and_field_format():
+    config = tomllib.loads((ROOT / ".gitleaks.toml").read_text(encoding="utf-8"))
+    allowlist = next(
+        entry
+        for entry in config["allowlists"]
+        if entry.get("targetRules") == ["generic-api-key"]
+    )
+    assert allowlist["condition"] == "AND"
+    assert allowlist["regexTarget"] == "line"
+    assert len(allowlist["paths"]) == 1
+    assert len(allowlist["regexes"]) == 14
+    path_pattern = re.compile(allowlist["paths"][0])
+    field_patterns = [re.compile(pattern) for pattern in allowlist["regexes"]]
+
+    def matches_field(line):
+        return any(pattern.fullmatch(line) for pattern in field_patterns)
+
+    assert path_pattern.fullmatch("scripts/mypy_baseline.json")
+    assert path_pattern.fullmatch(r"scripts\mypy_baseline.json")
+    assert not path_pattern.fullmatch("scripts/other.json")
+    baseline = json.loads((ROOT / "scripts/mypy_baseline.json").read_text(encoding="utf-8"))
+    source = "backend/app/agent/runtime/action_token.py"
+    historical_digest = baseline["_meta"]["origin"]["sources_sha256"][source]
+    assert matches_field(f'        "{source}": "{historical_digest}",\n')
+    digest = "0123456789abcdef" * 4
+    for field in ("api_key", "token", "scripts/api_key.py", f"{source}.bak"):
+        assert not matches_field(f'        "{field}": "{digest}",\n')
+    for value in (digest[:-1], f"synthetic_{digest}"):
+        assert not matches_field(f'        "{source}": "{value}",\n')
+    assert not matches_field(f'        "{source}": "{digest}",\n')
 
 
 def test_supply_chain_scan_dry_run_emits_expected_plan(capsys):
@@ -84,8 +130,7 @@ def test_supply_chain_scan_dry_run_emits_expected_plan(capsys):
     assert plan["osv"]["report_path"].endswith("osv-report.json")
     assert plan["osv"]["command"][:3] == ["osv-scanner", "scan", "source"]
     assert any(
-        argument == "--lockfile=backend/uv.lock"
-        for argument in plan["osv"]["command"]
+        argument == "--lockfile=backend/uv.lock" for argument in plan["osv"]["command"]
     )
     assert any(
         argument == "--lockfile=frontend/package-lock.json"
@@ -109,13 +154,17 @@ def test_supply_chain_scan_fails_clearly_when_tools_are_missing(monkeypatch, cap
     assert "Missing required executable(s): gitleaks, osv-scanner" in stderr
 
 
-def test_supply_chain_scan_runs_selected_tool_with_expected_command(monkeypatch, tmp_path):
+def test_supply_chain_scan_runs_selected_tool_with_expected_command(
+    monkeypatch, tmp_path
+):
     module = load_module(
         "scripts.supply_chain_security_scan",
         "scripts/supply_chain_security_scan.py",
     )
 
-    monkeypatch.setattr(module.shutil, "which", lambda executable: f"C:/tools/{executable}.exe")
+    monkeypatch.setattr(
+        module.shutil, "which", lambda executable: f"C:/tools/{executable}.exe"
+    )
     calls: list[dict[str, object]] = []
 
     def _fake_run(args, **kwargs):
@@ -142,11 +191,29 @@ def test_supply_chain_scan_runs_selected_tool_with_expected_command(monkeypatch,
 
 def test_ci_wires_secret_and_osv_scans():
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    gate = (ROOT / "scripts" / "osv_reconciliation_gate.py").read_text(encoding="utf-8")
 
     assert "name: Secret Scan" in workflow
     assert "python scripts/supply_chain_security_scan.py --tool gitleaks" in workflow
     assert "gitleaks-report" in workflow
     assert "name: OSV Dependency Scan" in workflow
-    assert "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.3.0" in workflow
-    assert "--lockfile=backend/uv.lock" in workflow
-    assert "--lockfile=frontend/package-lock.json" in workflow
+    assert "needs: frontend" in workflow
+    assert "releases/download/v2.3.0/osv-scanner_linux_amd64" in workflow
+    assert (
+        "e774e5770c31d60745c067be5f69bf3b46641b6d0e0ed87fd65e569cda35dc50" in workflow
+    )
+    assert "continue-on-error: true" in workflow
+    assert "python scripts/osv_reconciliation_gate.py scan" in workflow
+    assert "python scripts/osv_reconciliation_gate.py evaluate" in workflow
+    assert "--scanner /tmp/osv-scanner" in workflow
+    assert "--scan-receipt test_output/security-scans/osv-scan-receipt.json" in workflow
+    assert "steps.osv_raw.outcome" not in workflow
+    assert "test_output/security-scans/osv-adjudication.json" in workflow
+    assert "test_output/security-scans/osv-report.json" in workflow
+    assert "test_output/security-scans/osv-scan-receipt.json" in workflow
+    assert (
+        'EXPECTED_LOCKFILES = ("backend/uv.lock", "frontend/package-lock.json")' in gate
+    )
+    assert "google/osv-scanner-action/osv-reporter-action@" in workflow
+    assert "IgnoredVulns" not in workflow
+    assert "--ignore-vulns" not in workflow

@@ -1,0 +1,382 @@
+/*
+ * /bond-dashboard 页面外壳样式。
+ *
+ * 2026-08-27 组装式重写后，本文件只保留原语层不覆盖的四类东西：页框与主题桥接、
+ * 页头与工具条（含 antd Select 深色收口）、分区帧、面板卡语言与结论块。
+ * 编号分区头、KPI 横带、分区网格、五态占位、表格密度已分别由 SectionHead /
+ * KpiStrip / SectionGrid / StateSurface / DataTable 承担，页面不再重写这些保证。
+ * 颜色一律走 --dh-api-* 语义链；圆角制度 var(--dh-api-radius)；字号下限 11px。
+ */
+
+/*
+ * DESIGN.md §2.2：dh-api scope 只重映射语义别名，未覆盖 --moss-color-* 色阶。
+ * 共享溯源面板（FormalResultMetaPanel）引用 neutral 色阶，这里在页根收敛到
+ * --dh-api-* 基准，避免深色路由冒白底/浅字。
+ */
+.bond-dashboard-page {
+  --moss-color-neutral-50: var(--dh-api-panel-2);
+  --moss-color-neutral-100: var(--dh-api-line-soft);
+  --moss-color-neutral-200: var(--dh-api-line);
+  --moss-color-neutral-400: var(--dh-api-muted);
+  --moss-color-neutral-500: var(--dh-api-muted);
+  --moss-color-neutral-600: var(--dh-api-soft);
+  --moss-color-neutral-800: var(--dh-api-ink);
+  --moss-color-neutral-900: var(--dh-api-ink);
+
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 20px;
+  min-height: 100%;
+  padding: 20px 24px 28px;
+  background: var(--dh-api-bg);
+  color: var(--dh-api-ink);
+}
+
+/* ---------------------------------------------------------------- 页头 */
+
+.bond-dashboard-page__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bond-dashboard-page__header-copy {
+  min-width: 0;
+}
+
+.bond-dashboard-page__title {
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.bond-dashboard-page__subtitle {
+  max-width: 720px;
+  margin: 4px 0 0;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* 模式徽标：无大写宽字距，radius 走圆角制度。 */
+.bond-dashboard-page__mode-badge {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border: 1px solid var(--dh-api-line-soft);
+  border-radius: var(--dh-api-radius);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.bond-dashboard-page__mode-badge--real {
+  background: var(--dh-api-green-soft);
+  color: var(--dh-api-green);
+}
+
+.bond-dashboard-page__mode-badge--mock {
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-blue);
+}
+
+/* -------------------------------------------------------------- 工具条 */
+
+.bond-dashboard-page__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+}
+
+.bond-dashboard-page__toolbar-field {
+  display: grid;
+  gap: 4px;
+}
+
+.bond-dashboard-page__toolbar-label {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.bond-dashboard-page__report-select {
+  min-width: 160px;
+}
+
+/* antd Select 深色收口：32px 控件高、panel-2 底、发丝边、12px 字号。 */
+.bond-dashboard-page .bond-dashboard-page__report-select .ant-select-selector {
+  min-height: 32px;
+  height: 32px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  color: var(--dh-api-ink);
+  font-size: 12px;
+}
+
+.bond-dashboard-page .bond-dashboard-page__report-select .ant-select-selection-item,
+.bond-dashboard-page .bond-dashboard-page__report-select .ant-select-selection-placeholder {
+  line-height: 30px;
+}
+
+.bond-dashboard-page .bond-dashboard-page__report-select .ant-select-arrow {
+  color: var(--dh-api-muted);
+}
+
+/* 下拉挂在工具条容器内（getPopupContainer），一并收深色。 */
+.bond-dashboard-page .ant-select-dropdown {
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel-2);
+  box-shadow: none;
+}
+
+.bond-dashboard-page .ant-select-dropdown .ant-select-item {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+}
+
+.bond-dashboard-page .ant-select-dropdown .ant-select-item-option-selected,
+.bond-dashboard-page .ant-select-dropdown .ant-select-item-option-active {
+  background: var(--dh-api-blue-soft);
+  color: var(--dh-api-ink);
+}
+
+/* 刷新钮：32px 深色描边，激活态走 accent。 */
+.bond-dashboard-page__refresh {
+  min-height: 32px;
+  padding: 5px 14px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: transparent;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bond-dashboard-page__refresh:hover {
+  border-color: var(--dh-api-blue);
+  color: var(--dh-api-blue);
+}
+
+/* ------------------------------------------------------------ 分区帧 */
+
+/*
+ * 分区只剩两件事：断掉栅格子项的宽度传导、给锚点跳转留粘顶余量。
+ * 分区头与内容的间距归 SectionHead 自带的下边距，分区内多块之间的间距归
+ * SectionGrid 的 gap，所以这里不设 gap（设了会与两者叠加）。
+ */
+.bond-dashboard-section {
+  min-width: 0;
+  scroll-margin-top: 52px;
+}
+
+/* ------------------------------------------------------- 结论块（01） */
+
+/*
+ * FR-6 / 方向 A：结论块升级为「hero 大数字 + 结论句」双栏。
+ * hero 栏复用 KPI 带的已格式化持仓规模读数（页面 TSX 不新增数据链路），
+ * 缺值时 hero 栏整体不渲染，块自动回退为单栏结论句。
+ */
+.bond-dashboard-page__conclusion {
+  display: flex;
+  align-items: stretch;
+  gap: 24px;
+  padding: 18px 20px;
+  border: 1px solid var(--dh-api-line);
+  border-left: 2px solid var(--dh-api-blue);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.bond-dashboard-page__conclusion-hero {
+  display: grid;
+  flex: 0 0 auto;
+  align-content: center;
+  gap: 4px;
+  min-width: 190px;
+  padding-right: 24px;
+  border-right: 1px solid var(--dh-api-line-soft);
+}
+
+.bond-dashboard-page__conclusion-hero-label {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.bond-dashboard-page__conclusion-hero-value-row {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.bond-dashboard-page__conclusion-hero-value {
+  color: var(--dh-api-ink);
+  font-family: var(--moss-font-tabular);
+  font-size: clamp(34px, 2.8vw, 40px);
+  font-weight: 600;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  word-break: keep-all;
+}
+
+.bond-dashboard-page__conclusion-hero-unit {
+  margin-left: 6px;
+  color: var(--dh-api-muted);
+  font-size: 14px;
+  font-weight: 500;
+  word-break: keep-all;
+}
+
+.bond-dashboard-page__conclusion-hero-delta {
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-tabular);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bond-dashboard-page__conclusion-hero-delta[data-tone="positive"] {
+  color: var(--dh-api-green);
+}
+
+.bond-dashboard-page__conclusion-hero-delta[data-tone="negative"] {
+  color: var(--dh-api-red);
+}
+
+.bond-dashboard-page__conclusion-copy {
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bond-dashboard-page__conclusion-kicker {
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.bond-dashboard-page__conclusion-body {
+  color: var(--dh-api-ink);
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.bond-dashboard-page__conclusion-detail {
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* --------------------------------------------------- 页面本地面板卡 */
+
+/*
+ * 原语层没有卡片/面板原语（SectionHead 绑定编号 counter，不能给面板复用），
+ * 面板容器与面板头因此仍是页面本地实现，但收敛为唯一一套：重构前的
+ * __panel / charts__panel / table-panel 三套方言已合并到这里。
+ */
+.bond-dashboard-page__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+  background: var(--dh-api-panel);
+}
+
+.bond-dashboard-page__panel-head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+}
+
+.bond-dashboard-page__panel-head-title {
+  overflow: hidden;
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 头部右侧口径小注（如行业占比分母说明、期限结构合计）。 */
+.bond-dashboard-page__panel-head-note {
+  flex: 0 0 auto;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+/* 等高栅格里吃掉多出空间的那一段，保证面板边框整行对齐。 */
+.bond-dashboard-page__panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* --------------------------------------- FormalResultMetaPanel 收敛 */
+
+.bond-dashboard-page .formal-result-meta-panel {
+  --formal-result-meta-border-soft: var(--dh-api-line-soft);
+  --formal-meta-badge-warn-bg: var(--dh-api-amber-soft);
+  --formal-meta-badge-warn-ink: var(--dh-api-amber);
+  --formal-meta-badge-warn-line: color-mix(in srgb, var(--dh-api-amber) 34%, transparent);
+  --formal-meta-badge-danger-bg: var(--dh-api-red-soft);
+  --formal-meta-badge-danger-ink: var(--dh-api-red);
+  --formal-meta-badge-danger-line: color-mix(in srgb, var(--dh-api-red) 34%, transparent);
+
+  margin-top: 0;
+  padding: 14px;
+  border-color: var(--dh-api-line);
+  border-radius: var(--dh-api-radius);
+}
+
+.bond-dashboard-page .formal-result-meta-panel__card,
+.bond-dashboard-page .formal-result-meta-panel__badge {
+  border-radius: var(--dh-api-radius);
+}
+
+.bond-dashboard-page .formal-result-meta-panel__list {
+  grid-template-columns: minmax(88px, 108px) minmax(0, 1fr);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ---------------------------------------------------------- 响应式 */
+
+@media (max-width: 900px) {
+  .bond-dashboard-page__header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .bond-dashboard-page__conclusion {
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .bond-dashboard-page__conclusion-hero {
+    padding-right: 0;
+    padding-bottom: 14px;
+    border-right: none;
+    border-bottom: 1px solid var(--dh-api-line-soft);
+  }
+}

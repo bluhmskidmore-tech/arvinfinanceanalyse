@@ -214,6 +214,8 @@ balance_analysis.py 逾期天数全记本金利息恒 0（与源一致但字段�
 
 `_score_liquidity`(L1107) 为"宽松=正"（资金利率上行 -> 负，`tests/test_macro_bond_linkage.py:681` 锁定），与轴判定和 `estimate_macro_impact` 一致；但 `composite_score = 0.4*rate + 0.3*liquidity + 0.2*growth + 0.1*inflation` 中其余分项均为"偏紧压力=正"，`+0.3*liquidity` 使资金宽松反而推高"宏观偏紧、缩短久期"结论。现有测试因利率分量饱和未覆盖该符号。**口径待确认**：若按"偏紧压力=正"，应为 `-0.3*liquidity_score`。直接影响页面久期建议文案方向。
 
+**2026-07-03 remediation note**：按 Option B 修复，保留 `liquidity_score` 字段"宽松=正、偏紧=负"的既有语义；`composite_score` 统一为"对债不利/偏紧压力=正"，聚合时使用 `liquidity_tightness_score = -liquidity_score`，等价于 `0.4*rate - 0.3*liquidity + 0.2*growth + 0.1*inflation`。`environment_score` 直接输出 `composite_formula_version`；`build_macro_context_v1` 继续原样输出 `liquidity_score`，并新增 `score_polarity`、`composite_formula`、`composite_formula_version` 说明，避免下游把同名字段误解为偏紧分项。相关 rule/cache version 已提升；生产或历史物化输出需要按新版本刷新后才可视为不含旧公式污染。回归覆盖：隔离流动性时宽松不再触发"缩短久期"，偏紧会提高综合偏紧压力。
+
 ## P2 摘要
 
 - cycle_macro_score.py:46-51 — `compute_price_spread_signal` pe<=0 分支返回标量、正常分支返回元组，类型不一致；:60-72 vs 189-193 — 缺分量重归一但 lineage formula 永远写满式权重；:88-98 — 无发布滞后/stale 检查。
@@ -355,6 +357,9 @@ metric_dictionary 只定义了第一种（MTR-RSK-002~007）。用户在两个�
 ## 五、balance-movement-analysis（余额变动）
 
 - **[P1] `BalanceMovementAnalysisPage.tsx:660-671` — 占比优先前端重算，后端值反成 fallback**：优先用前端 sum 的 total 重算占比，后端 `current_balance_pct` 反而兜底（方向应反过来）；算不出时落 0，缺桶画成 0%。
+
+**2026-07-16 remediation note**：按 Option A 修复，`MTR-BMV-005` 将后端 `AccountingAssetMovementRowPayload.current_balance_pct` 记为正式展示唯一来源；`resolveBucketSharePct` 不再使用可见余额/合计重复计算，后端缺失或无效值保持 `null`。页面将缺失占比显示为 `—`，并在结构占比不完整时 fail-closed 隐藏结构图，不再展示由前端推导的 0% 或可比结论。回归覆盖 backend value precedence、missing-share display 与 chart suppression；残余边界是本修复不认证上游占比计算、来源血缘/新鲜度、页面 owner approval 或其他余额合计逻辑。
+
 - [P2] 同文件 `:466-476, 635-643` — 矩阵合计前端求和且非有限值静默跳过（缺数据按 0 计入合计），无"含缺失"标记。
 - [P2] 同文件 `:2979, 2987` — `shareDelta ?? 0` 把缺失占比变动显示成 "+0.00pp"。
 

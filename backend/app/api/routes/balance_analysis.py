@@ -1,15 +1,40 @@
 from __future__ import annotations
 
 import importlib
-from datetime import datetime
+from datetime import date
 from typing import Annotated, Literal
 from urllib.parse import quote
 
-from backend.app.api.perf_logging import timed_api_call
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
+
+from backend.app.api.deps import ensure_read_allowed
 from backend.app.governance.settings import get_settings
-from backend.app.schemas.balance_analysis import BalanceAnalysisDecisionStatusUpdateRequest
+from backend.app.observability.perf_logging import timed_api_call
+from backend.app.schemas.balance_analysis import (
+    BalanceAnalysisAdvancedAttributionEnvelope,
+    BalanceAnalysisBasisBreakdownEnvelope,
+    BalanceAnalysisCurrentUserPayload,
+    BalanceAnalysisDatesEnvelope,
+    BalanceAnalysisDecisionItemsEnvelope,
+    BalanceAnalysisDecisionStatusRecord,
+    BalanceAnalysisDecisionStatusUpdateRequest,
+    BalanceAnalysisDetailEnvelope,
+    BalanceAnalysisOverviewEnvelope,
+    BalanceAnalysisPublicationStatusPayload,
+    BalanceAnalysisRefreshPayload,
+    BalanceAnalysisRefreshStatusPayload,
+    BalanceAnalysisSummaryEnvelope,
+    BalanceAnalysisWorkbookEnvelope,
+)
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.advanced_attribution_service import advanced_attribution_bundle_envelope
+from backend.app.services.balance_analysis_publication_service import (
+    BalanceAnalysisPublicationConflict,
+    BalanceAnalysisPublicationUnavailable,
+    balance_analysis_publication_status,
+    read_published_balance_analysis_basis_breakdown,
+    read_published_balance_analysis_overview,
+)
 from backend.app.services.balance_analysis_service import (
     BalanceAnalysisRefreshConflictError,
     BalanceAnalysisRefreshServiceError,
@@ -25,7 +50,6 @@ from backend.app.services.balance_analysis_service import (
     refresh_balance_analysis,
     update_balance_analysis_decision_status,
 )
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 
 router = APIRouter(prefix="/ui/balance-analysis")
 
@@ -36,41 +60,30 @@ def _build_attachment_disposition(filename: str, *, fallback_filename: str | Non
 
 
 def _require_balance_analysis_report_date_qs(report_date: str) -> str:
-    """YYYY-MM-DD calendar validation; aligned with balance_analysis_service._parse_date format."""
+    """Validate and normalize a YYYY-MM-DD calendar date."""
     candidate = str(report_date).strip()
     try:
-        datetime.strptime(candidate, "%Y-%m-%d")
+        parsed = date.fromisoformat(candidate)
     except ValueError as exc:
         raise HTTPException(
             status_code=422,
             detail="report_date must be a valid calendar date in YYYY-MM-DD format.",
         ) from exc
+    if parsed.isoformat() != candidate:
+        raise HTTPException(
+            status_code=422,
+            detail="report_date must be a valid calendar date in YYYY-MM-DD format.",
+        )
     return candidate
 
 
 def _ensure_balance_analysis_read_allowed(auth: AuthContext) -> None:
-    settings = get_settings()
-    try:
-        ensure_user_allowed(
-            auth=auth,
-            settings=settings,
-            resource="balance_analysis",
-            action="read",
-        )
-    except PermissionError as exc:
-        if _allows_development_fallback_read(auth=auth, environment=settings.environment):
-            return
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-def _allows_development_fallback_read(*, auth: AuthContext, environment: object) -> bool:
-    return (
-        str(environment).strip().lower() == "development"
-        and auth.identity_source == "fallback"
-        and auth.user_id == "anonymous"
-        and auth.role == "viewer"
+    ensure_read_allowed(
+        auth,
+        "balance_analysis",
+        settings=get_settings(),
+        allow_dev_fallback=True,
+        authorize=ensure_user_allowed,
     )
 
 
@@ -89,7 +102,7 @@ def _can_write_balance_analysis_decision_status(auth: AuthContext) -> bool | Non
         return None
 
 
-@router.get("/dates")
+@router.get("/dates", response_model=BalanceAnalysisDatesEnvelope)
 def dates(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
 ) -> dict[str, object]:
@@ -107,13 +120,14 @@ def dates(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-@router.get("")
+@router.get("", response_model=BalanceAnalysisDetailEnvelope)
 def detail(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
     position_scope: Literal["asset", "liability", "all"] = Query("all"),
     currency_basis: Literal["native", "CNY"] = Query("CNY"),
 ) -> dict[str, object]:
+    report_date = _require_balance_analysis_report_date_qs(report_date)
     _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     try:
@@ -133,16 +147,33 @@ def detail(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-@router.get("/overview")
+@router.get("/overview", response_model=BalanceAnalysisOverviewEnvelope)
 def overview(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
+    response: Response,
     report_date: str = Query(...),
     position_scope: Literal["asset", "liability", "all"] = Query("all"),
     currency_basis: Literal["native", "CNY"] = Query("CNY"),
+    generation: str | None = Query(default=None, min_length=1, max_length=128),
 ) -> dict[str, object]:
+    report_date = _require_balance_analysis_report_date_qs(report_date)
     _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     try:
+        if report_date == "2026-08-31" and generation is None:
+            raise BalanceAnalysisPublicationConflict(
+                "A pinned balance-analysis publication generation is required for report_date=2026-08-31."
+            )
+        if generation is not None:
+            published = read_published_balance_analysis_overview(
+                settings,
+                report_date=report_date,
+                position_scope=position_scope,
+                currency_basis=currency_basis,
+                generation=generation,
+            )
+            response.headers["X-Balance-Analysis-Generation"] = published.generation
+            return published.envelope
         return timed_api_call(
             "/ui/balance-analysis/overview",
             lambda: balance_analysis_overview_envelope(
@@ -155,11 +186,30 @@ def overview(
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except BalanceAnalysisPublicationConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except BalanceAnalysisPublicationUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-@router.get("/summary")
+@router.get(
+    "/publication-status",
+    response_model=BalanceAnalysisPublicationStatusPayload,
+)
+def publication_status(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> dict[str, object]:
+    _ensure_balance_analysis_read_allowed(auth)
+    settings = get_settings()
+    return timed_api_call(
+        "/ui/balance-analysis/publication-status",
+        lambda: balance_analysis_publication_status(settings),
+    )
+
+
+@router.get("/summary", response_model=BalanceAnalysisSummaryEnvelope)
 def summary(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
@@ -168,6 +218,7 @@ def summary(
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ) -> dict[str, object]:
+    report_date = _require_balance_analysis_report_date_qs(report_date)
     _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     try:
@@ -189,16 +240,32 @@ def summary(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-@router.get("/summary-by-basis")
+@router.get(
+    "/summary-by-basis",
+    response_model=BalanceAnalysisBasisBreakdownEnvelope,
+)
 def summary_by_basis(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
+    response: Response,
     report_date: str = Query(...),
     position_scope: Literal["asset", "liability", "all"] = Query("all"),
     currency_basis: Literal["native", "CNY"] = Query("CNY"),
+    generation: str | None = Query(default=None, min_length=1, max_length=128),
 ) -> dict[str, object]:
+    report_date = _require_balance_analysis_report_date_qs(report_date)
     _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     try:
+        if generation is not None:
+            published = read_published_balance_analysis_basis_breakdown(
+                settings,
+                report_date=report_date,
+                position_scope=position_scope,
+                currency_basis=currency_basis,
+                generation=generation,
+            )
+            response.headers["X-Balance-Analysis-Generation"] = published.generation
+            return published.envelope
         return timed_api_call(
             "/ui/balance-analysis/summary-by-basis",
             lambda: balance_analysis_basis_breakdown_envelope(
@@ -211,11 +278,18 @@ def summary_by_basis(
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except BalanceAnalysisPublicationConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except BalanceAnalysisPublicationUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-@router.get("/advanced-attribution")
+@router.get(
+    "/advanced-attribution",
+    response_model=BalanceAnalysisAdvancedAttributionEnvelope,
+)
 def advanced_attribution(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(..., description="Report date (YYYY-MM-DD) for the not_ready attribution contract."),
@@ -246,13 +320,14 @@ def advanced_attribution(
     )
 
 
-@router.get("/workbook")
+@router.get("/workbook", response_model=BalanceAnalysisWorkbookEnvelope)
 def workbook(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
     position_scope: Literal["asset", "liability", "all"] = Query("all"),
     currency_basis: Literal["native", "CNY"] = Query("CNY"),
 ) -> dict[str, object]:
+    report_date = _require_balance_analysis_report_date_qs(report_date)
     _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     try:
@@ -272,7 +347,7 @@ def workbook(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-@router.get("/current-user")
+@router.get("/current-user", response_model=BalanceAnalysisCurrentUserPayload)
 def current_user(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
 ) -> dict[str, object]:
@@ -284,13 +359,17 @@ def current_user(
     }
 
 
-@router.get("/decision-items")
+@router.get(
+    "/decision-items",
+    response_model=BalanceAnalysisDecisionItemsEnvelope,
+)
 def decision_items(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
     position_scope: Literal["asset", "liability", "all"] = Query("all"),
     currency_basis: Literal["native", "CNY"] = Query("CNY"),
 ) -> dict[str, object]:
+    report_date = _require_balance_analysis_report_date_qs(report_date)
     _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     try:
@@ -310,11 +389,17 @@ def decision_items(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-@router.post("/decision-items/status")
+@router.post(
+    "/decision-items/status",
+    response_model=BalanceAnalysisDecisionStatusRecord,
+)
 def update_decision_status(
     payload: BalanceAnalysisDecisionStatusUpdateRequest,
     auth: Annotated[AuthContext, Depends(get_auth_context)],
 ) -> dict[str, object]:
+    payload = payload.model_copy(
+        update={"report_date": _require_balance_analysis_report_date_qs(payload.report_date)}
+    )
     settings = get_settings()
     try:
         ensure_user_allowed(
@@ -340,13 +425,28 @@ def update_decision_status(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-@router.get("/summary/export")
+# Downloads are non-JSON streams, so their OpenAPI media schemas are declared
+# explicitly instead of forcing them through a Pydantic response model.
+@router.get(
+    "/summary/export",
+    response_class=Response,
+    responses={
+        200: {
+            "content": {
+                "text/csv": {
+                    "schema": {"type": "string"},
+                }
+            }
+        }
+    },
+)
 def export_summary(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
     position_scope: Literal["asset", "liability", "all"] = Query("all"),
     currency_basis: Literal["native", "CNY"] = Query("CNY"),
 ) -> Response:
+    report_date = _require_balance_analysis_report_date_qs(report_date)
     _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     try:
@@ -368,13 +468,26 @@ def export_summary(
     )
 
 
-@router.get("/workbook/export")
+@router.get(
+    "/workbook/export",
+    response_class=Response,
+    responses={
+        200: {
+            "content": {
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                    "schema": {"type": "string", "format": "binary"},
+                }
+            }
+        }
+    },
+)
 def export_workbook(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
     position_scope: Literal["asset", "liability", "all"] = Query("all"),
     currency_basis: Literal["native", "CNY"] = Query("CNY"),
 ) -> Response:
+    report_date = _require_balance_analysis_report_date_qs(report_date)
     _ensure_balance_analysis_read_allowed(auth)
     settings = get_settings()
     try:
@@ -401,12 +514,17 @@ def export_workbook(
     )
 
 
-@router.post("/refresh")
+@router.post(
+    "/refresh",
+    response_model=BalanceAnalysisRefreshPayload,
+    response_model_exclude_unset=True,
+)
 def refresh(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     report_date: str = Query(...),
 ) -> dict[str, object]:
+    report_date = _require_balance_analysis_report_date_qs(report_date)
     settings = get_settings()
     try:
         ensure_user_allowed(
@@ -430,7 +548,11 @@ def refresh(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-@router.get("/refresh-status")
+@router.get(
+    "/refresh-status",
+    response_model=BalanceAnalysisRefreshStatusPayload,
+    response_model_exclude_unset=True,
+)
 def refresh_status(
     auth: Annotated[AuthContext, Depends(get_auth_context)],
     run_id: str = Query(...),

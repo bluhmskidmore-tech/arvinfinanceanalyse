@@ -6,9 +6,9 @@
     "formal_use_allowed": false,
     "source_version": "sv_ledger_pnl_summary_gs_a",
     "vendor_version": "vv_none",
-    "rule_version": "rv_ledger_pnl_v1",
-    "cache_version": "cv_ledger_pnl_v1",
-    "cache_key": "ledger_pnl.summary:2026-04-30:ALL",
+    "rule_version": "rv_ledger_pnl_v2",
+    "cache_version": "cv_ledger_pnl_v2",
+    "cache_key": "ledger_pnl.summary:2026-04-30:CNX",
     "quality_flag": "ok",
     "vendor_status": "ok",
     "fallback_mode": "none",
@@ -21,12 +21,15 @@
     "generated_at": "2026-06-06T03:35:54.910580Z",
     "filters_applied": {
       "report_date": "2026-04-30",
-      "currency": "ALL"
+      "currency": "CNX",
+      "currency_basis": "CNX",
+      "currency_basis_note": "CNX=综本；CNY=人民币账"
     },
     "tables_used": [
-      "qdb_general_ledger_workbook"
+      "qdb_gl_ledger_reconciliation_workbook",
+      "qdb_gl_average_balance_workbook"
     ],
-    "evidence_rows": 2,
+    "evidence_rows": 1,
     "next_drill": [],
     "source_surface": null
   },
@@ -46,11 +49,11 @@
       "yi": "0.00"
     },
     "ledger_monthly_pnl_core": {
-      "yuan": "10",
+      "yuan": "3",
       "yi": "0.00"
     },
     "ledger_monthly_pnl_all": {
-      "yuan": "10",
+      "yuan": "3",
       "yi": "0.00"
     },
     "by_currency": [
@@ -60,25 +63,9 @@
           "yuan": "3",
           "yi": "0.00"
         }
-      },
-      {
-        "currency": "CNY",
-        "total_pnl": {
-          "yuan": "7",
-          "yi": "0.00"
-        }
       }
     ],
     "by_account": [
-      {
-        "account_code": "51401000001",
-        "account_name": "51401000001",
-        "total_pnl": {
-          "yuan": "7",
-          "yi": "0.00"
-        },
-        "count": 1
-      },
       {
         "account_code": "51601000001",
         "account_name": "51601000001",

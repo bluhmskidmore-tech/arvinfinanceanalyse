@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from tests.helpers import load_module
 
 
@@ -36,27 +37,39 @@ def _build_cube_response():
     )
 
 
-def test_analysis_view_tool_executes_registered_cube_query_intent():
-    request_module = load_module("backend.app.agent.schemas.agent_request", "backend/app/agent/schemas/agent_request.py")
-    tool_module = load_module("backend.app.agent.tools.analysis_view_tool", "backend/app/agent/tools/analysis_view_tool.py")
-    captured: dict[str, object] = {}
+def _fake_cube_query_service(captured: dict[str, object]):
+    """只替换 ``execute``（不落 DuckDB）；保留真实服务的纯校验 / SQL 模板方法
+    （validate_filters / validate_dimensions / parse_measures / build_where_clause），
+    因为工具现在用它们生成 ``sql_executed`` 披露，且这些方法不执行任何语句。"""
+    service_module = load_module(
+        "backend.app.services.cube_query_service",
+        "backend/app/services/cube_query_service.py",
+    )
 
-    class FakeCubeQueryService:
+    class FakeCubeQueryService(service_module.CubeQueryService):
         def execute(self, request, duckdb_path):
             captured["request"] = request
             captured["duckdb_path"] = duckdb_path
             return _build_cube_response()
 
+    return FakeCubeQueryService()
+
+
+def test_analysis_view_tool_executes_registered_cube_query_intent():
+    tool_module = load_module("backend.app.agent.tools.analysis_view_tool", "backend/app/agent/tools/analysis_view_tool.py")
+    captured: dict[str, object] = {}
+
     tool = tool_module.AnalysisViewTool(
         duckdb_path="analytics.duckdb",
-        cube_query_service=FakeCubeQueryService(),
+        cube_query_service=_fake_cube_query_service(captured),
     )
 
     response = tool.execute(
-        request_module.AgentQueryRequest(
+        AgentQueryRequest(
             question="show credit market value",
             basis="formal",
             context={
+                "user_id": "user_a",
                 "intent": "cube_query",
                 "cube_query": {
                     "report_date": "2026-03-31",
@@ -75,30 +88,34 @@ def test_analysis_view_tool_executes_registered_cube_query_intent():
     assert response.cards[0].type == "table"
     assert response.evidence.tables_used == ["fact_formal_bond_analytics_daily"]
     assert response.result_meta.tables_used == ["fact_formal_bond_analytics_daily"]
+    assert response.result_meta.result_kind == "cube_query.bond_analytics"
     assert response.next_drill[0].dimension == "asset_class_std"
+    # cube 路径不再是零披露的动态 SQL 执行面：请求锚点与参数化模板一并透出。
+    assert response.evidence.filters_applied["report_date"] == "2026-03-31"
+    assert response.evidence.filters_applied["fact_table"] == "bond_analytics"
+    assert response.evidence.filters_applied["asset_class_std"] == ["credit"]
+    assert len(response.evidence.sql_executed) == 2
+    assert all("fact_formal_bond_analytics_daily" in sql for sql in response.evidence.sql_executed)
+    assert all("report_date = ?" in sql for sql in response.evidence.sql_executed)
+    assert "credit" not in " ".join(response.evidence.sql_executed)
+    assert response.result_meta.sql_executed == response.evidence.sql_executed
 
 
 def test_analysis_view_tool_falls_back_to_cube_query_when_intent_is_unknown():
-    request_module = load_module("backend.app.agent.schemas.agent_request", "backend/app/agent/schemas/agent_request.py")
     tool_module = load_module("backend.app.agent.tools.analysis_view_tool", "backend/app/agent/tools/analysis_view_tool.py")
     captured: dict[str, object] = {}
 
-    class FakeCubeQueryService:
-        def execute(self, request, duckdb_path):
-            captured["request"] = request
-            captured["duckdb_path"] = duckdb_path
-            return _build_cube_response()
-
     tool = tool_module.AnalysisViewTool(
         duckdb_path="analytics.duckdb",
-        cube_query_service=FakeCubeQueryService(),
+        cube_query_service=_fake_cube_query_service(captured),
     )
 
     response = tool.execute(
-        request_module.AgentQueryRequest(
+        AgentQueryRequest(
             question="fallback to cube query",
             basis="formal",
             context={
+                "user_id": "user_a",
                 "intent": "unmatched",
                 "cube_query": {
                     "report_date": "2026-03-31",
@@ -112,3 +129,5 @@ def test_analysis_view_tool_falls_back_to_cube_query_when_intent_is_unknown():
     assert captured["duckdb_path"] == "analytics.duckdb"
     assert captured["request"].fact_table == "bond_analytics"
     assert response.result_meta.result_kind == "cube_query.bond_analytics"
+    assert response.result_meta.quality_flag == "ok"
+    assert response.answer.startswith("Retrieved 1 row")

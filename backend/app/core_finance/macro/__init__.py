@@ -1,7 +1,13 @@
 from .credit_spread_percentile import compute_credit_spread_percentile
 from .credit_spread_risk import compute_credit_spread_risk
-from .crisis_score import compute_crisis_score_payload
+from .crisis_score import (
+    DEFAULT_CRISIS_SCORE_HISTORY_LIMIT,
+    build_crisis_score_history_payload,
+    compute_crisis_score_payload,
+)
 from .cross_market_linkage import analyze_cross_market_linkage
+from .cta_trend import compute_cta_trend_payload
+from .dcc_garch import compute_dcc_garch_payload
 from .economic_cycle import compute_economic_cycle
 from .equity_strategies import (
     classify_low_crowding_market_regime,
@@ -17,8 +23,10 @@ from .equity_strategies import (
 from .leading_indicator import compute_leading_indicator
 from .liquidity_stress import compute_liquidity_stress_test
 from .macro_portfolio_impact import compute_macro_portfolio_impact
+from .merrill_clock import compute_merrill_clock_payload
 from .monetary_policy_stance import compute_monetary_policy_stance
 from .rate_turning_point import compute_rate_turning_point
+from .risk_parity import compute_risk_parity_payload
 from .toolkit import get_toolkit_script, iter_toolkit_scripts, run_toolkit_script
 from .yield_curve_shape import compute_yield_curve_shape
 
@@ -26,15 +34,21 @@ __all__ = [
     "analyze_cross_market_linkage",
     "compute_credit_spread_percentile",
     "compute_credit_spread_risk",
+    "DEFAULT_CRISIS_SCORE_HISTORY_LIMIT",
+    "build_crisis_score_history_payload",
     "compute_crisis_score_payload",
+    "compute_cta_trend_payload",
+    "compute_dcc_garch_payload",
     "compute_economic_cycle",
     "compute_factors",
     "compute_leading_indicator",
     "compute_low_crowding_scores",
     "compute_liquidity_stress_test",
     "compute_macro_portfolio_impact",
+    "compute_merrill_clock_payload",
     "compute_monetary_policy_stance",
     "compute_rate_turning_point",
+    "compute_risk_parity_payload",
     "compute_yield_curve_shape",
     "classify_low_crowding_market_regime",
     "clean_low_crowding_observations",

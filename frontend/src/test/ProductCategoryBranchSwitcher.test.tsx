@@ -34,9 +34,10 @@ function renderBranchPageWithClient(client: ReturnType<typeof createApiClient>) 
 }
 
 describe("ProductCategoryPnlPage branch switching", () => {
+  // 与 ProductCategoryPnlPage.test.tsx 同源：product-category-pnl 模块链预加载贴着 20s 上限。
   beforeAll(async () => {
     await preloadWorkbenchRouteModules("product-category-pnl");
-  }, 20_000);
+  }, 60_000);
 
   it("defaults to the legacy product-category branch", async () => {
     renderBranchPageWithClient(createApiClient({ mode: "mock" }));
@@ -154,9 +155,26 @@ describe("ProductCategoryPnlPage branch switching", () => {
       expect(screen.getByTestId("monthly-operating-analysis-controls-lead")).toHaveTextContent(
         "月度工作簿控制",
       );
+      expect(screen.getByTestId("monthly-operating-analysis-controls-lead")).toHaveAttribute(
+        "data-numbered",
+        "false",
+      );
+      expect(screen.getByTestId("monthly-operating-analysis-controls-lead")).toHaveAttribute(
+        "data-content-gap",
+        "tight",
+      );
       expect(screen.getByTestId("monthly-operating-analysis-workbook-lead")).toHaveTextContent(
         "月度经营分析工作表",
       );
+      expect(screen.getByTestId("monthly-operating-analysis-workbook-lead")).toHaveAttribute(
+        "data-numbered",
+        "false",
+      );
+      expect(screen.getByTestId("monthly-operating-analysis-workbook-lead")).toHaveAttribute(
+        "data-content-gap",
+        "tight",
+      );
+      expect(document.querySelector(".product-category-section-lead")).not.toBeInTheDocument();
       expect(screen.getByTestId("monthly-operating-analysis-workbook-meta")).toHaveTextContent(
         /quality_flag=stale/,
       );
@@ -209,7 +227,7 @@ describe("ProductCategoryPnlPage branch switching", () => {
       expect(within(overviewSection).getByRole("table")).toBeInTheDocument();
       expect(within(overviewSection).getByText("loan_total")).toBeInTheDocument();
       expect(within(overviewSection).getByText("0")).toBeInTheDocument();
-      expect(within(overviewSection).getAllByText("--")).toHaveLength(2);
+      expect(within(overviewSection).getAllByText("—")).toHaveLength(2);
       expect(within(overviewSection).getByText("false")).toBeInTheDocument();
       expect(within(overviewSection).getByText("fee_income")).toBeInTheDocument();
       expect(within(overviewSection).getByText("1200.5")).toBeInTheDocument();

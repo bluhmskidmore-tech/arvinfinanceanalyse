@@ -1,8 +1,173 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createDeferredApiClient } from "../api/clientContext";
+import { createRealHomeSupplementalClient } from "../api/homeSupplementalClient";
+import { createMockBalanceMovementClient } from "../mocks/balanceMovementMockClient";
+import { formatRawAsNumeric } from "../utils/format";
 
 describe("home startup deferred client", () => {
+  it.each([{}, { result: {}, result_meta: null }])("rejects malformed supplemental envelopes: %j", async (payload) => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify(payload)));
+    const client = createDeferredApiClient({ mode: "real", fetchImpl });
+    await expect(client.getCoreMetrics()).rejects.toThrow(/Invalid ApiEnvelope/);
+  });
+
+  it("times out supplemental reads at the shared default deadline", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchImpl = vi.fn<typeof fetch>(() => new Promise(() => {}));
+      const client = createRealHomeSupplementalClient({ fetchImpl, baseUrl: "" });
+      const request = client.getCoreMetrics();
+      const outcome = request.catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(fetchImpl.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+      expect(await outcome).toMatchObject({ message: expect.stringContaining("timed out") });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("preserves HTTP JSON error details on supplemental reads", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ detail: "source batch missing" }), { status: 409 }));
+    const client = createDeferredApiClient({ mode: "real", fetchImpl });
+    await expect(client.getCoreMetrics()).rejects.toThrow("source batch missing");
+  });
+
+  it("preserves caller cancellation on supplemental balance movement reads", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(() => new Promise(() => {}));
+    const client = createRealHomeSupplementalClient({ fetchImpl, baseUrl: "" });
+    const controller = new AbortController();
+    const reason = new Error("caller cancelled");
+    const request = client.getBalanceMovementDates("CNX", { signal: controller.signal });
+    const outcome = request.catch((error: unknown) => error);
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledOnce());
+    controller.abort(reason);
+    expect(await outcome).toBe(reason);
+    expect(fetchImpl.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+  });
+
+  it.each([
+    ["getBalanceAnalysisOverview", "overview"],
+    ["getBalanceAnalysisSummaryByBasis", "summary-by-basis"],
+  ] as const)("preserves generation on the lightweight %s request", async (method, endpoint) => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ result: {}, result_meta: {} })));
+    const client = createDeferredApiClient({ mode: "real", baseUrl: "http://backend.local", fetchImpl });
+
+    await client[method]({
+      reportDate: "2026-08-31", positionScope: "all", currencyBasis: "CNY", generation: "balance/generation + 1",
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      `http://backend.local/ui/balance-analysis/${endpoint}?report_date=2026-08-31&position_scope=all&currency_basis=CNY&generation=balance%2Fgeneration+%2B+1`,
+      expect.anything(),
+    );
+  });
+
+  it("routes portfolio startup reads through the lightweight home clients", async () => {
+    const requestedUrls: string[] = [];
+    const movementClient = createMockBalanceMovementClient();
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      requestedUrls.push(String(input));
+      const payload = String(input).includes("/balance-movement-analysis/dates?")
+        ? await movementClient.getBalanceMovementDates("CNX")
+        : String(input).includes("/balance-movement-analysis?")
+          ? await movementClient.getBalanceMovementAnalysis({ reportDate: "2026-04-30" })
+          : String(input).endsWith("/ui/balance-analysis/dates")
+            ? { result_meta: { basis: "formal" }, result: { report_dates: [] } }
+          : { result_meta: { basis: "formal" }, result: {} };
+      return new Response(
+        JSON.stringify(payload),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+    const client = createDeferredApiClient({
+      mode: "real",
+      baseUrl: "http://backend.local",
+      fetchImpl,
+    });
+
+    await client.getBondDashboardDates();
+    await client.getRiskTensorDates();
+    await client.getBalanceAnalysisDates();
+    await client.getBalanceAnalysisOverview({
+      reportDate: "2026-04-30",
+      positionScope: "all",
+      currencyBasis: "CNY",
+    });
+    await client.getBalanceAnalysisSummaryByBasis({
+      reportDate: "2026-04-30",
+      positionScope: "all",
+      currencyBasis: "CNY",
+    });
+    await client.getBalanceMovementDates("CNX");
+    await client.getBalanceMovementAnalysis({
+      reportDate: "2026-04-30",
+      currencyBasis: "CNX",
+    });
+    await client.getAdbComparison("2026-01-01", "2026-04-30");
+    await client.getPnlAttributionAnalysisSummary("2026-04-30");
+
+    expect(requestedUrls).toEqual([
+      "http://backend.local/api/bond-dashboard/dates",
+      "http://backend.local/api/risk/tensor/dates",
+      "http://backend.local/ui/balance-analysis/dates",
+      "http://backend.local/ui/balance-analysis/overview?report_date=2026-04-30&position_scope=all&currency_basis=CNY",
+      "http://backend.local/ui/balance-analysis/summary-by-basis?report_date=2026-04-30&position_scope=all&currency_basis=CNY",
+      "http://backend.local/ui/balance-movement-analysis/dates?currency_basis=CNX",
+      "http://backend.local/ui/balance-movement-analysis?report_date=2026-04-30&currency_basis=CNX",
+      "http://backend.local/api/analysis/adb/comparison?start_date=2026-01-01&end_date=2026-04-30",
+      "http://backend.local/api/pnl-attribution/summary?report_date=2026-04-30",
+    ]);
+  });
+
+  it("preserves the governed risk-date envelope in lightweight mock mode", async () => {
+    const client = createDeferredApiClient({ mode: "mock" });
+
+    const envelope = await client.getRiskTensorDates();
+
+    expect(envelope.result.report_dates).toEqual([
+      "2026-02-28",
+      "2026-01-31",
+      "2025-12-31",
+    ]);
+    expect(envelope.result_meta).toMatchObject({
+      basis: "formal",
+      formal_use_allowed: true,
+      source_version: "sv_risk_tensor_fact_mock_v3",
+      rule_version: "rv_risk_tensor_formal_materialize_v7",
+      cache_version: "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v7",
+    });
+  });
+
+  it("preserves balance-analysis automatic hydration reads in lightweight mock mode", async () => {
+    const client = createDeferredApiClient({ mode: "mock" });
+
+    const movementDates = await client.getBalanceMovementDates("CNX");
+    const movement = await client.getBalanceMovementAnalysis({
+      reportDate: "2026-02-28",
+      currencyBasis: "CNX",
+    });
+    const adbComparison = await client.getAdbComparison(
+      "2026-01-01",
+      "2026-02-28",
+    );
+
+    expect(movementDates.result).toMatchObject({
+      currency_basis: "CNX",
+      report_dates: ["2026-02-28"],
+    });
+    expect(movement.result).toMatchObject({
+      currency_basis: "CNX",
+      report_date: "2026-02-28",
+    });
+    expect(adbComparison).toMatchObject({
+      adb_denominator_basis: "snapshot_calendar",
+      assets_breakdown: [],
+      liabilities_breakdown: [],
+      simulated: false,
+    });
+  });
+
   it("routes home supplemental reads through the lightweight home supplemental client", async () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -120,5 +285,181 @@ describe("home startup deferred client", () => {
       sign_aware: false,
       display: expect.any(String),
     });
+  });
+
+  it("routes the first-screen candidate indicator through its lightweight client", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          result_meta: { basis: "analytical" },
+          result: {
+            report_month: "202607",
+            calculation_status: "warning",
+            metrics: [],
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    ) as unknown as typeof fetch;
+    const client = createDeferredApiClient({
+      mode: "real",
+      baseUrl: "http://backend.local",
+      fetchImpl,
+    });
+
+    const envelope = await client.getLedgerPnlCandidateFinancialIndicators(" 202607 ", {
+      includeLineage: false,
+      metricId: " income.operating.mother_bank ",
+    });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://backend.local/api/ledger-pnl/candidate-financial-indicators?report_month=202607&metric_id=income.operating.mother_bank",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(envelope.result.report_month).toBe("202607");
+  });
+
+  it("preserves governed Numeric spread_change_bp through the deferred home supplemental client", async () => {
+    const spreadChange = formatRawAsNumeric({ raw: 25, unit: "bp", sign_aware: true });
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          result_meta: { basis: "formal" },
+          result: {
+            report_date: "2026-04-30",
+            credit_market_value: "1500000000",
+            credit_weight: "0.25",
+            spread_dv01: "25000",
+            weighted_avg_spread: "80",
+            weighted_avg_spread_duration: "4.2",
+            spread_scenarios: [
+              {
+                scenario_name: "+25bp",
+                spread_change_bp: spreadChange,
+                pnl_impact: "-1200000",
+                oci_impact: "-800000",
+                tpl_impact: "-100000",
+              },
+            ],
+            migration_scenarios: [],
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    ) as unknown as typeof fetch;
+    const client = createDeferredApiClient({
+      mode: "real",
+      baseUrl: "http://backend.local",
+      fetchImpl,
+    });
+
+    const creditSpread = await client.getBondAnalyticsCreditSpreadMigration("2026-04-30");
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://backend.local/api/bond-analytics/credit-spread-migration?report_date=2026-04-30",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(creditSpread.result.spread_scenarios[0]?.spread_change_bp).toEqual(spreadChange);
+    expect(creditSpread.result.spread_scenarios[0]?.pnl_impact).toMatchObject({
+      raw: -1200000,
+      unit: "yuan",
+      sign_aware: true,
+      display: expect.any(String),
+    });
+  });
+
+  it("serializes explicit include_payload_json for deferred home market ticker choice news reads", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          result_meta: { basis: "analytical" },
+          result: {
+            total_rows: 0,
+            limit: 2,
+            offset: 0,
+            as_of_date: "2026-04-23",
+            excluded_future_rows: 0,
+            payload_json_included: false,
+            events: [],
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    ) as unknown as typeof fetch;
+    const client = createDeferredApiClient({
+      mode: "real",
+      baseUrl: "http://backend.local",
+      fetchImpl,
+    });
+
+    await client.getChoiceNewsEvents({
+      limit: 2,
+      offset: 0,
+      includePayloadJson: false,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://backend.local/ui/news/choice-events/latest?limit=2&offset=0&include_payload_json=false",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
+  it("routes compact Choice News through the deferred mock home ticker client", async () => {
+    const client = createDeferredApiClient({ mode: "mock" });
+
+    const payload = await client.getChoiceNewsEvents({
+      limit: 1,
+      offset: 1,
+      includePayloadJson: false,
+    });
+    const returnedEventId = payload.result.events[0]?.event_key;
+
+    expect(payload.result.payload_json_included).toBe(false);
+    expect(payload.result.events[0]?.payload_json).toBeNull();
+    expect(payload.result.compare?.same_direction[0]?.source_event_ids).toEqual([
+      returnedEventId,
+    ]);
+  });
+
+  it("passes return decomposition detail through the deferred home supplemental client", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          result_meta: { basis: "formal" },
+          result: {
+            report_date: "2026-04-30",
+            computed_at: "2026-04-30T00:00:00Z",
+            warnings: [],
+            bond_details: [],
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    ) as unknown as typeof fetch;
+    const client = createDeferredApiClient({
+      mode: "real",
+      baseUrl: "http://backend.local",
+      fetchImpl,
+    });
+
+    await client.getBondAnalyticsReturnDecomposition("2026-04-30", "MoM", {
+      assetClass: "all",
+      accountingClass: "all",
+      detail: "summary",
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://backend.local/api/bond-analytics/return-decomposition?report_date=2026-04-30&period_type=MoM&asset_class=all&accounting_class=all&detail=summary",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
   });
 });

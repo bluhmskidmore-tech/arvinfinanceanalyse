@@ -77,7 +77,7 @@ Fastest closure order from current evidence:
 
 ## Ledger PnL Direct-Record Drill-Down
 
-A fresh Ledger PnL dry-run on 2026-06-10 confirms the current direct-record issue is not a missing-field problem in the candidate payload. `python scripts\emit_ledger_pnl_governance_record.py` generated a field-complete `PAGE-LEDGER-PNL-001` candidate for `/api/ledger-pnl/summary` with:
+A fresh Ledger PnL read-only refresh at `2026-06-10T21:25:00+08:00` confirms the current direct-record issue is not a missing-field problem in the candidate payload. `python scripts\refresh_ledger_pnl_direct_governance_record_snapshot.py` regenerated the dry-run snapshot for a field-complete `PAGE-LEDGER-PNL-001` candidate for `/api/ledger-pnl/summary` with:
 
 - `report_date=2026-05-31`
 - `basis=ledger`
@@ -88,7 +88,7 @@ A fresh Ledger PnL dry-run on 2026-06-10 confirms the current direct-record issu
 - `cache_key=ledger_pnl.summary:2026-05-31:ALL`
 - `formal_use_allowed=false`
 
-The same dry-run returned `record_write_status=not_requested`, `existing_record_line=null`, and `validation_status=ready_for_audit_review`. A direct search of `data/governance/cache_manifest.jsonl` found no matching `PAGE-LEDGER-PNL-001`, `/api/ledger-pnl/summary`, or `ledger_pnl.summary:2026-05-31:ALL` record.
+The same read-only refresh returned `record_write_status=not_requested`, `existing_record_line=null`, and `validation_status=ready_for_audit_review`. A direct search of `data/governance/cache_manifest.jsonl` found no matching `PAGE-LEDGER-PNL-001`, `/api/ledger-pnl/summary`, or `ledger_pnl.summary:2026-05-31:ALL` record.
 
 Implication: Ledger PnL has an evidence-backed candidate record, but no written direct page/API governance record. The approved governance workflow still needs to write or locate that record, then rerun governance validation and manual audit review. This dry-run does not approve page closure, promote `MTR-LPN-001` through `MTR-LPN-003`, prove live page/API execution, or capture owner approval.
 
@@ -118,9 +118,9 @@ During this audit, PnL Attribution's service layer was narrowly adjusted so a mi
 ## Verification Commands
 
 - Local MCP stdio call: `moss-lineage-evidence.get_page_governance_audit_evidence_packet` for each of the seven pages.
-- Approval checker normal mode for all seven pages -> exit 0 with `approval_status=pending` and `business_owner_approval_captured=false`.
-- Approval checker strict mode for all seven pages -> exit 1, preserving the fail-closed owner approval gate.
-- Fresh strict rerun after adding the action matrix -> all seven pages returned `StrictExitCode=1` with `BlocksClosure=true`.
+- Approval checker normal mode for all seven pages, refreshed at `2026-06-10T19:26:44+08:00` -> exit 0 with `approval_status=pending` and `business_owner_approval_captured=false`.
+- Approval checker strict mode for all seven pages, refreshed at `2026-06-10T19:26:44+08:00` -> exit 1, preserving the fail-closed owner approval gate.
+- Owner approval status pytest suite, refreshed at `2026-06-10T19:26:44+08:00` -> 93 passed.
 - `npm run test:a11y-smoke -- --grep '@(product-category-pnl|balance-analysis|average-balance|bond-analysis|ledger-pnl|stock-analysis|pnl-attribution)' --workers=1` -> 7 passed.
 - `npm.cmd run test -- <seven-page frontend test slice>` -> 20 test files passed, 517 tests passed.
 - PnL Attribution empty-storage and formal PnL storage fail-closed pytest slice -> 15 passed.

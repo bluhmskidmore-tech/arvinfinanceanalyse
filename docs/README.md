@@ -25,6 +25,7 @@ If this file conflicts with that chain, follow the authority chain.
 
 ## Planning, Handoff, And Evidence
 
+- `docs/market-overview-prd.md`: supporting product requirements for funding conditions, yield-curve interpretation, and portfolio rate scenarios on the market overview page.
 - `docs/plans/`: supporting repo-visible planning history.
 - `docs/handoff/`: supporting handoff material.
 - `docs/design-artifacts/`: supporting design and verification evidence.

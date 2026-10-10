@@ -1,0 +1,32 @@
+{
+  "contract_version": "ledger-comparison-source-locks-v1",
+  "lock_version": "qdb-ledger-comparison-source-locks-2026-v1.0.0",
+  "scope": "ledger_only_key_metrics_and_component_detail",
+  "compatible_rule_version": "qdb-finance-2026-v1.0.1",
+  "sheet": "综本",
+  "currency": "CNX",
+  "value_basis": "ending_balance",
+  "period_basis": "natural_month_end",
+  "formal_use_allowed": false,
+  "certification_effect": "none",
+  "records": [
+    {
+      "report_month": "202604",
+      "report_date": "2026-04-30",
+      "file": "总账对账202604.xlsx",
+      "sha256": "6b59d7b41b9b11aa8bff431b9d33e353b20751b024e959327dae619a2b84e977"
+    },
+    {
+      "report_month": "202605",
+      "report_date": "2026-05-31",
+      "file": "总账对账202605.xlsx",
+      "sha256": "dabefcb6b713d0a427bb09d53673940ecd5df8b98051c61592b0c89b3d505224"
+    },
+    {
+      "report_month": "202606",
+      "report_date": "2026-06-30",
+      "file": "总账对账202606.xlsx",
+      "sha256": "29717578b92e107cc2fbcd5b66cd7c63191c24e1a7d245c103c94e235331c0b7"
+    }
+  ]
+}

@@ -77,7 +77,7 @@ def test_cashflow_projection_governance_record_dry_run_preflights_without_writin
     }
 
     preflight = payload["preflight"]
-    assert preflight["page_id"] == "GAP-CASHFLOW-PROJECTION-PAGE"
+    assert preflight["page_id"] == "PAGE-CFP-001"
     assert preflight["frontend_route"] == "/cashflow-projection"
     assert preflight["primary_api"] == "/api/cashflow-projection"
     assert preflight["approval_status"] == "candidate_or_pending"
@@ -124,7 +124,7 @@ def test_cashflow_projection_governance_record_explicit_write_is_mcp_validated(
         max_results=10,
     )
     page = validation_payload["pages"][0]
-    assert page["page_id"] == "GAP-CASHFLOW-PROJECTION-PAGE"
+    assert page["page_id"] == "PAGE-CFP-001"
     assert page["validation_status"] == "direct_records_ready_for_audit_review"
     assert page["direct_record_validations"][0]["validation_status"] == "ready_for_audit_review"
     assert page["direct_record_validations"][0]["record_formal_use_allowed"] is False

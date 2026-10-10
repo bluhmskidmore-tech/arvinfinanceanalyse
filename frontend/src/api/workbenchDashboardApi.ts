@@ -4,14 +4,6 @@ import type {
   DailyChangesPayload,
   DailyChangesResult,
 } from "./contracts";
-import { sampleCoreMetricsResult, sampleDailyChangesResult } from "../fixtures/dashboardCoreWorkbenchSamples";
-
-/** ApiClient 延迟函数形状（与 ``client.ts`` 内嵌一致）。 */
-type DelayFn = () => Promise<void>;
-
-type BundledEnvelopeFactory = Pick<typeof import("../mocks/mockApiEnvelope"), "buildMockApiEnvelope">;
-
-type EnsureBundle = () => Promise<BundledEnvelopeFactory>;
 
 type FetchJsonDeps = {
   fetchImpl: typeof fetch;
@@ -27,28 +19,6 @@ export type DashboardClientMethods = {
   getCoreMetrics: (params?: { reportDate?: string }) => Promise<CoreMetricsPayload>;
   getDailyChanges: (params?: { reportDate?: string }) => Promise<DailyChangesPayload>;
 };
-
-export function dashboardWorkbenchDemoEndpoints(
-  delay: DelayFn,
-  ensureBundle: EnsureBundle,
-): DashboardClientMethods {
-  return {
-    async getCoreMetrics() {
-      await delay();
-      return (await ensureBundle()).buildMockApiEnvelope(
-        "dashboard.core_metrics",
-        sampleCoreMetricsResult(),
-      );
-    },
-    async getDailyChanges() {
-      await delay();
-      return (await ensureBundle()).buildMockApiEnvelope(
-        "dashboard.daily_changes",
-        sampleDailyChangesResult(),
-      );
-    },
-  };
-}
 
 export function dashboardWorkbenchLiveEndpoints(dep: FetchJsonDeps): DashboardClientMethods {
   const { fetchImpl, baseUrl, requestJson } = dep;

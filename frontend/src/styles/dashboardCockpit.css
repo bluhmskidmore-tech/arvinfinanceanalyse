@@ -1,0 +1,855 @@
+:where([data-testid="bond-analysis-overview"]).dashboard-home-shell {
+  --dashboard-blue-25: #f8fbff;
+  --dashboard-blue-50: #f1f6fc;
+  --dashboard-blue-100: #e3edf8;
+  --dashboard-blue-200: #c6d7ea;
+  --dashboard-blue-600: #24476f;
+  --dashboard-blue-700: #183553;
+  --dashboard-red-25: #fffafa;
+  --dashboard-red-50: #fbf2f3;
+  --dashboard-red-100: #f0d8dc;
+  --dashboard-red-200: #d6aab1;
+  --dashboard-red-600: #8d303a;
+  --dashboard-red-700: #68242c;
+  --dashboard-ink: #182334;
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  justify-self: stretch;
+  min-width: 0;
+}
+
+.workbench-shell-grid--cockpit .workbench-main-column,
+.workbench-shell-grid--cockpit .workbench-main-column > main {
+  width: 100%;
+  min-width: 0;
+  justify-self: stretch;
+}
+
+.workbench-shell-grid--cockpit [data-testid="workbench-terminal-bar"] {
+  display: none;
+}
+
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0 0 8px;
+  border: 0;
+  border-bottom: 1px solid var(--dh-api-line-soft);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-toolbar__identity {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* 一问副题：12px muted 常规体（对齐首页页头语言，不用大写宽字距微标签）。 */
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-toolbar__eyebrow {
+  overflow: hidden;
+  color: var(--dh-api-muted);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-toolbar__title {
+  margin: 0;
+  color: var(--ib-ink);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-view-pill,
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-action-button,
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-control,
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-check {
+  min-height: 28px;
+  /* Shape Lock：直读页面深色圆角制度。--ib-radius 自 2026-09-02 起已在 boundary 桥接到
+     --dh-api-radius（DESIGN §12 结论 18），此处保留直读，行为等价。 */
+  border-radius: var(--dh-api-radius, 6px);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-view-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  padding: 0 8px;
+  border: 1px solid var(--ib-hairline);
+  background: var(--ib-surface);
+  color: var(--ib-ink-secondary);
+  white-space: nowrap;
+}
+
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-view-pill::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ib-accent);
+  content: "";
+  flex-shrink: 0;
+}
+
+:where([data-testid="bond-analysis-overview"]) .dashboard-governance-tone-warning.dashboard-home-view-pill::before {
+  background: var(--ib-warn);
+}
+
+:where([data-testid="bond-analysis-overview"]) .dashboard-governance-tone-ok.dashboard-home-view-pill::before {
+  background: var(--ib-up);
+}
+
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-control,
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--moss-color-text-secondary);
+}
+
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-control > span {
+  color: var(--moss-color-text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-actions__divider {
+  width: 1px;
+  height: 14px;
+  background: var(--dh-api-line-soft);
+  margin: 0 2px;
+}
+
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-action-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border: 1px solid var(--ib-hairline);
+  background: var(--ib-surface);
+  color: var(--ib-ink-secondary);
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-action-button--primary {
+  border-color: var(--ib-hairline);
+  background: var(--ib-surface);
+  color: var(--ib-ink);
+  box-shadow: none;
+}
+
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-action-button--primary:hover:not(.dashboard-home-action-button--disabled) {
+  border-color: var(--ib-accent);
+  background: var(--ib-accent-surface);
+  color: var(--ib-accent);
+}
+
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-action-button--secondary:hover {
+  border-color: var(--ib-accent);
+  color: var(--ib-accent);
+}
+
+:where([data-testid="bond-analysis-overview"]) .dashboard-home-action-button--disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+  :where([data-testid="bond-analysis-overview"]) .dashboard-home-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  :where([data-testid="bond-analysis-overview"]) .dashboard-home-toolbar__identity {
+    flex-wrap: wrap;
+    align-items: baseline;
+    width: 100%;
+    gap: 4px 8px;
+  }
+
+  :where([data-testid="bond-analysis-overview"]) .dashboard-home-toolbar__title {
+    white-space: nowrap;
+    word-break: keep-all;
+  }
+
+  :where([data-testid="bond-analysis-overview"]) .dashboard-home-toolbar__eyebrow {
+    letter-spacing: 0;
+  }
+
+  :where([data-testid="bond-analysis-overview"]) .dashboard-home-actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  :where([data-testid="bond-analysis-overview"]) .dashboard-home-actions__divider {
+    display: none;
+  }
+}
+
+.dashboard-home-panel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.055);
+  background: rgba(255, 255, 255, 0.58);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.84) inset,
+    0 16px 46px rgba(17, 24, 39, 0.028);
+  backdrop-filter: blur(16px);
+}
+
+.dashboard-kpi-ribbon.dashboard-home-panel,
+.dashboard-home-market-strip.dashboard-home-panel,
+.dashboard-analysis-grid.dashboard-home-panel,
+.dashboard-structure-risk-focus.dashboard-home-panel {
+  box-shadow: none;
+}
+
+.dashboard-home-section-heading,
+.dashboard-judgment-band__suggestions,
+.dashboard-structure-risk-focus__task-list,
+.dashboard-structure-risk-focus__calendar-list,
+.dashboard-structure-risk-focus__task,
+.dashboard-structure-risk-focus__calendar-item {
+  display: grid;
+  gap: 8px;
+}
+
+.dashboard-home-section-eyebrow {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(24, 53, 83, 0.64);
+}
+
+.dashboard-home-value,
+.dashboard-home-badge,
+.dashboard-home-rank,
+.dashboard-home-date {
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-governance-tone-ok {
+  --dashboard-accent-bg: rgba(241, 246, 252, 0.68);
+  --dashboard-accent-border: rgba(36, 71, 111, 0.14);
+  --dashboard-accent-fg: var(--dashboard-blue-700);
+}
+
+.dashboard-governance-tone-warning,
+.dashboard-severity-medium,
+.dashboard-calendar-status-loading {
+  --dashboard-accent-bg: rgba(255, 250, 250, 0.74);
+  --dashboard-accent-border: rgba(141, 48, 58, 0.13);
+  --dashboard-accent-fg: var(--dashboard-red-600);
+}
+
+:where([data-testid="bond-analysis-top-cockpit"]) .calendar-list__level .status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ib-ink-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+:where([data-testid="bond-analysis-top-cockpit"]) .calendar-list__level .status-pill::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  content: "";
+  flex-shrink: 0;
+}
+
+:where([data-testid="bond-analysis-top-cockpit"]) .calendar-list__level .status-pill[data-status="normal"]::before {
+  background: var(--ib-ink-muted);
+}
+
+:where([data-testid="bond-analysis-top-cockpit"]) .calendar-list__level .status-pill[data-status="caution"]::before,
+:where([data-testid="bond-analysis-top-cockpit"]) .calendar-list__level .status-pill[data-status="warning"]::before {
+  background: var(--ib-warn);
+}
+
+:where([data-testid="bond-analysis-top-cockpit"]) .calendar-list__level .status-pill[data-status="danger"]::before {
+  background: var(--ib-down);
+}
+
+:where([data-testid="bond-analysis-top-cockpit"]) .calendar-list__source-link {
+  color: var(--ib-accent);
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+:where([data-testid="bond-analysis-top-cockpit"]) .calendar-list__source-link:hover {
+  color: var(--ib-accent-hover);
+}
+
+.dashboard-progressive-disclosure {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  border-radius: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.045);
+  background: rgba(255, 255, 255, 0.38);
+  box-shadow: none;
+}
+
+.dashboard-progressive-disclosure__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+  padding: 14px 16px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.dashboard-progressive-disclosure__summary::-webkit-details-marker {
+  display: none;
+}
+
+.dashboard-progressive-disclosure__summary > span:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.dashboard-progressive-disclosure__description {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: rgba(71, 85, 105, 0.72);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dashboard-progressive-disclosure__cue {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: var(--dh-api-radius, 8px);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  background: rgba(255, 255, 255, 0.56);
+  color: rgba(24, 53, 83, 0.78);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dashboard-progressive-disclosure[open] {
+  background: rgba(255, 255, 255, 0.52);
+  box-shadow: 0 16px 46px rgba(17, 24, 39, 0.024);
+}
+
+.dashboard-progressive-disclosure[open] .dashboard-progressive-disclosure__cue {
+  color: var(--dashboard-red-700);
+}
+
+.dashboard-progressive-disclosure[open] .dashboard-business-detail-strip {
+  padding: 0 14px 14px;
+}
+
+.dashboard-detail-drilldown {
+  /* 交错冲突：以下属性保持原位（多为刻意保留的死声明或需被后续规则覆盖），详见合并报告 */
+  gap: 12px;
+}
+
+.dashboard-detail-drilldown__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 0;
+  border-bottom: 0;
+  border-left: 0;
+  background: transparent;
+}
+
+.dashboard-detail-drilldown__title {
+  margin: 0;
+  color: var(--dashboard-ink);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.dashboard-detail-drilldown[open] {
+  padding-bottom: 14px;
+}
+
+.dashboard-detail-drilldown[open] > :not(summary) {
+  margin-inline: 14px;
+}
+
+.dashboard-home-date {
+  color: var(--moss-color-text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* Dashboard cockpit visual pass: reference-like density and shell treatment. */
+.workbench-shell-grid--cockpit,
+.workbench-shell-grid--cockpit * {
+  letter-spacing: 0 !important;
+}
+
+.workbench-shell-grid--cockpit [data-testid="workbench-group-nav"] {
+  gap: 4px !important;
+}
+
+.workbench-shell-grid--cockpit [data-testid="workbench-support-nav"] {
+  margin-top: auto;
+}
+
+.dashboard-cockpit-card,
+.dashboard-home-panel {
+  border-radius: 8px;
+  border-color: rgba(15, 23, 42, 0.09);
+  background: #ffffff;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.035);
+  backdrop-filter: none;
+}
+
+.dashboard-cockpit-eyebrow,
+.dashboard-home-section-eyebrow {
+  color: #0f3f84;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: none;
+}
+
+.dashboard-command-deck__judgment.dashboard-home-panel,
+.dashboard-command-status.dashboard-home-panel {
+  border-color: rgba(15, 23, 42, 0.052);
+  backdrop-filter: blur(16px);
+  background: #ffffff;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.035);
+}
+
+.dashboard-command-deck__judgment .dashboard-home-section-heading {
+  gap: 2px;
+}
+
+.dashboard-command-status .dashboard-home-section-heading {
+  gap: 2px;
+}
+
+.dashboard-detail-drilldown {
+  display: grid;
+  min-width: 0;
+  overflow-x: clip;
+  padding-top: 0;
+  margin-top: 0;
+}
+
+.dashboard-home-warning > *,
+.dashboard-cockpit-card > *,
+.dashboard-cockpit-market-ticker__grid > *,
+.dashboard-cockpit-metric-rail > *,
+.dashboard-cockpit-main-grid > *,
+.dashboard-cockpit-lower-grid > *,
+.dashboard-home-market-strip > *,
+.dashboard-market-strip__grid > *,
+.dashboard-judgment-band > *,
+.dashboard-kpi-ribbon > *,
+.dashboard-business-balance-summary > *,
+.dashboard-analysis-grid > *,
+.dashboard-structure-risk-focus > *,
+.dashboard-detail-drilldown > *,
+.dashboard-kpi-ribbon__items > *,
+.dashboard-analysis-grid__items > *,
+.dashboard-structure-risk-focus__grid > * {
+  min-width: 0;
+}
+
+@media (max-width: 1180px) {
+  .workbench-shell-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .workbench-shell-aside {
+    position: static;
+  }
+
+  .workbench-shell-grid--cockpit .workbench-shell-aside {
+    display: none !important;
+  }
+
+}
+
+@media (max-width: 900px) {
+  .dashboard-business-balance-summary__header,
+  .dashboard-detail-drilldown__header {
+    display: grid;
+  }
+
+}
+
+@media (max-width: 720px) {
+  .workbench-shell-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: var(--moss-space-2) !important;
+    width: 100%;
+    max-width: 100%;
+    padding: var(--moss-space-2);
+    overflow-x: hidden;
+  }
+
+  .workbench-shell-grid .workbench-shell-aside {
+    display: none !important;
+  }
+
+  .workbench-main-column {
+    gap: var(--moss-space-2);
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .workbench-main-column > main {
+    padding: var(--moss-space-3) !important;
+    border-radius: var(--moss-radius-md) !important;
+  }
+
+  .workbench-shell-grid--cockpit,
+  .workbench-shell-grid--cockpit .workbench-main-column {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .workbench-shell-grid--cockpit [data-testid="workbench-terminal-bar"] {
+    max-width: 100%;
+    overflow-x: hidden;
+    padding: 12px;
+    border-radius: 16px;
+  }
+
+  .workbench-shell-grid--cockpit [data-testid="workbench-terminal-bar"] > div:first-child {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: start;
+  }
+
+  .workbench-shell-grid--cockpit [data-testid="workbench-page-context"],
+  .workbench-shell-grid--cockpit [data-testid="workbench-operator-zone"] {
+    width: 100%;
+    max-width: 100%;
+    justify-content: flex-start !important;
+  }
+
+}
+
+/* V1-style hover for cockpit inset KPI cards */
+[data-testid="dashboard-bond-headline-kpi"] {
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+[data-testid="dashboard-bond-headline-kpi"]:hover {
+  border-color: var(--moss-border-hover);
+  box-shadow: 0 4px 12px rgba(22, 35, 46, 0.06);
+  transform: translateY(-1px);
+}
+
+@media (min-width: 1181px) {
+  .workbench-shell-grid--cockpit {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(238, 243, 248, 0) 230px),
+      var(--moss-institutional-bg) !important;
+  }
+
+  .dashboard-cockpit-card,
+  .dashboard-home-panel,
+  .dashboard-command-deck__judgment.dashboard-home-panel,
+  .dashboard-command-status.dashboard-home-panel {
+    border: 1px solid var(--moss-color-border-default);
+    border-radius: 6px;
+    background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+    box-shadow: 0 2px 8px rgba(15, 45, 80, 0.045);
+  }
+
+  .dashboard-cockpit-eyebrow,
+  .dashboard-home-section-eyebrow,
+  .dashboard-cockpit-label,
+  .dashboard-cockpit-hint,
+  .dashboard-cockpit-date,
+  .dashboard-cockpit-muted {
+    color: var(--moss-color-text-muted);
+    font-size: 10.5px;
+    font-weight: 500;
+  }
+
+  .dashboard-command-deck__judgment.dashboard-home-panel {
+    min-height: 112px;
+    padding: 15px 18px 14px 26px;
+    background:
+      linear-gradient(90deg, rgba(20, 99, 197, 0.045), rgba(255, 255, 255, 0) 32%),
+      linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  }
+
+  .dashboard-command-deck__judgment .dashboard-home-section-heading {
+    color: var(--moss-color-text-primary);
+    font-size: 18px;
+    font-weight: 600;
+  }
+
+  .dashboard-command-status.dashboard-home-panel {
+    min-height: 112px;
+  }
+
+}
+
+/* Homepage-aligned cockpit shell final layer. Placed after legacy cockpit rules on purpose.
+   桌面（≥1181px）列宽/贴边/侧栏落位由 workbenchShell.css 末尾统一层负责，此处只留配色与内饰。 */
+.workbench-shell-grid--cockpit {
+  align-items: stretch;
+  min-height: 100vh !important;
+  background: var(--moss-institutional-bg) !important;
+}
+
+.workbench-shell-grid--cockpit .workbench-shell-aside {
+  align-self: start;
+  gap: 14px !important;
+  overflow-y: auto;
+  padding: 18px 14px !important;
+  background: var(--moss-shell-rail-bg) !important;
+}
+
+.moss-data-mode-ribbon + .workbench-shell-grid--cockpit {
+  min-height: calc(100vh - 28px) !important;
+  padding-top: 30px;
+}
+
+.workbench-shell-grid--cockpit .workbench-shell-aside > div:first-child {
+  padding: 0 2px 14px !important;
+  border-bottom-color: var(--moss-shell-rail-border) !important;
+}
+
+.workbench-shell-grid--cockpit .workbench-shell-aside > div:first-child > div {
+  gap: 10px !important;
+}
+
+.workbench-shell-grid--cockpit .workbench-shell-aside > div:first-child > div > div:first-child {
+  display: grid !important;
+  border: 1px solid var(--moss-shell-rail-border) !important;
+  border-radius: 2px !important;
+  background: transparent !important;
+  color: var(--ib-rail-text-active) !important;
+}
+
+.workbench-shell-grid--cockpit .workbench-shell-aside > div:first-child span {
+  color: var(--ib-rail-text-active) !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.12em !important;
+}
+
+.workbench-shell-grid--cockpit .workbench-shell-section-label--rail {
+  color: var(--dh-api-muted) !important;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em !important;
+  text-transform: none;
+}
+
+.workbench-shell-grid--cockpit [data-testid="workbench-group-nav"] a,
+.workbench-shell-grid--cockpit [data-testid="workbench-support-nav"] a,
+.workbench-shell-grid--cockpit .workbench-shell-agent-nav__link {
+  min-height: 36px;
+  padding: 8px 10px !important;
+  border: none !important;
+  border-radius: 0 !important;
+  color: var(--moss-shell-rail-text) !important;
+  text-decoration: none;
+}
+
+.workbench-shell-grid--cockpit [data-testid="workbench-group-nav"] a:hover,
+.workbench-shell-grid--cockpit [data-testid="workbench-support-nav"] a:hover,
+.workbench-shell-grid--cockpit .workbench-shell-agent-nav__link:hover {
+  background: transparent !important;
+  color: var(--ib-rail-text-active) !important;
+}
+
+.workbench-shell-grid--cockpit [data-testid="workbench-group-nav"] a[data-active="true"],
+.workbench-shell-grid--cockpit [data-testid="workbench-support-nav"] a[data-active="true"],
+.workbench-shell-grid--cockpit .workbench-shell-agent-nav__link[data-active="true"] {
+  border: none !important;
+  background: var(--moss-shell-rail-active-bg) !important;
+  color: var(--ib-rail-text-active) !important;
+  box-shadow: var(--moss-shadow-institutional-active) !important;
+}
+
+.workbench-shell-grid--cockpit [data-testid="workbench-group-nav"] a[data-active="true"] span:last-child {
+  color: var(--ib-rail-text-active) !important;
+}
+
+.workbench-shell-grid--cockpit [data-testid="workbench-group-nav"] .workbench-shell-group-count {
+  color: var(--ib-rail-text) !important;
+  font-family: var(--moss-font-sans);
+  font-variant-numeric: normal;
+}
+
+.workbench-shell-grid--cockpit .workbench-shell-agent-nav__badge[data-readiness-tone="live"] {
+  color: #6fc492;
+}
+
+.workbench-shell-grid--cockpit .workbench-shell-agent-nav__badge[data-readiness-tone="placeholder"] {
+  color: var(--ib-rail-text);
+}
+
+.workbench-shell-grid--cockpit .workbench-shell-agent-nav__badge[data-readiness-tone="gated"],
+.workbench-shell-grid--cockpit .workbench-shell-agent-nav__badge[data-readiness-tone="warning"] {
+  color: #d3a45d;
+}
+
+.workbench-shell-grid--cockpit [data-testid="workbench-terminal-bar"] {
+  display: flex !important;
+  flex-wrap: wrap;
+  row-gap: var(--moss-space-2);
+  padding: 10px 12px;
+  border: 1px solid var(--moss-shell-terminal-border);
+  border-radius: 2px;
+  background: var(--moss-shell-terminal-bg) !important;
+  box-shadow: none !important;
+}
+
+/* 第一行：面包屑与操作区占满整行、两端对齐；第二行：行情带（几何见 workbenchShell.css）。 */
+.workbench-shell-grid--cockpit [data-testid="workbench-terminal-bar"] > .workbench-terminal-bar-split {
+  flex: 1 1 100%;
+}
+
+/* 行情带不再套第二层框：只留与第一行之间的上边线（颜色走 deferred 分册 Nocturne 收敛）。 */
+.workbench-shell-grid--cockpit [data-testid="workbench-market-ticker"] {
+  padding: 8px 0 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+.workbench-shell-grid--cockpit .workbench-main-column {
+  gap: 10px !important;
+  align-self: stretch;
+  width: 100%;
+  min-width: 0;
+  padding: 0 !important;
+}
+
+.workbench-shell-grid--cockpit .workbench-main-column > main {
+  display: grid;
+  gap: 12px !important;
+  width: 100%;
+  min-width: 0;
+  padding: 14px var(--moss-page-gutter);
+  border: 1px solid var(--moss-color-border-default) !important;
+  border-radius: 2px !important;
+  background: var(--moss-shell-paper-bg) !important;
+  box-shadow: var(--moss-shadow-card) !important;
+}
+
+.workbench-shell-grid--bond-analysis .workbench-shell-aside {
+  padding: 14px 10px !important;
+}
+
+.workbench-shell-grid--bond-analysis .workbench-shell-aside > div:first-child span {
+  font-size: 14px !important;
+}
+
+.workbench-shell-grid--bond-analysis .workbench-main-column > main {
+  gap: 8px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+@media (max-width: 1180px) {
+  .workbench-shell-grid--cockpit {
+    grid-template-columns: minmax(0, 1fr) !important;
+    padding: var(--moss-space-3);
+  }
+
+  .workbench-shell-grid--cockpit .workbench-shell-aside {
+    display: none !important;
+  }
+
+  .workbench-shell-grid--cockpit .workbench-main-column {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .workbench-shell-grid--cockpit {
+    padding: var(--moss-space-2);
+  }
+
+  .workbench-shell-grid--cockpit .workbench-main-column > main {
+    padding: var(--moss-space-3) !important;
+    border-radius: var(--moss-radius-sm) !important;
+  }
+}
+
+.moss-data-mode-ribbon--cockpit + .workbench-shell-grid--cockpit {
+  min-height: 100vh !important;
+  padding-top: 14px;
+}
+
+@media (max-width: 760px) {
+  .moss-data-mode-ribbon--cockpit {
+    position: static;
+    width: auto;
+    max-width: none;
+    height: auto;
+    min-height: 24px;
+    margin: 6px 8px 0;
+    justify-content: center;
+    white-space: normal;
+  }
+
+  .moss-data-mode-ribbon--cockpit + .workbench-shell-grid--cockpit {
+    padding-top: 8px;
+  }
+}

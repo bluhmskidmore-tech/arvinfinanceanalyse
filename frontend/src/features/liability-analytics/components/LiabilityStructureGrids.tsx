@@ -1,19 +1,34 @@
-import { Card, Col, Row, Typography } from "antd";
-
 import type { Numeric } from "../../../api/contracts";
-import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
-import { numericOrDash } from "../utils/money";
+import { ChartCard } from "../../../components/charts/ChartCard";
+import { CHART_CARD_HEIGHTS } from "../../../components/charts/chartCardScale";
+import { nocturneChartTheme } from "../../../components/charts/chartTheme";
+import { type EChartsOption } from "../../../lib/echarts";
+import { termBucketLabel } from "../utils/labels";
+import { numericOrDash, numericRaw } from "../utils/money";
 
-const { Text } = Typography;
-
-const COLORS = ["#cf1322", "#1d39c4", "#08979c", "#389e0d", "#531dab"];
+/** 结构饼图分类色：取 Nocturne 分类盘前五档（无语义红，避免结构图带告警暗示）。 */
+const COLORS = [
+  nocturneChartTheme.categoricalPalette[0],
+  nocturneChartTheme.categoricalPalette[1],
+  nocturneChartTheme.categoricalPalette[2],
+  nocturneChartTheme.categoricalPalette[3],
+  nocturneChartTheme.categoricalPalette[4],
+] as const;
 
 type NamedYi = { name: string; amountYi: Numeric | null };
 type BucketYi = { bucket: string; amountYi: Numeric | null };
 
+/** 2026-09-02 迁入 ChartCard：六张结构图统一 hero 档（原 300px），空态由铬件收缩。 */
+const CHART_HEIGHT = CHART_CARD_HEIGHTS.hero;
+
+function hasAnyValue(items: Array<{ amountYi: Numeric | null }>): boolean {
+  return items.some((item) => numericRaw(item.amountYi) !== null);
+}
+
+/* 环形图图例走下方 PieLegend（带金额与缺数 EM_DASH），ECharts 自带图例由铬件 legend="none" 关闭。 */
 function pieOption(items: NamedYi[]): EChartsOption {
-  return {
-    color: COLORS,
+  return nocturneChartTheme.createBaseChartOption({
+    color: [...COLORS],
     tooltip: {
       trigger: "item",
       formatter: (params: unknown) => {
@@ -26,19 +41,22 @@ function pieOption(items: NamedYi[]): EChartsOption {
       {
         type: "pie",
         radius: ["42%", "68%"],
-        data: items.map((item) => ({
-          name: item.name,
-          value: item.amountYi?.raw ?? 0,
-          amountYi: item.amountYi,
-        })),
+        // 缺数（null）不入饼图系列，避免画出假 0 扇区；图例仍以 EM_DASH 展示缺数项。
+        data: items
+          .filter((item) => numericRaw(item.amountYi) !== null)
+          .map((item) => ({
+            name: item.name,
+            value: numericRaw(item.amountYi) as number,
+            amountYi: item.amountYi,
+          })),
         label: { show: false },
       },
     ],
-  };
+  });
 }
 
 function barOption(items: BucketYi[]): EChartsOption {
-  return {
+  return nocturneChartTheme.createBarChartOption({
     color: [COLORS[0]],
     tooltip: {
       trigger: "axis",
@@ -49,39 +67,39 @@ function barOption(items: BucketYi[]): EChartsOption {
         return `${first?.name ?? ""}<br/>${numericOrDash(data?.amountYi)}`;
       },
     },
-    grid: { left: 48, right: 16, top: 16, bottom: 32 },
-    xAxis: { type: "category", data: items.map((item) => item.bucket), axisLabel: { fontSize: 11 } },
+    grid: { left: 48, right: 16, top: 16 },
+    xAxis: {
+      type: "category",
+      // 桶名中文化（显示层）；interval: 0 禁止轴标签抽稀，8 桶全量可见。
+      data: items.map((item) => termBucketLabel(item.bucket)),
+      axisLabel: { fontSize: 11, interval: 0 },
+    },
     yAxis: { type: "value" },
     series: [
       {
         type: "bar",
+        // 缺数（null）保留类目但不画柱；tooltip 经 numericOrDash 显示 EM_DASH。
         data: items.map((item) => ({
-          value: item.amountYi?.raw ?? 0,
+          value: numericRaw(item.amountYi),
           amountYi: item.amountYi,
         })),
         barMaxWidth: 48,
       },
     ],
-  };
+  });
 }
 
 function PieLegend({ items }: { items: NamedYi[] }) {
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 8 }}>
+    <div className="liability-legend">
       {items.map((item, index) => (
-        <Text key={item.name} style={{ fontSize: 12 }} type="secondary">
+        <span key={item.name} className="liability-legend__item">
           <span
-            style={{
-              display: "inline-block",
-              width: 10,
-              height: 10,
-              borderRadius: 999,
-              background: COLORS[index % COLORS.length],
-              marginRight: 6,
-            }}
+            className="liability-legend__swatch"
+            style={{ background: COLORS[index % COLORS.length] }}
           />
           {item.name}: {numericOrDash(item.amountYi)}
-        </Text>
+        </span>
       ))}
     </div>
   );
@@ -104,69 +122,69 @@ export function LiabilityStructureGrids({
   issuedTerm: BucketYi[];
   structurePieCaption?: string;
 }) {
+  /* 标题里的口径与单位拆到 question / unit / footnote，标题本身 ≤ 12 字（视觉方案 §5）。 */
   return (
     <>
-      <Row gutter={[16, 16]}>
-        <Col xs={24} lg={8}>
-          <Card size="small" title="负债结构总览（单位：亿元）">
-            {structurePieCaption ? (
-              <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 8 }}>
-                {structurePieCaption}
-              </Text>
-            ) : null}
-            <div style={{ height: 300 }}>
-              <ReactECharts option={pieOption(structure)} style={{ height: 300 }} notMerge lazyUpdate />
-            </div>
-            <PieLegend items={structure} />
-          </Card>
-        </Col>
-        <Col xs={24} lg={16}>
-          <Card size="small" title="期限结构（单位：亿元）">
-            <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 8 }}>
-              口径：发行债券（asset_class 含“发行类”）+ 同业负债（direction=Liability）。
-            </Text>
-            <div style={{ height: 300 }}>
-              <ReactECharts option={barOption(term)} style={{ height: 300 }} notMerge lazyUpdate />
-            </div>
-          </Card>
-        </Col>
-      </Row>
+      <div className="liability-analytics-page__grid liability-analytics-page__grid--structure liability-analytics-page__grid--matched-panels">
+        <ChartCard
+          title="负债结构总览"
+          unit="亿元"
+          height={CHART_HEIGHT}
+          legend="none"
+          option={hasAnyValue(structure) ? pieOption(structure) : null}
+          footnote={structurePieCaption}
+        >
+          <PieLegend items={structure} />
+        </ChartCard>
+        <ChartCard
+          title="期限结构"
+          unit="亿元"
+          height={CHART_HEIGHT}
+          legend="none"
+          option={hasAnyValue(term) ? barOption(term) : null}
+          footnote="口径：发行债券（asset_class 含“发行类”）+ 同业负债（direction=Liability）。"
+        />
+      </div>
 
-      <Row gutter={[16, 16]} style={{ marginTop: 0 }}>
-        <Col xs={24} lg={12}>
-          <Card size="small" title="同业负债业务结构（按产品类型，亿元）">
-            <div style={{ height: 300 }}>
-              <ReactECharts option={pieOption(interbankStructure)} style={{ height: 300 }} notMerge lazyUpdate />
-            </div>
-            <PieLegend items={interbankStructure} />
-          </Card>
-        </Col>
-        <Col xs={24} lg={12}>
-          <Card size="small" title="同业负债期限结构（亿元）">
-            <div style={{ height: 300 }}>
-              <ReactECharts option={barOption(interbankTerm)} style={{ height: 300 }} notMerge lazyUpdate />
-            </div>
-          </Card>
-        </Col>
-      </Row>
+      <div className="liability-analytics-page__grid liability-analytics-page__grid--2 liability-analytics-page__grid--matched-panels">
+        <ChartCard
+          title="同业负债业务结构"
+          question="按产品类型"
+          unit="亿元"
+          height={CHART_HEIGHT}
+          legend="none"
+          option={hasAnyValue(interbankStructure) ? pieOption(interbankStructure) : null}
+        >
+          <PieLegend items={interbankStructure} />
+        </ChartCard>
+        <ChartCard
+          title="同业负债期限结构"
+          unit="亿元"
+          height={CHART_HEIGHT}
+          legend="none"
+          option={hasAnyValue(interbankTerm) ? barOption(interbankTerm) : null}
+        />
+      </div>
 
-      <Row gutter={[16, 16]}>
-        <Col xs={24} lg={12}>
-          <Card size="small" title="发行负债业务结构（按业务种类，亿元）">
-            <div style={{ height: 300 }}>
-              <ReactECharts option={pieOption(issuedStructure)} style={{ height: 300 }} notMerge lazyUpdate />
-            </div>
-            <PieLegend items={issuedStructure} />
-          </Card>
-        </Col>
-        <Col xs={24} lg={12}>
-          <Card size="small" title="发行负债期限结构（亿元）">
-            <div style={{ height: 300 }}>
-              <ReactECharts option={barOption(issuedTerm)} style={{ height: 300 }} notMerge lazyUpdate />
-            </div>
-          </Card>
-        </Col>
-      </Row>
+      <div className="liability-analytics-page__grid liability-analytics-page__grid--2 liability-analytics-page__grid--matched-panels">
+        <ChartCard
+          title="发行负债业务结构"
+          question="按业务种类"
+          unit="亿元"
+          height={CHART_HEIGHT}
+          legend="none"
+          option={hasAnyValue(issuedStructure) ? pieOption(issuedStructure) : null}
+        >
+          <PieLegend items={issuedStructure} />
+        </ChartCard>
+        <ChartCard
+          title="发行负债期限结构"
+          unit="亿元"
+          height={CHART_HEIGHT}
+          legend="none"
+          option={hasAnyValue(issuedTerm) ? barOption(issuedTerm) : null}
+        />
+      </div>
     </>
   );
 }

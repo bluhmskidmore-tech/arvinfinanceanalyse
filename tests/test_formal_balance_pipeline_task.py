@@ -19,6 +19,39 @@ def _load_pipeline_module():
     return module
 
 
+def _patch_lane(
+    pipeline_mod,
+    monkeypatch,
+    calls: list[tuple[str, dict[str, object]]],
+    *,
+    ingest_batch_id: str | None = None,
+):
+    """Record every lane step so ordering and lane membership are both assertable."""
+
+    def _record(step: str):
+        def _fake(**kwargs):
+            calls.append((step, kwargs))
+            return {"status": "completed", **({} if step == "ingest" else {"report_date": kwargs["report_date"]})}
+
+        return _fake
+
+    def _fake_ingest(**kwargs):
+        calls.append(("ingest", kwargs))
+        return {
+            "status": "completed",
+            **({} if ingest_batch_id is None else {"ingest_batch_id": ingest_batch_id}),
+        }
+
+    monkeypatch.setattr(pipeline_mod.ingest_demo_manifest, "fn", _fake_ingest)
+    monkeypatch.setattr(pipeline_mod.materialize_standard_snapshots, "fn", _record("snapshot"))
+    monkeypatch.setattr(pipeline_mod.materialize_balance_analysis_facts, "fn", _record("balance"))
+    monkeypatch.setattr(
+        pipeline_mod.materialize_bond_analytics_facts, "fn", _record("bond_analytics")
+    )
+    monkeypatch.setattr(pipeline_mod.materialize_risk_tensor_facts, "fn", _record("risk_tensor"))
+    return calls
+
+
 def test_formal_balance_pipeline_runs_ingest_snapshot_and_balance_in_order(tmp_path, monkeypatch):
     pipeline_mod = _load_pipeline_module()
 
@@ -101,10 +134,11 @@ def test_formal_balance_pipeline_runs_ingest_snapshot_and_balance_in_order(tmp_p
 
 
 def test_formal_balance_pipeline_uses_latest_report_manifest_when_incremental_batch_is_empty_for_date(
+    tmp_path: Path,
     monkeypatch,
 ):
     pipeline_mod = _load_pipeline_module()
-    base_dir = Path("test_output") / "formal_balance_pipeline" / uuid4().hex
+    base_dir = tmp_path / "formal_balance_pipeline" / uuid4().hex
     governance_dir = base_dir / "governance"
     governance_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = governance_dir / "source_manifest.jsonl"
@@ -379,25 +413,7 @@ def test_formal_balance_pipeline_backfills_manifest_report_date_range_in_order(t
     )
 
     calls: list[tuple[str, dict[str, object]]] = []
-
-    def _fake_ingest(**kwargs):
-        calls.append(("ingest", kwargs))
-        return {
-            "status": "completed",
-            "ingest_batch_id": ingest_batch_id,
-        }
-
-    def _fake_snapshot(**kwargs):
-        calls.append(("snapshot", kwargs))
-        return {"status": "completed", "report_date": kwargs["report_date"]}
-
-    def _fake_balance(**kwargs):
-        calls.append(("balance", kwargs))
-        return {"status": "completed", "report_date": kwargs["report_date"]}
-
-    monkeypatch.setattr(pipeline_mod.ingest_demo_manifest, "fn", _fake_ingest)
-    monkeypatch.setattr(pipeline_mod.materialize_standard_snapshots, "fn", _fake_snapshot)
-    monkeypatch.setattr(pipeline_mod.materialize_balance_analysis_facts, "fn", _fake_balance)
+    _patch_lane(pipeline_mod, monkeypatch, calls, ingest_batch_id=ingest_batch_id)
 
     payload = pipeline_mod.run_formal_balance_pipeline.fn(
         start_date="2025-12-31",
@@ -409,12 +425,20 @@ def test_formal_balance_pipeline_backfills_manifest_report_date_range_in_order(t
         "ingest",
         "snapshot",
         "balance",
+        "bond_analytics",
+        "risk_tensor",
         "snapshot",
         "balance",
+        "bond_analytics",
+        "risk_tensor",
     ]
-    assert [kwargs["report_date"] for name, kwargs in calls if name in {"snapshot", "balance"}] == [
+    assert [kwargs["report_date"] for name, kwargs in calls if name != "ingest"] == [
         "2025-12-31",
         "2025-12-31",
+        "2025-12-31",
+        "2025-12-31",
+        "2026-01-01",
+        "2026-01-01",
         "2026-01-01",
         "2026-01-01",
     ]
@@ -425,10 +449,235 @@ def test_formal_balance_pipeline_backfills_manifest_report_date_range_in_order(t
     )
     assert payload["status"] == "completed"
     assert payload["report_dates"] == ["2025-12-31", "2026-01-01"]
+    assert payload["analytics_lane_enabled"] is True
     assert all(
         "balance_runtime" in item and isinstance(item["balance_runtime"], dict)
         for item in payload["steps"]["per_report_date"]
     )
+
+
+def test_formal_balance_pipeline_explicit_backfill_uses_all_eligible_manifest_dates(
+    tmp_path,
+    monkeypatch,
+):
+    pipeline_mod = _load_pipeline_module()
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True, exist_ok=True)
+    manifest_rows = [
+        {
+            "source_family": source_family,
+            "report_date": report_date,
+            "ingest_batch_id": "ib-archived",
+            "archived_path": str(tmp_path / "archive" / f"{source_family}-{report_date}.xls"),
+            "created_at": "2026-07-01T00:00:00+00:00",
+            "status": "completed",
+        }
+        for report_date in ("2026-06-01", "2026-06-02", "2026-06-03")
+        for source_family in ("zqtz", "tyw")
+    ]
+    (governance_dir / "source_manifest.jsonl").write_text(
+        "\n".join(json.dumps(row) for row in manifest_rows) + "\n",
+        encoding="utf-8",
+    )
+
+    calls: list[tuple[str, dict[str, object]]] = []
+    _patch_lane(pipeline_mod, monkeypatch, calls)
+
+    payload = pipeline_mod.run_formal_balance_pipeline.fn(
+        backfill=True,
+        start_date="2026-06-01",
+        end_date="2026-06-02",
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["report_dates"] == ["2026-06-01", "2026-06-02"]
+    assert [
+        (name, kwargs["report_date"], kwargs.get("ingest_batch_id"))
+        for name, kwargs in calls
+        if name != "ingest"
+    ] == [
+        ("snapshot", "2026-06-01", None),
+        ("balance", "2026-06-01", None),
+        ("bond_analytics", "2026-06-01", None),
+        ("risk_tensor", "2026-06-01", None),
+        ("snapshot", "2026-06-02", None),
+        ("balance", "2026-06-02", None),
+        ("bond_analytics", "2026-06-02", None),
+        ("risk_tensor", "2026-06-02", None),
+    ]
+
+
+def test_range_mode_analytics_lane_reads_existing_curves_and_stops_at_risk_tensor(
+    tmp_path,
+    monkeypatch,
+):
+    """The range loop must cover analytics + risk_tensor only, and never write curve snapshots."""
+    pipeline_mod = _load_pipeline_module()
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True, exist_ok=True)
+    manifest_rows = [
+        {
+            "source_family": source_family,
+            "report_date": report_date,
+            "ingest_batch_id": "ib-range",
+            "archived_path": str(tmp_path / "archive" / f"{source_family}-{report_date}.xls"),
+            "created_at": "2026-07-01T00:00:00+00:00",
+            "status": "completed",
+        }
+        for report_date in ("2026-06-01", "2026-06-02")
+        for source_family in ("zqtz", "tyw")
+    ]
+    (governance_dir / "source_manifest.jsonl").write_text(
+        "\n".join(json.dumps(row) for row in manifest_rows) + "\n",
+        encoding="utf-8",
+    )
+
+    calls: list[tuple[str, dict[str, object]]] = []
+    _patch_lane(pipeline_mod, monkeypatch, calls)
+
+    pipeline_mod.run_formal_balance_pipeline.fn(
+        backfill=True,
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_dir=str(governance_dir),
+    )
+
+    bond_calls = [kwargs for name, kwargs in calls if name == "bond_analytics"]
+    assert len(bond_calls) == 2
+    assert all(kwargs["use_existing_curves_only"] is True for kwargs in bond_calls)
+    assert all(kwargs["duckdb_path"] == str(tmp_path / "moss.duckdb") for kwargs in bond_calls)
+    # Month-end oriented steps must never enter the range loop.
+    assert {name for name, _kwargs in calls} == {
+        "ingest",
+        "snapshot",
+        "balance",
+        "bond_analytics",
+        "risk_tensor",
+    }
+
+
+def test_single_report_date_run_keeps_the_analytics_lane_off_by_default(monkeypatch):
+    """run_global_data_refresh already sequences analytics after a single-date balance run."""
+    pipeline_mod = _load_pipeline_module()
+    calls: list[tuple[str, dict[str, object]]] = []
+    _patch_lane(pipeline_mod, monkeypatch, calls)
+
+    payload = pipeline_mod.run_formal_balance_pipeline.fn(report_date="2025-12-31")
+
+    assert [name for name, _kwargs in calls] == ["ingest", "snapshot", "balance"]
+    assert payload["analytics_lane_enabled"] is False
+    assert "bond_analytics" not in payload["steps"]
+
+
+def test_include_analytics_flag_overrides_the_mode_default(monkeypatch):
+    pipeline_mod = _load_pipeline_module()
+
+    forced_on: list[tuple[str, dict[str, object]]] = []
+    _patch_lane(pipeline_mod, monkeypatch, forced_on)
+    payload = pipeline_mod.run_formal_balance_pipeline.fn(
+        report_date="2025-12-31",
+        include_analytics=True,
+    )
+    assert [name for name, _kwargs in forced_on] == [
+        "ingest",
+        "snapshot",
+        "balance",
+        "bond_analytics",
+        "risk_tensor",
+    ]
+    assert payload["analytics_lane_enabled"] is True
+    assert payload["steps"]["bond_analytics"]["status"] == "completed"
+    assert payload["steps"]["risk_tensor"]["status"] == "completed"
+
+    forced_off: list[tuple[str, dict[str, object]]] = []
+    _patch_lane(pipeline_mod, monkeypatch, forced_off)
+    payload = pipeline_mod.run_formal_balance_pipeline.fn(
+        report_date="2025-12-31",
+        include_analytics=False,
+    )
+    assert [name for name, _kwargs in forced_off] == ["ingest", "snapshot", "balance"]
+    assert payload["analytics_lane_enabled"] is False
+
+
+def test_repeated_range_runs_issue_identical_lane_calls(tmp_path, monkeypatch):
+    """Re-running the same range is a plain replay; per-date idempotency lives in the tasks."""
+    pipeline_mod = _load_pipeline_module()
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True, exist_ok=True)
+    manifest_rows = [
+        {
+            "source_family": source_family,
+            "report_date": report_date,
+            "ingest_batch_id": "ib-idempotent",
+            "archived_path": str(tmp_path / "archive" / f"{source_family}-{report_date}.xls"),
+            "created_at": "2026-07-01T00:00:00+00:00",
+            "status": "completed",
+        }
+        for report_date in ("2026-06-01", "2026-06-02")
+        for source_family in ("zqtz", "tyw")
+    ]
+    (governance_dir / "source_manifest.jsonl").write_text(
+        "\n".join(json.dumps(row) for row in manifest_rows) + "\n",
+        encoding="utf-8",
+    )
+
+    def _run() -> tuple[list[tuple[str, object]], dict[str, object]]:
+        calls: list[tuple[str, dict[str, object]]] = []
+        _patch_lane(pipeline_mod, monkeypatch, calls)
+        payload = pipeline_mod.run_formal_balance_pipeline.fn(
+            backfill=True,
+            governance_dir=str(governance_dir),
+        )
+        return [(name, kwargs.get("report_date")) for name, kwargs in calls], payload
+
+    first_calls, first_payload = _run()
+    second_calls, second_payload = _run()
+
+    assert first_calls == second_calls
+    assert first_payload["report_dates"] == second_payload["report_dates"]
+    assert second_payload["analytics_lane_enabled"] is True
+
+
+def test_cli_exposes_the_analytics_lane_override(monkeypatch, capsys):
+    pipeline_mod = _load_pipeline_module()
+    seen: list[dict[str, object]] = []
+
+    def _capture(**kwargs):
+        seen.append(kwargs)
+        return {"status": "completed"}
+
+    monkeypatch.setattr(pipeline_mod.run_formal_balance_pipeline, "fn", _capture)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "formal_balance_pipeline.py",
+            "--start-date",
+            "2026-06-01",
+            "--end-date",
+            "2026-06-02",
+        ],
+    )
+    pipeline_mod.main()
+    capsys.readouterr()
+    assert seen[-1]["include_analytics"] is None
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["formal_balance_pipeline.py", "--report-date", "2026-06-01", "--include-analytics"],
+    )
+    pipeline_mod.main()
+    capsys.readouterr()
+    assert seen[-1]["include_analytics"] is True
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["formal_balance_pipeline.py", "--backfill", "--no-include-analytics"],
+    )
+    pipeline_mod.main()
+    capsys.readouterr()
+    assert seen[-1]["include_analytics"] is False
 
 
 def test_formal_balance_pipeline_prefers_new_runtime_payload_shape(tmp_path, monkeypatch):

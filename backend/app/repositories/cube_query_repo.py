@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 import duckdb
+from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
 
 
 @dataclass
@@ -16,7 +17,7 @@ class CubeQueryRepository:
         params: Sequence[object] | None = None,
     ) -> list[tuple]:
         try:
-            conn = duckdb.connect(self.path, read_only=True)
+            conn = duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
             try:
                 return conn.execute(sql, list(params or [])).fetchall()
             finally:

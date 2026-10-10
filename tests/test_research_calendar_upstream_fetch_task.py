@@ -41,6 +41,11 @@ def test_fetch_research_calendar_upstream_once_fetches_archives_and_materializes
                 / "supply_auction_calendar.json"
             ),
             "row_count": 1,
+            "status": "partial",
+            "warnings": ["one source unavailable"],
+            "source_statuses": {
+                "mof_treasury": {"status": "failed", "warnings": ["one source unavailable"]}
+            },
             "payload": {
                 "rows": [
                     {
@@ -85,5 +90,8 @@ def test_fetch_research_calendar_upstream_once_fetches_archives_and_materializes
 
     assert out["ingest_batch_id"] == "batch-upstream"
     assert out["fetched_rows"] == 1
+    assert out["status"] == "partial"
+    assert out["warnings"] == ["one source unavailable"]
+    assert out["source_statuses"]["mof_treasury"]["status"] == "failed"
     assert len(out["results"]) == 1
     assert (gov / "source_manifest.jsonl").is_file()

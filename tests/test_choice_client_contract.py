@@ -45,6 +45,80 @@ def test_choice_client_start_is_idempotent(monkeypatch):
     assert start_calls == [client.settings.choice_start_options]
 
 
+def test_choice_client_start_does_not_set_proxy_by_default(monkeypatch):
+    client_module = load_module(
+        "backend.app.repositories.choice_client_contract_no_proxy",
+        "backend/app/repositories/choice_client.py",
+    )
+
+    class FakeC:
+        def setproxy(self, *_args):
+            raise AssertionError("default Choice startup must not configure a proxy")
+
+        def start(self, _options: str):
+            return SimpleNamespace(ErrorCode=0)
+
+    monkeypatch.setattr(client_module, "configure_emquant_parent", lambda _p: None)
+    monkeypatch.setattr(client_module, "_get_em_c", lambda: FakeC())
+
+    client_module.ChoiceClient(settings=_make_settings()).start()
+
+
+def test_choice_client_start_sets_explicit_socks5_proxy_before_login(monkeypatch):
+    client_module = load_module(
+        "backend.app.repositories.choice_client_contract_proxy",
+        "backend/app/repositories/choice_client.py",
+    )
+    calls: list[tuple[object, ...]] = []
+
+    class FakeC:
+        def setproxy(self, *args):
+            calls.append(("setproxy", *args))
+            return SimpleNamespace(ErrorCode=0)
+
+        def start(self, options: str):
+            calls.append(("start", options))
+            return SimpleNamespace(ErrorCode=0)
+
+    monkeypatch.setattr(client_module, "configure_emquant_parent", lambda _p: None)
+    monkeypatch.setattr(client_module, "_get_em_c", lambda: FakeC())
+    settings = _make_settings(
+        choice_socks5_proxy_host="127.0.0.1",
+        choice_socks5_proxy_port=18081,
+    )
+
+    client_module.ChoiceClient(settings=settings).start()
+
+    assert calls == [
+        ("setproxy", 4, "127.0.0.1", 18081, False, "", ""),
+        ("start", settings.choice_start_options),
+    ]
+
+
+def test_choice_client_start_fails_closed_when_proxy_setup_fails(monkeypatch):
+    client_module = load_module(
+        "backend.app.repositories.choice_client_contract_proxy_failure",
+        "backend/app/repositories/choice_client.py",
+    )
+
+    class FakeC:
+        def setproxy(self, *_args):
+            return SimpleNamespace(ErrorCode=9, ErrorMsg="proxy rejected")
+
+        def start(self, _options: str):
+            raise AssertionError("login must not run after proxy setup fails")
+
+    monkeypatch.setattr(client_module, "configure_emquant_parent", lambda _p: None)
+    monkeypatch.setattr(client_module, "_get_em_c", lambda: FakeC())
+    settings = _make_settings(
+        choice_socks5_proxy_host="127.0.0.1",
+        choice_socks5_proxy_port=18081,
+    )
+
+    with pytest.raises(RuntimeError, match="proxy rejected"):
+        client_module.ChoiceClient(settings=settings).start()
+
+
 def test_choice_client_start_raises_import_error_when_em_c_unavailable(monkeypatch):
     client_module = load_module(
         "backend.app.repositories.choice_client_contract_b",
@@ -170,6 +244,43 @@ def test_edb_and_edbquery_call_start_and_merge_options(monkeypatch):
     assert client.edb(["a"], "x=1") == ("edb", ("a",), "recvTimeout=9,x=1")
     assert client.edbquery("codes", "x=1") == ("edbquery", "codes", "x=1")
     assert started == [True, True]
+
+
+def test_edb_explicit_option_exclusion_filters_both_sources_without_changing_defaults(monkeypatch):
+    client_module = load_module(
+        "backend.app.repositories.choice_client_contract_edb_exclusion",
+        "backend/app/repositories/choice_client.py",
+    )
+
+    class FakeC:
+        def start(self, _options: str):
+            return SimpleNamespace(ErrorCode=0)
+
+        def edb(self, codes, merged: str):
+            return (tuple(codes), merged)
+
+        def edbquery(self, codes: str, merged: str):
+            return (codes, merged)
+
+    monkeypatch.setattr(client_module, "configure_emquant_parent", lambda _p: None)
+    monkeypatch.setattr(client_module, "_get_em_c", lambda: FakeC())
+    client = client_module.ChoiceClient(
+        settings=_make_settings(choice_request_options="IsPandas=1,RECVtimeout=9,base=1")
+    )
+
+    assert client.edb(["FX"], "IsLatest=0") == (
+        ("FX",), "IsPandas=1,RECVtimeout=9,base=1,IsLatest=0"
+    )
+    assert client.edb(
+        ["FX"], "iSpAnDaS=0,IsLatest=0",
+        exclude_option_prefixes=(" ISPANDAS= ", " "),
+    ) == (("FX",), "RECVtimeout=9,base=1,IsLatest=0")
+    assert client.edb(["FX"], "IsLatest=0", exclude_option_prefixes=(" ",)) == (
+        ("FX",), "IsPandas=1,RECVtimeout=9,base=1,IsLatest=0"
+    )
+    assert client.edbquery("FX", "IsLatest=0") == (
+        "FX", "IsPandas=1,base=1,IsLatest=0"
+    )
 
 
 def test_cnq_and_cnqcancel_raise_on_nonzero_error_code(monkeypatch):

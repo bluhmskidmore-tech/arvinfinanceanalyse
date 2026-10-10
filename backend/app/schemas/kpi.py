@@ -16,9 +16,23 @@ class KpiOwnerPayload(BaseModel):
     updated_at: str
 
 
+class KpiOwnerAuthorityMeta(BaseModel):
+    """Disclosure for the KPI authority gate when the surface has no governed data.
+
+    Present only when the owners list is intentionally empty because no
+    authoritative KPI source has been loaded; absent on normal reads.
+    """
+
+    authority_status: str
+    reason: str
+    owner_count: int
+    year: int | None = None
+
+
 class KpiOwnerListPayload(BaseModel):
     owners: list[KpiOwnerPayload]
     total: int
+    meta: KpiOwnerAuthorityMeta | None = None
 
 
 class KpiPeriodMetricSummaryPayload(BaseModel):

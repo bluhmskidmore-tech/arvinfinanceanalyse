@@ -5,13 +5,23 @@ import type {
   PnlByBusinessMonthlyPayload,
   PnlByBusinessYtdItem,
   ProductCategoryPnlRow,
+  ResultMeta,
+  TeamPerformanceAssessmentIndicator,
+  TeamPerformanceAssessmentWorkbookPayload,
 } from "../../api/contracts";
+import { buildMockTeamPerformanceAssessmentWorkbookPayload } from "../../mocks/teamPerformanceMockClient";
+import { EM_DASH } from "../../pageModel";
 import {
   type AssessmentIndicator2025,
   type CenterPnlMapping2025,
+  type TeamPerformanceQ1CaliberRule,
   Q1_CENTER_CALIBER_RULES,
   buildTeamPerformanceQ1CaliberModel,
   buildTeamPerformanceViewModel,
+  formatRatePct,
+  formatScore,
+  formatWanFromYuan,
+  formatYiFromYuan,
 } from "./teamPerformancePageModel";
 
 function assessmentIndicator(
@@ -43,6 +53,68 @@ function assessmentIndicator(
     score: partial.score ?? null,
     sourceRow: partial.sourceRow,
     blockLabel: partial.blockLabel,
+  };
+}
+
+/** 模拟后端 `_build_center_summaries`：把 camelCase 底稿行转成后端下发的 workbook payload。 */
+function workbookFromIndicators(
+  indicators: AssessmentIndicator2025[],
+  mappings: CenterPnlMapping2025[] = [],
+): TeamPerformanceAssessmentWorkbookPayload {
+  const toBackendIndicator = (
+    item: AssessmentIndicator2025,
+  ): TeamPerformanceAssessmentIndicator => ({
+    center_id: item.centerId,
+    center_name: item.centerName,
+    indicator_category: item.indicatorCategory,
+    metric: item.metric,
+    target: item.target,
+    weight: item.weight,
+    scoring_text: item.scoringText,
+    actual: item.actual,
+    progress: item.progress,
+    score: item.score,
+    source_row: item.sourceRow,
+    block_label: item.blockLabel ?? null,
+  });
+  const centerIds: string[] = [];
+  for (const item of indicators) {
+    if (!centerIds.includes(item.centerId)) {
+      centerIds.push(item.centerId);
+    }
+  }
+  const centers = centerIds.map((centerId) => {
+    const centerIndicators = indicators.filter((item) => item.centerId === centerId);
+    const weightTotal = centerIndicators.reduce((sum, item) => sum + item.weight, 0);
+    const workbookScore = centerIndicators.reduce((sum, item) => sum + (item.score ?? 0), 0);
+    return {
+      center_id: centerId,
+      center_name: centerIndicators[0].centerName,
+      weight_total: weightTotal,
+      workbook_score: workbookScore,
+      has_pending_score: centerIndicators.some((item) => item.score === null),
+      score_rate: weightTotal > 0 ? workbookScore / weightTotal : null,
+      indicators: centerIndicators.map(toBackendIndicator),
+    };
+  });
+  return {
+    assessment_year: 2025,
+    caliber_label: "静态底稿·非正式口径（后端下发）",
+    caliber_note: "测试用底稿。",
+    source_label: "测试用底稿。",
+    centers,
+    mappings: mappings.map((mapping) => ({
+      center_id: mapping.centerId,
+      endpoint: mapping.endpoint,
+      row_id: mapping.rowId,
+      pnl_field: mapping.pnlField ?? null,
+      scale_field: mapping.scaleField ?? null,
+      confidence: mapping.confidence,
+      note: mapping.note ?? null,
+      additive: mapping.additive ?? null,
+    })),
+    total_workbook_score: centers.reduce((sum, center) => sum + center.workbook_score, 0),
+    total_center_count: centers.length,
   };
 }
 
@@ -104,6 +176,7 @@ function byBusinessMonthlyPayload(items: PnlByBusinessMonthlyItem[]): PnlByBusin
     year: 2026,
     as_of_date: "2026-03-31",
     source_tables: ["fact_formal_pnl_fi", "fact_formal_zqtz_balance_daily"],
+    management_change: null,
     months: [
       {
         month_key: "2026-03",
@@ -162,7 +235,7 @@ function productRow(
 }
 
 describe("teamPerformancePageModel", () => {
-  it("sums workbook scores while preserving pending-score flags", () => {
+  it("consumes backend-aggregated workbook scores while preserving pending-score flags", () => {
     const indicators: AssessmentIndicator2025[] = [
       assessmentIndicator({
         centerId: "demo-center",
@@ -192,7 +265,9 @@ describe("teamPerformancePageModel", () => {
       }),
     ];
 
-    const viewModel = buildTeamPerformanceViewModel({ indicators });
+    const viewModel = buildTeamPerformanceViewModel({
+      workbook: workbookFromIndicators(indicators),
+    });
 
     expect(viewModel.totalWorkbookScore).toBe(9);
     expect(viewModel.centers).toHaveLength(1);
@@ -200,15 +275,26 @@ describe("teamPerformancePageModel", () => {
       weightTotal: 15,
       workbookScore: 9,
       hasPendingScore: true,
+      scoreRate: 9 / 15,
     });
+  });
+
+  it("returns an empty pending model when the backend workbook is not loaded", () => {
+    const viewModel = buildTeamPerformanceViewModel();
+
+    expect(viewModel.centers).toHaveLength(0);
+    expect(viewModel.totalWorkbookScore).toBe(0);
+    expect(viewModel.totalCenterCount).toBe(0);
+    expect(viewModel.warnings.join(" ")).toContain("考核底稿尚未从后端加载");
   });
 
   it("builds mapped pnl and scale totals from by-business and product-category evidence", () => {
     const viewModel = buildTeamPerformanceViewModel({
+      workbook: buildMockTeamPerformanceAssessmentWorkbookPayload(),
       byBusinessItems: [
         byBusinessRow({
           row_key: "asset_zqtz_detail_structured_finance_broker",
-          business_type: "其中：结构化融资（券商）",
+          business_type: "其中：结构化产业基金（产业基金部分）",
           total_pnl: "3500000",
           current_balance: "800000000",
         }),
@@ -281,8 +367,7 @@ describe("teamPerformancePageModel", () => {
     ];
 
     const viewModel = buildTeamPerformanceViewModel({
-      indicators,
-      mappings,
+      workbook: workbookFromIndicators(indicators, mappings),
       productCategoryRows: [
         productRow({
           category_id: "intermediate_business_income",
@@ -328,8 +413,7 @@ describe("teamPerformancePageModel", () => {
     ];
 
     const viewModel = buildTeamPerformanceViewModel({
-      indicators,
-      mappings,
+      workbook: workbookFromIndicators(indicators, mappings),
       productCategoryRows: [
         productRow({
           category_id: "intermediate_business_income",
@@ -352,7 +436,9 @@ describe("teamPerformancePageModel", () => {
   });
 
   it("surfaces unmapped metrics in center coverage warnings", () => {
-    const viewModel = buildTeamPerformanceViewModel();
+    const viewModel = buildTeamPerformanceViewModel({
+      workbook: buildMockTeamPerformanceAssessmentWorkbookPayload(),
+    });
 
     const productAndMarketCenter = viewModel.centers.find(
       (center) => center.centerId === "product-market",
@@ -484,7 +570,7 @@ describe("teamPerformancePageModel", () => {
         }),
         byBusinessRow({
           row_key: "asset_zqtz_detail_structured_finance_broker",
-          business_type: "其中：结构化融资（券商）",
+          business_type: "其中：结构化产业基金（产业基金部分）",
           total_pnl: "250000000",
         }),
       ],
@@ -505,7 +591,7 @@ describe("teamPerformancePageModel", () => {
         }),
         monthlyBusinessItem({
           row_key: "asset_zqtz_detail_structured_finance_broker",
-          business_type: "其中：结构化融资（券商）",
+          business_type: "其中：结构化产业基金（产业基金部分）",
           total_pnl: "250000000",
           ftp_cost: "80000000",
           ftp_net_pnl: "170000000",
@@ -535,7 +621,7 @@ describe("teamPerformancePageModel", () => {
       byBusinessItems: [
         byBusinessRow({
           row_key: "asset_zqtz_detail_structured_finance_broker",
-          business_type: "其中：结构化融资（券商）",
+          business_type: "其中：结构化产业基金（产业基金部分）",
           total_pnl: "30000000",
           source_note: "ZQTZSHOW 其中项：instrument_code prefix=J4",
         }),
@@ -543,7 +629,7 @@ describe("teamPerformancePageModel", () => {
       byBusinessMonthly: byBusinessMonthlyPayload([
         monthlyBusinessItem({
           row_key: "asset_zqtz_detail_structured_finance_broker",
-          business_type: "其中：结构化融资（券商）",
+          business_type: "其中：结构化产业基金（产业基金部分）",
           total_pnl: "30000000",
           ftp_cost: "5000000",
           ftp_net_pnl: "25000000",
@@ -559,7 +645,7 @@ describe("teamPerformancePageModel", () => {
     expect(productMarket?.rules[0]).toMatchObject({
       businessLabel: "产业基金",
       rowId: "asset_zqtz_detail_structured_finance_broker",
-      rowName: "其中：结构化融资（券商）",
+      rowName: "其中：结构化产业基金（产业基金部分）",
       allocation: "include",
       evidenceStatus: "direct",
       amountField: "ftp_net_pnl",
@@ -634,6 +720,9 @@ describe("teamPerformancePageModel", () => {
       amountYuan: 70000000,
       contributionYuan: 70000000,
     });
+    expect(buildMockTeamPerformanceAssessmentWorkbookPayload().mappings.find(
+      (mapping) => mapping.row_id === "asset_zqtz_detail_structured_finance_broker",
+    )?.note).toContain("结构化产业基金（产业基金部分）");
   });
 
   it("does not silently fall back to raw total_pnl when FTP-net monthly evidence is missing", () => {
@@ -663,5 +752,197 @@ describe("teamPerformancePageModel", () => {
     const labels = Q1_CENTER_CALIBER_RULES.map((rule) => rule.businessLabel);
 
     expect(labels).not.toEqual(expect.arrayContaining(["营收", "线性外推合计", "全年预测"]));
+  });
+});
+
+describe("Q1 evidence completeness", () => {
+  const rule: TeamPerformanceQ1CaliberRule = {
+    centerId: "synthetic-center",
+    centerName: "合成测试中心",
+    businessLabel: "合成测试业务",
+    sourceEndpoint: "by-business-monthly",
+    rowId: "synthetic-row",
+    amountField: "ftp_net_pnl",
+    allocation: "include",
+    evidenceStatus: "direct",
+  };
+  const meta: ResultMeta = {
+    // Both live and precomputed monthly envelopes use this analytical contract.
+    trace_id: "synthetic-q1", basis: "analytical", result_kind: "pnl.by_business_monthly",
+    formal_use_allowed: false, source_version: "synthetic", vendor_version: "synthetic",
+    rule_version: "synthetic", cache_version: "synthetic", quality_flag: "ok",
+    vendor_status: "ok", fallback_mode: "none", scenario_flag: false,
+    generated_at: "2026-04-01T00:00:00Z",
+  };
+  function monthly(values: Array<string | null | undefined>): PnlByBusinessMonthlyPayload {
+    const template = byBusinessMonthlyPayload([]);
+    return {
+      ...template,
+      months: values.map((value, index) => {
+        const monthKey = `2026-0${index + 1}`;
+        const days = index === 1 ? 28 : 31;
+        return {
+          ...template.months[0], month_key: monthKey,
+          period_start_date: `${monthKey}-01`, period_end_date: `${monthKey}-${days}`,
+          calendar_days: days, coverage_days: days, expected_days: days, sample_filled: false,
+          items: value === undefined ? [] : [{
+            ...monthlyBusinessItem({ row_key: rule.rowId!, business_type: rule.businessLabel }),
+            ftp_net_pnl: value,
+          }],
+        };
+      }),
+    };
+  }
+  function model(payload: PnlByBusinessMonthlyPayload | null, rules = [rule]) {
+    return buildTeamPerformanceQ1CaliberModel({ rules, byBusinessMonthly: payload, byBusinessMeta: meta });
+  }
+
+  it("distinguishes a null February from real zero without changing the known subtotal", () => {
+    const partial = model(monthly(["100", null, "300"]));
+    const zero = model(monthly(["100", "0", "300"]));
+    expect(partial.centers[0]).toMatchObject({ includedTotalYuan: 400, coverageStatus: "partial" });
+    expect(partial.centers[0].rules[0]).toMatchObject({ amountYuan: 400, coverageStatus: "partial" });
+    expect(partial.centers[0].rules[0].coverageWarnings.join(" ")).toContain("2026-02 FTP后净损益不可用");
+    expect(zero.centers[0]).toMatchObject({ includedTotalYuan: 400, coverageStatus: "complete" });
+  });
+
+  it.each(["duplicate month", "duplicate row", "extra month"] as const)(
+    "retains original amount aggregation for %s while flagging ambiguous quarter coverage", (kind) => {
+      const payload = monthly(["100", "200", "300"]);
+      if (kind === "duplicate month") payload.months.push(payload.months[1]);
+      if (kind === "duplicate row") payload.months[0].items.push(payload.months[0].items[0]);
+      if (kind === "extra month") payload.months.push({ ...payload.months[2], month_key: "2026-04" });
+      const result = model(payload).centers[0];
+      expect(result.includedTotalYuan).toBe(kind === "duplicate month" ? 800 : kind === "duplicate row" ? 700 : 900);
+      expect(result.coverageStatus).toBe("partial");
+      expect(result.coverageWarnings.join(" ")).toContain(kind === "extra month" ? "季度外月份：2026-04" : "重复");
+    },
+  );
+
+  it("preserves source-order floating point addition when months are reordered", () => {
+    const payload = monthly(["10000000000000000", "1", "-10000000000000000"]);
+    // In source order, cancellation happens before the final +1. Sorting would lose it.
+    payload.months = [payload.months[0], payload.months[2], payload.months[1]];
+    expect(model(payload).centers[0]).toMatchObject({ includedTotalYuan: 1, coverageStatus: "complete" });
+  });
+
+  it.each([
+    ["healthy", ["100", "200", "300"], 600, "complete"],
+    ["valid zeros", ["0", "0", "0"], 0, "complete"],
+    ["all null", [null, null, null], null, "unavailable"],
+    ["missing row", ["100", undefined, "300"], 400, "partial"],
+    ["nonfinite", ["100", "NaN", "300"], 400, "partial"],
+    ["infinite", ["100", "Infinity", "300"], 400, "partial"],
+    ["empty", ["100", "", "300"], 400, "partial"],
+  ] as const)("preserves %s semantics", (_name, values, amount, coverageStatus) => {
+    const result = model(monthly([...values])).centers[0];
+    expect(result).toMatchObject({ includedTotalYuan: amount, coverageStatus });
+    expect(result.rules[0]).toMatchObject({ amountYuan: amount, coverageStatus });
+  });
+
+  it("names missing January and February for March-only evidence", () => {
+    const payload = monthly(["100", "200", "300"]);
+    payload.months = payload.months.slice(2);
+    const result = model(payload).centers[0];
+    expect(result).toMatchObject({ includedTotalYuan: 300, coverageStatus: "partial" });
+    expect(result.rules[0].coverageWarnings.join(" ")).toContain("缺少月份：2026-01、2026-02");
+  });
+
+  it("treats an omitted FTP field as unavailable rather than zero", () => {
+    const payload = monthly(["100", "200", "300"]);
+    delete (payload.months[1].items[0] as Partial<PnlByBusinessMonthlyItem>).ftp_net_pnl;
+    expect(model(payload).centers[0]).toMatchObject({ includedTotalYuan: 400, coverageStatus: "partial" });
+  });
+
+  it("keeps day coverage, sample fill, truncated periods and pending balance issues visible", () => {
+    const payload = monthly(["100", "200", "300"]);
+    Object.assign(payload.months[1], {
+      coverage_days: 10, sample_filled: true, sample_fill_method: "observed_days_scaled_to_calendar",
+      period_end_date: "2026-02-20",
+      balance_quality_issues: [{ issue_id: "synthetic", report_date: "2026-02-10", status: "pending",
+        reason: "合成余额缺口", source_file: "synthetic", source_version: "synthetic" }],
+    });
+    const result = model(payload).centers[0];
+    expect(result).toMatchObject({ includedTotalYuan: 600, coverageStatus: "partial" });
+    const warnings = result.rules[0].coverageWarnings.join(" ");
+    expect(warnings).toContain("10/28");
+    expect(warnings).toContain("observed_days_scaled_to_calendar");
+    expect(warnings).toContain("2026-02-20");
+    expect(warnings).toContain("合成余额缺口");
+  });
+
+  it("reports unknown completeness when legacy payload omits day coverage", () => {
+    const payload = monthly(["100", "200", "300"]);
+    delete payload.months[1].coverage_days;
+    const result = model(payload).centers[0];
+    expect(result).toMatchObject({ includedTotalYuan: 600, coverageStatus: "unknown" });
+    expect(result.rules[0].coverageWarnings.join(" ")).toContain("2026-02 缺少日覆盖信息");
+  });
+
+  it("does not claim completeness when day coverage is null or invalid", () => {
+    const payload = monthly(["100", "200", "300"]);
+    Object.assign(payload.months[1], { coverage_days: null, expected_days: null });
+    expect(model(payload).centers[0]).toMatchObject({ includedTotalYuan: 600, coverageStatus: "unknown" });
+    Object.assign(payload.months[1], { coverage_days: 0, expected_days: 0 });
+    expect(model(payload).centers[0].coverageStatus).toBe("unknown");
+  });
+
+  it("keeps complete product-currency zero and flags source-date or metadata gaps", () => {
+    const productRule: TeamPerformanceQ1CaliberRule = { ...rule, sourceEndpoint: "product-category-ytd", amountField: "foreign_net" };
+    const row = productRow({ category_id: rule.rowId!, category_name: "合成产品", level: 1, is_total: false,
+      report_date: "2026-03-31", view: "ytd", foreign_net: "0" });
+    const args = { rules: [productRule], productCategoryRows: [row], productCategoryMeta: meta };
+    expect(buildTeamPerformanceQ1CaliberModel(args).centers[0]).toMatchObject({ includedTotalYuan: 0, coverageStatus: "complete" });
+    expect(buildTeamPerformanceQ1CaliberModel({ ...args, productCategoryMeta: null }).centers[0].coverageStatus).toBe("unknown");
+    row.report_date = "2025-12-31";
+    expect(buildTeamPerformanceQ1CaliberModel(args).centers[0].coverageStatus).toBe("partial");
+  });
+
+  it("does not let a missing subtract component look like a complete center total", () => {
+    const result = model(monthly(["100", "200", "300"]), [rule, {
+      ...rule, businessLabel: "待扣除项", rowId: "missing-subtract", allocation: "subtract",
+    }]).centers[0];
+    expect(result).toMatchObject({ includedTotalYuan: 600, coverageStatus: "partial" });
+  });
+
+  it("preserves deduplication and excludes reference and excluded rows from total coverage", () => {
+    const result = model(monthly(["100", "200", "300"]), [rule, { ...rule },
+      { ...rule, rowId: "reference", allocation: "reference" },
+      { ...rule, rowId: "excluded", evidenceStatus: "excluded" },
+    ]).centers[0];
+    expect(result).toMatchObject({ includedTotalYuan: 600, coverageStatus: "complete" });
+    expect(result.rules.map((row) => row.contributionYuan)).toEqual([600, null, null, null]);
+  });
+
+  it("discloses Q1 result quality separately and never fills an unavailable payload", () => {
+    const result = buildTeamPerformanceQ1CaliberModel({ rules: [rule], byBusinessMonthly: null,
+      byBusinessMeta: { ...meta, quality_flag: "stale", fallback_mode: "latest_snapshot" } });
+    expect(result.centers[0]).toMatchObject({ includedTotalYuan: null, coverageStatus: "unavailable" });
+    expect(result.warnings.join(" ")).toContain("Q1业务种类月度损益 quality_flag=stale");
+    expect(result.warnings.join(" ")).toContain("fallback_mode=latest_snapshot");
+  });
+});
+
+// 锁定本页格式化器的 zh-CN locale 语义（千分位 + 去尾零）与缺失值占位：
+// 这是它们不能替换为共享 `fixedOrDash`/`pctOrDash`（toFixed，恒定小数位）的原因。
+describe("teamPerformancePageModel display formatters", () => {
+  it("formats wan/yi amounts with zh-CN grouping and trimmed trailing zeros", () => {
+    expect(formatWanFromYuan(123_456_789)).toBe("12,345.68 万元");
+    expect(formatWanFromYuan(5_300_000)).toBe("530 万元");
+    expect(formatYiFromYuan(123_456_789)).toBe("1.23 亿元");
+    expect(formatYiFromYuan(800_000_000)).toBe("8 亿元");
+  });
+
+  it("renders missing amounts and rates as a bare em dash without unit suffix", () => {
+    expect(formatWanFromYuan(null)).toBe(EM_DASH);
+    expect(formatYiFromYuan(null)).toBe(EM_DASH);
+    expect(formatRatePct(null)).toBe(EM_DASH);
+  });
+
+  it("formats score rate as trimmed percentage and pending score with its own placeholder", () => {
+    expect(formatRatePct(0.6)).toBe("60%");
+    expect(formatRatePct(0.8567)).toBe("85.67%");
+    expect(formatScore(9)).toBe("9 分");
+    expect(formatScore(null)).toBe("待补分");
   });
 });

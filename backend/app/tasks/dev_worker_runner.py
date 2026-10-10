@@ -19,6 +19,7 @@ def main() -> None:
     bootstrap = import_module("backend.app.tasks.worker_bootstrap")
     broker = import_module("backend.app.tasks.broker").get_broker()
     worker_threads = max(1, int(args.threads))
+    broker.emit_after("process_boot")
     worker = Worker(broker, worker_threads=worker_threads)
     stopped = Event()
 

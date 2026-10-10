@@ -25,12 +25,19 @@ describe("StockAnalysisDeepZoneHeader", () => {
 
     const gate = screen.getByTestId("stock-analysis-deep-zone-gate-summary");
     const strip = screen.getByTestId("stock-analysis-deep-zone-audit-strip");
+    const statusFlow = screen.getByTestId("stock-analysis-deep-zone-status-flow");
 
     expect(gate).toHaveClass("stock-analysis-page__deep-zone-gate-summary");
     expect(gate).toHaveAttribute("data-tone", "positive");
     expect(gate).toHaveTextContent("Gate ready for replay evidence.");
     expect(strip).toHaveClass("stock-analysis-page__deep-zone-audit-strip");
     expect(strip.querySelectorAll(".stock-analysis-page__deep-zone-audit-item")).toHaveLength(4);
+    expect(statusFlow).toHaveClass("stock-analysis-page__deep-zone-status-flow");
+    expect(statusFlow).toHaveTextContent("状态口径");
+    expect(statusFlow).toHaveTextContent("阻断");
+    expect(statusFlow).toHaveTextContent("待复核");
+    expect(statusFlow).toHaveTextContent("证据待齐");
+    expect(statusFlow).toHaveTextContent("已就绪");
 
     for (const row of auditRows) {
       const item = within(strip)

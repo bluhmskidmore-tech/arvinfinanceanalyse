@@ -16,11 +16,27 @@ const providersSource = readFileSync(resolve(process.cwd(), "src/app/providers.t
 const shellSource = readFileSync(resolve(process.cwd(), "src/layouts/WorkbenchShell.tsx"), "utf8");
 const dataModeRibbonSource = readFileSync(resolve(process.cwd(), "src/components/DataModeRibbon.tsx"), "utf8");
 const marketDataSource = readFileSync(resolve(process.cwd(), "src/api/marketDataClient.ts"), "utf8");
+const marketDataMockSource = readFileSync(
+  resolve(process.cwd(), "src/mocks/marketDataMockClient.ts"),
+  "utf8",
+);
+const stockAnalysisWorkbenchClientSource = readFileSync(
+  resolve(process.cwd(), "src/api/stockAnalysisWorkbenchClient.ts"),
+  "utf8",
+);
+const kpiMockSource = readFileSync(resolve(process.cwd(), "src/mocks/kpiMockClient.ts"), "utf8");
+const agentMockClientSource = readFileSync(resolve(process.cwd(), "src/mocks/agentMockClient.ts"), "utf8");
+const executiveMockClientSource = readFileSync(resolve(process.cwd(), "src/mocks/executiveMockClient.ts"), "utf8");
+const balanceAnalysisMockClientSource = readFileSync(resolve(process.cwd(), "src/mocks/balanceAnalysisMockClient.ts"), "utf8");
+const liabilityAdbMockClientSource = readFileSync(resolve(process.cwd(), "src/mocks/liabilityAdbMockClient.ts"), "utf8");
+const productCategoryMockClientSource = readFileSync(resolve(process.cwd(), "src/mocks/productCategoryMockClient.ts"), "utf8");
+const qdbGlMonthlyAnalysisMockClientSource = readFileSync(resolve(process.cwd(), "src/mocks/qdbGlMonthlyAnalysisMockClient.ts"), "utf8");
 const kpiSource = readFileSync(resolve(process.cwd(), "src/api/kpiClient.ts"), "utf8");
 const cubeSource = readFileSync(resolve(process.cwd(), "src/api/cubeClient.ts"), "utf8");
 const agentClientSource = readFileSync(resolve(process.cwd(), "src/api/agentClient.ts"), "utf8");
 const executiveClientSource = readFileSync(resolve(process.cwd(), "src/api/executiveClient.ts"), "utf8");
 const balanceAnalysisClientSource = readFileSync(resolve(process.cwd(), "src/api/balanceAnalysisClient.ts"), "utf8");
+const balanceAnalysisOverviewClientSource = readFileSync(resolve(process.cwd(), "src/api/balanceAnalysisOverviewClient.ts"), "utf8");
 const bondAnalyticsClientSource = readFileSync(resolve(process.cwd(), "src/api/bondAnalyticsClient.ts"), "utf8");
 const cashflowClientSource = readFileSync(resolve(process.cwd(), "src/api/cashflowClient.ts"), "utf8");
 const pnlAttributionClientSource = readFileSync(resolve(process.cwd(), "src/api/pnlAttributionClient.ts"), "utf8");
@@ -29,12 +45,29 @@ const positionsClientSource = readFileSync(resolve(process.cwd(), "src/api/posit
 const liabilityAdbClientSource = readFileSync(resolve(process.cwd(), "src/api/liabilityAdbClient.ts"), "utf8");
 const productCategoryClientSource = readFileSync(resolve(process.cwd(), "src/api/productCategoryClient.ts"), "utf8");
 const qdbGlMonthlyAnalysisClientSource = readFileSync(resolve(process.cwd(), "src/api/qdbGlMonthlyAnalysisClient.ts"), "utf8");
+const packageJsonSource = readFileSync(resolve(process.cwd(), "package.json"), "utf8");
+const candidateBundleGuardPath = resolve(
+  process.cwd(),
+  "scripts/verifyCandidateFinancialIndicatorBundle.mjs",
+);
 const healthClientPath = resolve(process.cwd(), "src/api/healthClient.ts");
 const healthClientSource = existsSync(healthClientPath)
   ? readFileSync(healthClientPath, "utf8")
   : "";
 
 describe("ApiClient composition boundary", () => {
+  it("fails production builds when captured candidate finance data reaches dist", () => {
+    expect(packageJsonSource).toContain("guard:candidate-financial-indicators");
+    expect(packageJsonSource).toContain("verifyCandidateFinancialIndicatorBundle.mjs");
+    expect(existsSync(candidateBundleGuardPath)).toBe(true);
+    const guardSource = existsSync(candidateBundleGuardPath)
+      ? readFileSync(candidateBundleGuardPath, "utf8")
+      : "";
+    expect(guardSource).toContain("ledger_pnl_candidate_financial_indicators_frontend_demo_capture");
+    expect(guardSource).toContain("-93537785277.75");
+    expect(guardSource).toContain("57.3617558215");
+  });
+
   it("keeps the public market-data source preview surface available from createApiClient", () => {
     const client = createApiClient({ mode: "mock" });
 
@@ -45,10 +78,12 @@ describe("ApiClient composition boundary", () => {
     expect(typeof client.getSourceFoundationRows).toBe("function");
     expect(typeof client.getSourceFoundationTraces).toBe("function");
     expect(typeof client.getChoiceNewsEvents).toBe("function");
+    expect(typeof client.getMarketOverviewSnapshot).toBe("function");
     expect(typeof client.ingestTushareNprNews).toBe("function");
     expect(typeof client.getResearchCalendarEvents).toBe("function");
     expect(typeof client.getKpiOwners).toBe("function");
     expect(typeof client.fetchAndRecalcKpi).toBe("function");
+    expect(typeof client.getTeamPerformanceAssessmentWorkbook).toBe("function");
     expect(typeof client.getCubeDimensions).toBe("function");
     expect(typeof client.executeCubeQuery).toBe("function");
   });
@@ -66,6 +101,7 @@ describe("ApiClient composition boundary", () => {
     expect(typeof client.getBondDashboardMaturityStructure).toBe("function");
     expect(typeof client.getBondDashboardIndustryDistribution).toBe("function");
     expect(typeof client.getBondDashboardRiskIndicators).toBe("function");
+    expect(typeof client.fetchBondDashboardBundle).toBe("function");
   });
 
   it("keeps the public Bond Analytics surface available from createApiClient", () => {
@@ -121,7 +157,14 @@ describe("ApiClient composition boundary", () => {
     expect(typeof client.getLedgerPnlDates).toBe("function");
     expect(typeof client.getLedgerPnlData).toBe("function");
     expect(typeof client.getLedgerPnlSummary).toBe("function");
+    expect(typeof client.getLedgerPnlAnalysis).toBe("function");
+    expect(typeof client.getLedgerPnlAccountDetail).toBe("function");
     expect(typeof client.getLedgerPnlFormalFinancialIndicators).toBe("function");
+    expect(typeof client.getLedgerPnlCandidateFinancialIndicators).toBe("function");
+    expect(
+      typeof client.getLedgerPnlCandidateFinancialIndicatorPeriodComparison,
+    ).toBe("function");
+    expect(typeof client.revalidateLedgerPnlCandidateFinancialIndicators).toBe("function");
     expect(typeof client.getPnlBridge).toBe("function");
     expect(typeof client.refreshFormalPnl).toBe("function");
     expect(typeof client.getFormalPnlImportStatus).toBe("function");
@@ -185,6 +228,8 @@ describe("ApiClient composition boundary", () => {
     expect(typeof client.getCockpitWarnings).toBe("function");
     expect(typeof client.getContributionSplit).toBe("function");
     expect(typeof client.getLiabilitiesMonthly).toBe("function");
+    expect(typeof client.getLiabilitiesMonthlySummary).toBe("function");
+    expect(typeof client.getLiabilitiesMonthlyDetail).toBe("function");
     expect(typeof client.getLiabilityAdbMonthly).toBe("function");
     expect(typeof client.getAdb).toBe("function");
     expect(typeof client.getAdbComparison).toBe("function");
@@ -732,9 +777,10 @@ describe("ApiClient composition boundary", () => {
       fetchImpl: fetchMock as unknown as typeof fetch,
     });
 
-    await client.getFormalPnlDates("analytical");
-    await client.getFormalPnlData("2026 02/28", "analytical");
-    await client.getFormalPnlOverview("2026 02/28", "analytical");
+    // /api/pnl/dates、/api/pnl/data、/api/pnl/overview 仅正式口径：请求不携带 basis 查询参数。
+    await client.getFormalPnlDates();
+    await client.getFormalPnlData("2026 02/28");
+    await client.getFormalPnlOverview("2026 02/28");
     await client.getLedgerPnlDates();
     await client.getLedgerPnlData("2026 02/28", " CNX ");
     await client.getLedgerPnlSummary("2026 02/28", " CNX ");
@@ -745,21 +791,21 @@ describe("ApiClient composition boundary", () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      "http://localhost:8000/api/pnl/dates?basis=analytical",
+      "http://localhost:8000/api/pnl/dates",
       expect.objectContaining({
         headers: expect.objectContaining({ Accept: "application/json" }),
       }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      "http://localhost:8000/api/pnl/data?date=2026%2002%2F28&basis=analytical",
+      "http://localhost:8000/api/pnl/data?date=2026%2002%2F28",
       expect.objectContaining({
         headers: expect.objectContaining({ Accept: "application/json" }),
       }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
-      "http://localhost:8000/api/pnl/overview?report_date=2026%2002%2F28&basis=analytical",
+      "http://localhost:8000/api/pnl/overview?report_date=2026%2002%2F28",
       expect.objectContaining({
         headers: expect.objectContaining({ Accept: "application/json" }),
       }),
@@ -912,11 +958,11 @@ describe("ApiClient composition boundary", () => {
   it("keeps PnL core mock envelope shapes after extraction", async () => {
     const client = createApiClient({ mode: "mock" });
 
-    await expect(client.getFormalPnlDates("analytical")).resolves.toMatchObject({
+    await expect(client.getFormalPnlDates()).resolves.toMatchObject({
       result_meta: {
         result_kind: "pnl.dates",
-        basis: "analytical",
-        formal_use_allowed: false,
+        basis: "formal",
+        formal_use_allowed: true,
       },
       result: {
         report_dates: [],
@@ -1026,7 +1072,7 @@ describe("ApiClient composition boundary", () => {
       reportDate: " 2026 03/31 ",
       compareType: "yoy",
     });
-    await client.getTplMarketCorrelation({ months: 18, reportDate: "ignored" });
+    await client.getTplMarketCorrelation({ months: 18, reportDate: " 2026-03-31 " });
     await client.getPnlCompositionBreakdown({
       reportDate: " 2026 03/31 ",
       includeTrend: false,
@@ -1062,7 +1108,7 @@ describe("ApiClient composition boundary", () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
-      "http://localhost:8000/api/pnl-attribution/tpl-market?months=18",
+      "http://localhost:8000/api/pnl-attribution/tpl-market?months=18&report_date=2026-03-31",
       expect.objectContaining({
         headers: expect.objectContaining({ Accept: "application/json" }),
       }),
@@ -1458,6 +1504,7 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toMatch(/async ingestTushareNprNews\(/);
     expect(clientSource).not.toMatch(/async getKpiOwners\(/);
     expect(clientSource).not.toMatch(/async fetchAndRecalcKpi\(/);
+    expect(clientSource).not.toMatch(/async getTeamPerformanceAssessmentWorkbook\(/);
     expect(clientSource).not.toMatch(/async getCubeDimensions\(/);
     expect(clientSource).not.toMatch(/async executeCubeQuery\(/);
     expect(clientSource).not.toMatch(/async queryAgent\(/);
@@ -1479,6 +1526,7 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toMatch(/async getBondDashboardMaturityStructure\(/);
     expect(clientSource).not.toMatch(/async getBondDashboardIndustryDistribution\(/);
     expect(clientSource).not.toMatch(/async getBondDashboardRiskIndicators\(/);
+    expect(clientSource).not.toMatch(/async fetchBondDashboardBundle\(/);
     expect(clientSource).not.toMatch(/async refreshBondAnalytics\(/);
     expect(clientSource).not.toMatch(/async getBondAnalyticsRefreshStatus\(/);
     expect(clientSource).not.toMatch(/async getBondAnalyticsDates\(/);
@@ -1559,7 +1607,10 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toMatch(/async getLedgerPnlDates\(/);
     expect(clientSource).not.toMatch(/async getLedgerPnlData\(/);
     expect(clientSource).not.toMatch(/async getLedgerPnlSummary\(/);
+    expect(clientSource).not.toMatch(/async getLedgerPnlAnalysis\(/);
+    expect(clientSource).not.toMatch(/async getLedgerPnlAccountDetail\(/);
     expect(clientSource).not.toMatch(/async getLedgerPnlFormalFinancialIndicators\(/);
+    expect(clientSource).not.toMatch(/async getLedgerPnlCandidateFinancialIndicators\(/);
     expect(clientSource).not.toMatch(/async getPnlBridge\(/);
     expect(clientSource).not.toMatch(/async refreshFormalPnl\(/);
     expect(clientSource).not.toMatch(/async getFormalPnlImportStatus\(/);
@@ -1578,35 +1629,70 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toMatch(/async getPnlCampisiMaturityBuckets\(/);
   });
 
-  it("requires marketDataClient.ts to own the extracted market-data composition slice", () => {
-    expect(marketDataSource).toMatch(/async getSourceFoundation\(/);
-    expect(marketDataSource).toMatch(/async refreshSourcePreview\(/);
-    expect(marketDataSource).toMatch(/async getSourcePreviewRefreshStatus\(/);
-    expect(marketDataSource).toMatch(/async getSourceFoundationHistory\(/);
-    expect(marketDataSource).toMatch(/async getSourceFoundationRows\(/);
-    expect(marketDataSource).toMatch(/async getSourceFoundationTraces\(/);
-    expect(marketDataSource).toMatch(/async getChoiceNewsEvents\(/);
-    expect(marketDataSource).toMatch(/async getResearchCalendarEvents\(/);
-    expect(marketDataSource).toMatch(/async ingestTushareNprNews\(/);
+  it("requires the market-data domain modules to own the extracted composition slice", () => {
+    expect(marketDataSource).toMatch(/getSourceFoundation: \(\) =>/);
+    expect(marketDataSource).toMatch(/getMarketOverviewSnapshot:/);
+    expect(marketDataMockSource).toMatch(/async getSourceFoundation\(/);
+    expect(marketDataMockSource).toMatch(/async refreshSourcePreview\(/);
+    expect(marketDataMockSource).toMatch(/async getSourcePreviewRefreshStatus\(/);
+    expect(marketDataMockSource).toMatch(/async getSourceFoundationHistory\(/);
+    expect(marketDataMockSource).toMatch(/async getSourceFoundationRows\(/);
+    expect(marketDataMockSource).toMatch(/async getSourceFoundationTraces\(/);
+    expect(marketDataMockSource).toMatch(/async getChoiceNewsEvents\(/);
+    expect(marketDataMockSource).toMatch(/async getMarketOverviewSnapshot\(/);
+    expect(marketDataMockSource).toMatch(/async getResearchCalendarEvents\(/);
+    expect(marketDataMockSource).toMatch(/async ingestTushareNprNews\(/);
   });
 
   it("requires KPI and cube clients to own their extracted composition slices", () => {
     expect(kpiSource).toContain("requestKpiJson");
-    expect(kpiSource).toMatch(/async getKpiOwners\(/);
-    expect(kpiSource).toMatch(/async fetchAndRecalcKpi\(/);
-    expect(cubeSource).toMatch(/async getCubeDimensions\(/);
-    expect(cubeSource).toMatch(/async executeCubeQuery\(/);
+    expect(kpiMockSource).toMatch(/async getKpiOwners\(/);
+    expect(kpiMockSource).toMatch(/async fetchAndRecalcKpi\(/);
+    expect(cubeSource).toContain("createRealCubeClient");
+    expect(cubeSource).toContain("/api/cube/dimensions/");
+    expect(cubeSource).toContain("/api/cube/query");
+    expect(cubeSource).not.toContain("createMockCubeClient");
+    expect(cubeSource).not.toContain("../mocks/");
+  });
+
+  it("keeps cube mock factory in cubeMockClient.ts", () => {
+    const cubeMockClientSource = readFileSync(
+      resolve(process.cwd(), "src/mocks/cubeMockClient.ts"),
+      "utf8",
+    );
+    expect(cubeMockClientSource).toContain("createMockCubeClient");
+    expect(cubeMockClientSource).toContain("cube.query");
+    expect(cubeMockClientSource).toMatch(/async getCubeDimensions\(/);
+    expect(cubeMockClientSource).toMatch(/async executeCubeQuery\(/);
+  });
+
+  it("keeps team performance workbook client and mock factory in their domain modules", () => {
+    const teamPerformanceClientSource = readFileSync(
+      resolve(process.cwd(), "src/api/teamPerformanceClient.ts"),
+      "utf8",
+    );
+    const teamPerformanceMockClientSource = readFileSync(
+      resolve(process.cwd(), "src/mocks/teamPerformanceMockClient.ts"),
+      "utf8",
+    );
+    expect(teamPerformanceClientSource).toContain("createRealTeamPerformanceClient");
+    expect(teamPerformanceClientSource).toContain("/api/team-performance/assessment-workbook");
+    expect(teamPerformanceClientSource).not.toContain("../mocks/");
+    expect(teamPerformanceMockClientSource).toContain("createMockTeamPerformanceClient");
+    expect(teamPerformanceMockClientSource).toMatch(/async getTeamPerformanceAssessmentWorkbook\(/);
+    expect(teamPerformanceMockClientSource).toContain("team_performance.assessment_workbook");
   });
 
   it("requires agentClient.ts to own agent query implementations", () => {
-    expect(agentClientSource).toContain("buildStableDemoAgentEnvelope");
+    expect(agentMockClientSource).toContain("buildStableDemoAgentEnvelope");
     expect(agentClientSource).toContain("/api/agent/query");
     expect(agentClientSource).toMatch(/async queryAgent\(/);
-    expect(agentClientSource).toMatch(/create(Mock|Demo)AgentClient/);
+    expect(agentMockClientSource).toMatch(/create(Mock|Demo)AgentClient/);
   });
 
   it("requires executiveClient.ts to own executive and home thin implementations", () => {
-    expect(executiveClientSource).toContain("createDemoExecutiveClient");
+    expect(executiveMockClientSource).toContain("createDemoExecutiveClient");
+    expect(executiveClientSource).not.toContain("createDemoExecutiveClient");
     expect(executiveClientSource).toContain("createRealExecutiveClient");
     expect(executiveClientSource).toContain("/ui/home/overview");
     expect(executiveClientSource).toContain("/ui/home/summary");
@@ -1614,20 +1700,20 @@ describe("ApiClient composition boundary", () => {
     expect(executiveClientSource).toContain("/ui/home/contribution");
     expect(executiveClientSource).toContain("/ui/home/alerts");
     expect(executiveClientSource).toContain("/api/risk/tensor/dates");
-    expect(executiveClientSource).toContain("risk.tensor");
-    expect(executiveClientSource).toMatch(/async getOverview\(/);
-    expect(executiveClientSource).toMatch(/async getHomeSnapshot\(/);
-    expect(executiveClientSource).toMatch(/async getSummary\(/);
-    expect(executiveClientSource).toMatch(/async getRiskOverview\(/);
-    expect(executiveClientSource).toMatch(/async getRiskTensorDates\(/);
-    expect(executiveClientSource).toMatch(/async getRiskTensor\(/);
-    expect(executiveClientSource).toMatch(/async getContribution\(/);
-    expect(executiveClientSource).toMatch(/async getAlerts\(/);
+    expect(executiveMockClientSource).toContain("risk.tensor");
+    expect(executiveMockClientSource).toMatch(/async getOverview\(/);
+    expect(executiveMockClientSource).toMatch(/async getHomeSnapshot\(/);
+    expect(executiveMockClientSource).toMatch(/async getSummary\(/);
+    expect(executiveMockClientSource).toMatch(/async getRiskOverview\(/);
+    expect(executiveMockClientSource).toMatch(/async getRiskTensorDates\(/);
+    expect(executiveMockClientSource).toMatch(/async getRiskTensor\(/);
+    expect(executiveMockClientSource).toMatch(/async getContribution\(/);
+    expect(executiveMockClientSource).toMatch(/async getAlerts\(/);
     expect(executiveClientSource).toMatch(/async getPlaceholderSnapshot\(/);
   });
 
   it("requires bondAnalyticsClient.ts to own Bond Dashboard API implementations", () => {
-    expect(bondAnalyticsClientSource).toContain("createDemoBondDashboardClient");
+    expect(bondAnalyticsClientSource).not.toContain("createDemoBondDashboardClient");
     expect(bondAnalyticsClientSource).toContain("createRealBondDashboardClient");
     expect(bondAnalyticsClientSource).toContain("/api/bond-dashboard/dates");
     expect(bondAnalyticsClientSource).toContain("/api/bond-dashboard/headline-kpis");
@@ -1639,23 +1725,20 @@ describe("ApiClient composition boundary", () => {
     expect(bondAnalyticsClientSource).toContain("/api/bond-dashboard/maturity-structure");
     expect(bondAnalyticsClientSource).toContain("/api/bond-dashboard/industry-distribution");
     expect(bondAnalyticsClientSource).toContain("/api/bond-dashboard/risk-indicators");
-    expect(bondAnalyticsClientSource).toContain("bond_dashboard.headline_kpis");
-    expect(bondAnalyticsClientSource).toContain("bond_dashboard.home_summary");
-    expect(bondAnalyticsClientSource).toContain("bond_dashboard.risk_indicators");
-    expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardDates\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardHeadlineKpis\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardHomeSummary\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardAssetStructure\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardYieldDistribution\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardPortfolioComparison\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardSpreadAnalysis\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardMaturityStructure\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardIndustryDistribution\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondDashboardRiskIndicators\(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondDashboardDates: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondDashboardHeadlineKpis: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondDashboardHomeSummary: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondDashboardAssetStructure: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondDashboardYieldDistribution: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondDashboardPortfolioComparison: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondDashboardSpreadAnalysis: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondDashboardMaturityStructure: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondDashboardIndustryDistribution: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondDashboardRiskIndicators: \(/);
   });
 
   it("requires bondAnalyticsClient.ts to own Bond Analytics API implementations", () => {
-    expect(bondAnalyticsClientSource).toContain("createDemoBondAnalyticsClient");
+    expect(bondAnalyticsClientSource).not.toContain("createDemoBondAnalyticsClient");
     expect(bondAnalyticsClientSource).toContain("createRealBondAnalyticsClient");
     expect(bondAnalyticsClientSource).toContain("/api/bond-analytics/dates");
     expect(bondAnalyticsClientSource).toContain("/api/bond-analytics/refresh");
@@ -1671,31 +1754,31 @@ describe("ApiClient composition boundary", () => {
     expect(bondAnalyticsClientSource).toContain("/api/bond-analytics/top-holdings");
     expect(bondAnalyticsClientSource).toContain("/api/bond-analytics/yield-curve-term-structure");
     expect(bondAnalyticsClientSource).toContain("/api/credit-spread-analysis/detail");
-    expect(bondAnalyticsClientSource).toContain("bond_analytics.return_decomposition");
-    expect(bondAnalyticsClientSource).toContain("bond_analytics.credit_spread_migration");
-    expect(bondAnalyticsClientSource).toMatch(/async refreshBondAnalytics\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsRefreshStatus\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsDates\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsReturnDecomposition\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsBenchmarkExcess\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsKrdCurveRisk\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsDv01Risk\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsActionAttribution\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsAccountingClassAudit\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsCreditSpreadMigration\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsPortfolioHeadlines\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsTopHoldings\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getBondAnalyticsYieldCurveTermStructure\(/);
-    expect(bondAnalyticsClientSource).toMatch(/async getCreditSpreadAnalysisDetail\(/);
+    expect(bondAnalyticsClientSource).toMatch(/refreshBondAnalytics: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondAnalyticsRefreshStatus: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondAnalyticsDates: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondAnalyticsReturnDecomposition: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondAnalyticsBenchmarkExcess: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondAnalyticsKrdCurveRisk: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondAnalyticsDv01Risk: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondAnalyticsActionAttribution: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondAnalyticsAccountingClassAudit: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondAnalyticsCreditSpreadMigration: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondAnalyticsPortfolioHeadlines: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondAnalyticsTopHoldings: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getBondAnalyticsYieldCurveTermStructure: \(/);
+    expect(bondAnalyticsClientSource).toMatch(/getCreditSpreadAnalysisDetail: \(/);
   });
 
   it("requires balanceAnalysisClient.ts to own Balance Analysis API implementations", () => {
-    expect(balanceAnalysisClientSource).toContain("createDemoBalanceAnalysisClient");
+    expect(balanceAnalysisMockClientSource).toContain("createDemoBalanceAnalysisClient");
+    expect(balanceAnalysisClientSource).not.toContain("createDemoBalanceAnalysisClient");
     expect(balanceAnalysisClientSource).toContain("createRealBalanceAnalysisClient");
-    expect(balanceAnalysisClientSource).toContain("buildBalanceAnalysisTableRows");
-    expect(balanceAnalysisClientSource).toContain("BalanceAnalysisAmountField");
+    expect(balanceAnalysisMockClientSource).toContain("buildBalanceAnalysisTableRows");
+    expect(balanceAnalysisMockClientSource).toContain("BalanceAnalysisAmountField");
     expect(balanceAnalysisClientSource).toContain("/ui/balance-analysis/dates");
-    expect(balanceAnalysisClientSource).toContain("/ui/balance-analysis/overview");
+    expect(balanceAnalysisClientSource).toContain("...createRealBalanceAnalysisOverviewClient({ fetchImpl, baseUrl, requestJson })");
+    expect(balanceAnalysisOverviewClientSource).toContain("/ui/balance-analysis/overview");
     expect(balanceAnalysisClientSource).toContain("/ui/balance-analysis/summary");
     expect(balanceAnalysisClientSource).toContain("/ui/balance-analysis/workbook");
     expect(balanceAnalysisClientSource).toContain("/ui/balance-analysis/current-user");
@@ -1707,26 +1790,26 @@ describe("ApiClient composition boundary", () => {
     expect(balanceAnalysisClientSource).toContain("/ui/balance-analysis/workbook/export");
     expect(balanceAnalysisClientSource).toContain("/ui/balance-analysis/refresh");
     expect(balanceAnalysisClientSource).toContain("/ui/balance-analysis/refresh-status");
-    expect(balanceAnalysisClientSource).toContain("balance-analysis.overview");
-    expect(balanceAnalysisClientSource).toContain("balance-analysis.advanced_attribution_bundle");
-    expect(balanceAnalysisClientSource).toMatch(/async getBalanceAnalysisDates\(/);
-    expect(balanceAnalysisClientSource).toMatch(/async getBalanceAnalysisOverview\(/);
-    expect(balanceAnalysisClientSource).toMatch(/async getBalanceAnalysisDetail\(/);
-    expect(balanceAnalysisClientSource).toMatch(/async getBalanceAnalysisSummaryByBasis\(/);
-    expect(balanceAnalysisClientSource).toMatch(/async getBalanceAnalysisAdvancedAttribution\(/);
-    expect(balanceAnalysisClientSource).toMatch(/async getBalanceAnalysisSummary\(/);
-    expect(balanceAnalysisClientSource).toMatch(/async getBalanceAnalysisWorkbook\(/);
-    expect(balanceAnalysisClientSource).toMatch(/async getBalanceAnalysisCurrentUser\(/);
-    expect(balanceAnalysisClientSource).toMatch(/async getBalanceAnalysisDecisionItems\(/);
-    expect(balanceAnalysisClientSource).toMatch(/async updateBalanceAnalysisDecisionStatus\(/);
-    expect(balanceAnalysisClientSource).toMatch(/async exportBalanceAnalysisSummaryCsv\(/);
-    expect(balanceAnalysisClientSource).toMatch(/async exportBalanceAnalysisWorkbookXlsx\(/);
-    expect(balanceAnalysisClientSource).toMatch(/async refreshBalanceAnalysis\(/);
-    expect(balanceAnalysisClientSource).toMatch(/async getBalanceAnalysisRefreshStatus\(/);
+    expect(balanceAnalysisMockClientSource).toContain("balance-analysis.overview");
+    expect(balanceAnalysisMockClientSource).toContain("balance-analysis.advanced_attribution_bundle");
+    expect(balanceAnalysisMockClientSource).toMatch(/async getBalanceAnalysisDates\(/);
+    expect(balanceAnalysisMockClientSource).toMatch(/async getBalanceAnalysisOverview\(/);
+    expect(balanceAnalysisMockClientSource).toMatch(/async getBalanceAnalysisDetail\(/);
+    expect(balanceAnalysisMockClientSource).toMatch(/async getBalanceAnalysisSummaryByBasis\(/);
+    expect(balanceAnalysisMockClientSource).toMatch(/async getBalanceAnalysisAdvancedAttribution\(/);
+    expect(balanceAnalysisMockClientSource).toMatch(/async getBalanceAnalysisSummary\(/);
+    expect(balanceAnalysisMockClientSource).toMatch(/async getBalanceAnalysisWorkbook\(/);
+    expect(balanceAnalysisMockClientSource).toMatch(/async getBalanceAnalysisCurrentUser\(/);
+    expect(balanceAnalysisMockClientSource).toMatch(/async getBalanceAnalysisDecisionItems\(/);
+    expect(balanceAnalysisMockClientSource).toMatch(/async updateBalanceAnalysisDecisionStatus\(/);
+    expect(balanceAnalysisMockClientSource).toMatch(/async exportBalanceAnalysisSummaryCsv\(/);
+    expect(balanceAnalysisMockClientSource).toMatch(/async exportBalanceAnalysisWorkbookXlsx\(/);
+    expect(balanceAnalysisMockClientSource).toMatch(/async refreshBalanceAnalysis\(/);
+    expect(balanceAnalysisMockClientSource).toMatch(/async getBalanceAnalysisRefreshStatus\(/);
   });
 
   it("requires positionsClient.ts to own Positions API implementations", () => {
-    expect(positionsClientSource).toContain("createDemoPositionsClient");
+    expect(positionsClientSource).not.toContain("createDemoPositionsClient");
     expect(positionsClientSource).toContain("createRealPositionsClient");
     expect(positionsClientSource).not.toContain("getLiabilityRiskBuckets");
     expect(positionsClientSource).not.toContain("getAdbComparison");
@@ -1740,22 +1823,21 @@ describe("ApiClient composition boundary", () => {
     expect(positionsClientSource).toContain("/api/positions/stats/industry");
     expect(positionsClientSource).toContain("/api/positions/customer/details");
     expect(positionsClientSource).toContain("/api/positions/customer/trend");
-    expect(positionsClientSource).toContain("positions.bonds.sub_types");
-    expect(positionsClientSource).toContain("positions.counterparty.interbank.split");
-    expect(positionsClientSource).toMatch(/async getPositionsBondSubTypes\(/);
-    expect(positionsClientSource).toMatch(/async getPositionsBondsList\(/);
-    expect(positionsClientSource).toMatch(/async getPositionsCounterpartyBonds\(/);
-    expect(positionsClientSource).toMatch(/async getPositionsInterbankProductTypes\(/);
-    expect(positionsClientSource).toMatch(/async getPositionsInterbankList\(/);
-    expect(positionsClientSource).toMatch(/async getPositionsCounterpartyInterbankSplit\(/);
-    expect(positionsClientSource).toMatch(/async getPositionsStatsRating\(/);
-    expect(positionsClientSource).toMatch(/async getPositionsStatsIndustry\(/);
-    expect(positionsClientSource).toMatch(/async getPositionsCustomerDetails\(/);
-    expect(positionsClientSource).toMatch(/async getPositionsCustomerTrend\(/);
+    expect(positionsClientSource).toMatch(/getPositionsBondSubTypes: \(/);
+    expect(positionsClientSource).toMatch(/getPositionsBondsList: \(/);
+    expect(positionsClientSource).toMatch(/getPositionsCounterpartyBonds: \(/);
+    expect(positionsClientSource).toMatch(/getPositionsInterbankProductTypes: \(/);
+    expect(positionsClientSource).toMatch(/getPositionsInterbankList: \(/);
+    expect(positionsClientSource).toMatch(/getPositionsCounterpartyInterbankSplit: \(/);
+    expect(positionsClientSource).toMatch(/getPositionsStatsRating: \(/);
+    expect(positionsClientSource).toMatch(/getPositionsStatsIndustry: \(/);
+    expect(positionsClientSource).toMatch(/getPositionsCustomerDetails: \(/);
+    expect(positionsClientSource).toMatch(/getPositionsCustomerTrend: \(/);
   });
 
   it("requires liabilityAdbClient.ts to own Liability and ADB API implementations", () => {
-    expect(liabilityAdbClientSource).toContain("createDemoLiabilityAdbClient");
+    expect(liabilityAdbMockClientSource).toContain("createDemoLiabilityAdbClient");
+    expect(liabilityAdbClientSource).not.toContain("createDemoLiabilityAdbClient");
     expect(liabilityAdbClientSource).toContain("createRealLiabilityAdbClient");
     expect(liabilityAdbClientSource).toContain("/api/risk/buckets");
     expect(liabilityAdbClientSource).toContain("/api/analysis/yield_metrics");
@@ -1766,32 +1848,35 @@ describe("ApiClient composition boundary", () => {
     expect(liabilityAdbClientSource).toContain("/api/analysis/liabilities/contribution-split");
     expect(liabilityAdbClientSource).toContain("/api/liabilities/monthly");
     expect(liabilityAdbClientSource).toContain("/api/analysis/adb");
-    expect(liabilityAdbClientSource).toContain("liability.cockpit_warnings");
-    expect(liabilityAdbClientSource).toContain("liability.contribution_split");
-    expect(liabilityAdbClientSource).toContain("liability.page_knowledge");
+    expect(liabilityAdbMockClientSource).toContain("liability.cockpit_warnings");
+    expect(liabilityAdbMockClientSource).toContain("liability.contribution_split");
+    expect(liabilityAdbMockClientSource).toContain("liability.page_knowledge");
     expect(liabilityAdbClientSource).toContain("requestPlainJson");
     expect(liabilityAdbClientSource).toContain("requestEnvelopeOrPlainJson");
     expect(liabilityAdbClientSource).toContain("requestEnvelopeOrPlainJsonWithMeta");
     expect(liabilityAdbClientSource).toContain("normalizeAccountingBasisTrendItem");
     expect(liabilityAdbClientSource).toContain("normalizeAdbComparisonResponse");
     expect(liabilityAdbClientSource).toContain("normalizeAdbMonthlyResponse");
-    expect(liabilityAdbClientSource).toMatch(/async getLiabilityRiskBuckets\(/);
-    expect(liabilityAdbClientSource).toMatch(/async getLiabilityYieldMetrics\(/);
-    expect(liabilityAdbClientSource).toMatch(/async getYieldByPeriod\(/);
-    expect(liabilityAdbClientSource).toMatch(/async getLiabilityCounterparty\(/);
-    expect(liabilityAdbClientSource).toMatch(/async getLiabilityKnowledgeBrief\(/);
-    expect(liabilityAdbClientSource).toMatch(/async getCockpitWarnings\(/);
-    expect(liabilityAdbClientSource).toMatch(/async getContributionSplit\(/);
-    expect(liabilityAdbClientSource).toMatch(/async getLiabilitiesMonthly\(/);
-    expect(liabilityAdbClientSource).toMatch(/async getLiabilityAdbMonthly\(/);
-    expect(liabilityAdbClientSource).toMatch(/async getAdb\(/);
-    expect(liabilityAdbClientSource).toMatch(/async getAdbComparison\(/);
-    expect(liabilityAdbClientSource).toMatch(/async getAdbMonthly\(/);
-    expect(liabilityAdbClientSource).toMatch(/async getAdbCoverage\(/);
+    expect(liabilityAdbMockClientSource).toMatch(/async getLiabilityRiskBuckets\(/);
+    expect(liabilityAdbMockClientSource).toMatch(/async getLiabilityYieldMetrics\(/);
+    expect(liabilityAdbMockClientSource).toMatch(/async getYieldByPeriod\(/);
+    expect(liabilityAdbMockClientSource).toMatch(/async getLiabilityCounterparty\(/);
+    expect(liabilityAdbMockClientSource).toMatch(/async getLiabilityKnowledgeBrief\(/);
+    expect(liabilityAdbMockClientSource).toMatch(/async getCockpitWarnings\(/);
+    expect(liabilityAdbMockClientSource).toMatch(/async getContributionSplit\(/);
+    expect(liabilityAdbMockClientSource).toMatch(/async getLiabilitiesMonthly\(/);
+    expect(liabilityAdbMockClientSource).toMatch(/async getLiabilitiesMonthlySummary\(/);
+    expect(liabilityAdbMockClientSource).toMatch(/async getLiabilitiesMonthlyDetail\(/);
+    expect(liabilityAdbMockClientSource).toMatch(/async getLiabilityAdbMonthly\(/);
+    expect(liabilityAdbMockClientSource).toMatch(/async getAdb\(/);
+    expect(liabilityAdbMockClientSource).toMatch(/async getAdbComparison\(/);
+    expect(liabilityAdbMockClientSource).toMatch(/async getAdbMonthly\(/);
+    expect(liabilityAdbMockClientSource).toMatch(/async getAdbCoverage\(/);
   });
 
   it("requires productCategoryClient.ts to own Product Category API implementations", () => {
-    expect(productCategoryClientSource).toContain("createDemoProductCategoryClient");
+    expect(productCategoryMockClientSource).toContain("createDemoProductCategoryClient");
+    expect(productCategoryClientSource).not.toContain("createDemoProductCategoryClient");
     expect(productCategoryClientSource).toContain("createRealProductCategoryClient");
     expect(productCategoryClientSource).toContain("/ui/pnl/product-category/dates");
     expect(productCategoryClientSource).toContain("/ui/pnl/product-category/refresh");
@@ -1799,34 +1884,35 @@ describe("ApiClient composition boundary", () => {
     expect(productCategoryClientSource).toContain("/ui/pnl/product-category/manual-adjustments");
     expect(productCategoryClientSource).toContain("/ui/pnl/product-category/manual-adjustments/export");
     expect(productCategoryClientSource).toContain("/ui/pnl/product-category/attribution");
-    expect(productCategoryClientSource).toContain("product_category_pnl.dates");
-    expect(productCategoryClientSource).toContain("product_category_pnl:mock-run");
-    expect(productCategoryClientSource).toContain("product_category_pnl_adjustments");
-    expect(productCategoryClientSource).toContain("buildMockProductCategoryPnlEnvelope");
-    expect(productCategoryClientSource).toContain("buildMockProductCategoryAttributionEnvelope");
-    expect(productCategoryClientSource).toContain("mockManualAdjustments");
-    expect(productCategoryClientSource).toContain("mockManualAdjustmentSeq");
-    expect(productCategoryClientSource).toContain("reduceLatestManualAdjustments");
-    expect(productCategoryClientSource).toContain("filterManualAdjustments");
-    expect(productCategoryClientSource).toContain("sortManualAdjustments");
+    expect(productCategoryMockClientSource).toContain("product_category_pnl.dates");
+    expect(productCategoryMockClientSource).toContain("product_category_pnl:mock-run");
+    expect(productCategoryMockClientSource).toContain("product_category_pnl_adjustments");
+    expect(productCategoryMockClientSource).toContain("buildMockProductCategoryPnlEnvelope");
+    expect(productCategoryMockClientSource).toContain("buildMockProductCategoryAttributionEnvelope");
+    expect(productCategoryMockClientSource).toContain("mockManualAdjustments");
+    expect(productCategoryMockClientSource).toContain("mockManualAdjustmentSeq");
+    expect(productCategoryMockClientSource).toContain("reduceLatestManualAdjustments");
+    expect(productCategoryMockClientSource).toContain("filterManualAdjustments");
+    expect(productCategoryMockClientSource).toContain("sortManualAdjustments");
     expect(productCategoryClientSource).toContain("buildManualAdjustmentSearchParams");
     expect(productCategoryClientSource).not.toContain("getQdbGlMonthlyAnalysisDates");
     expect(productCategoryClientSource).not.toContain("/ui/qdb-gl-monthly-analysis");
-    expect(productCategoryClientSource).toMatch(/async getProductCategoryDates\(/);
-    expect(productCategoryClientSource).toMatch(/async refreshProductCategoryPnl\(/);
-    expect(productCategoryClientSource).toMatch(/async getProductCategoryRefreshStatus\(/);
-    expect(productCategoryClientSource).toMatch(/async createProductCategoryManualAdjustment\(/);
-    expect(productCategoryClientSource).toMatch(/async getProductCategoryManualAdjustments\(/);
-    expect(productCategoryClientSource).toMatch(/async exportProductCategoryManualAdjustmentsCsv\(/);
-    expect(productCategoryClientSource).toMatch(/async updateProductCategoryManualAdjustment\(/);
-    expect(productCategoryClientSource).toMatch(/async revokeProductCategoryManualAdjustment\(/);
-    expect(productCategoryClientSource).toMatch(/async restoreProductCategoryManualAdjustment\(/);
-    expect(productCategoryClientSource).toMatch(/async getProductCategoryPnl\(/);
-    expect(productCategoryClientSource).toMatch(/async getProductCategoryAttribution\(/);
+    expect(productCategoryMockClientSource).toMatch(/async getProductCategoryDates\(/);
+    expect(productCategoryMockClientSource).toMatch(/async refreshProductCategoryPnl\(/);
+    expect(productCategoryMockClientSource).toMatch(/async getProductCategoryRefreshStatus\(/);
+    expect(productCategoryMockClientSource).toMatch(/async createProductCategoryManualAdjustment\(/);
+    expect(productCategoryMockClientSource).toMatch(/async getProductCategoryManualAdjustments\(/);
+    expect(productCategoryMockClientSource).toMatch(/async exportProductCategoryManualAdjustmentsCsv\(/);
+    expect(productCategoryMockClientSource).toMatch(/async updateProductCategoryManualAdjustment\(/);
+    expect(productCategoryMockClientSource).toMatch(/async revokeProductCategoryManualAdjustment\(/);
+    expect(productCategoryMockClientSource).toMatch(/async restoreProductCategoryManualAdjustment\(/);
+    expect(productCategoryMockClientSource).toMatch(/async getProductCategoryPnl\(/);
+    expect(productCategoryMockClientSource).toMatch(/async getProductCategoryAttribution\(/);
   });
 
   it("requires qdbGlMonthlyAnalysisClient.ts to own QDB GL Monthly Analysis API implementations", () => {
-    expect(qdbGlMonthlyAnalysisClientSource).toContain("createDemoQdbGlMonthlyAnalysisClient");
+    expect(qdbGlMonthlyAnalysisMockClientSource).toContain("createDemoQdbGlMonthlyAnalysisClient");
+    expect(qdbGlMonthlyAnalysisClientSource).not.toContain("createDemoQdbGlMonthlyAnalysisClient");
     expect(qdbGlMonthlyAnalysisClientSource).toContain("createRealQdbGlMonthlyAnalysisClient");
     expect(qdbGlMonthlyAnalysisClientSource).toContain("/ui/qdb-gl-monthly-analysis/dates");
     expect(qdbGlMonthlyAnalysisClientSource).toContain("/ui/qdb-gl-monthly-analysis/workbook");
@@ -1836,76 +1922,123 @@ describe("ApiClient composition boundary", () => {
     expect(qdbGlMonthlyAnalysisClientSource).toContain("/ui/qdb-gl-monthly-analysis/scenario");
     expect(qdbGlMonthlyAnalysisClientSource).toContain("/ui/qdb-gl-monthly-analysis/manual-adjustments");
     expect(qdbGlMonthlyAnalysisClientSource).toContain("/ui/qdb-gl-monthly-analysis/manual-adjustments/export");
-    expect(qdbGlMonthlyAnalysisClientSource).toContain("qdb-gl-monthly-analysis.dates");
-    expect(qdbGlMonthlyAnalysisClientSource).toContain("qdb-gl-monthly-analysis.workbook");
-    expect(qdbGlMonthlyAnalysisClientSource).toContain("qdb-gl-monthly-analysis.scenario");
-    expect(qdbGlMonthlyAnalysisClientSource).toContain("qdb_gl_monthly_analysis:");
-    expect(qdbGlMonthlyAnalysisClientSource).toContain("qdb_gl_monthly_analysis.analytical");
-    expect(qdbGlMonthlyAnalysisClientSource).toContain("monthly_operating_analysis_adjustments");
+    expect(qdbGlMonthlyAnalysisMockClientSource).toContain("qdb-gl-monthly-analysis.dates");
+    expect(qdbGlMonthlyAnalysisMockClientSource).toContain("qdb-gl-monthly-analysis.workbook");
+    expect(qdbGlMonthlyAnalysisMockClientSource).toContain("qdb-gl-monthly-analysis.scenario");
+    expect(qdbGlMonthlyAnalysisMockClientSource).toContain("qdb_gl_monthly_analysis:");
+    expect(qdbGlMonthlyAnalysisMockClientSource).toContain("qdb_gl_monthly_analysis.analytical");
+    expect(qdbGlMonthlyAnalysisMockClientSource).toContain("monthly_operating_analysis_adjustments");
     expect(qdbGlMonthlyAnalysisClientSource).not.toContain("/ui/pnl/product-category");
     expect(qdbGlMonthlyAnalysisClientSource).not.toContain("getCashflowProjection");
-    expect(qdbGlMonthlyAnalysisClientSource).toMatch(/async getQdbGlMonthlyAnalysisDates\(/);
-    expect(qdbGlMonthlyAnalysisClientSource).toMatch(/async getQdbGlMonthlyAnalysisWorkbook\(/);
-    expect(qdbGlMonthlyAnalysisClientSource).toMatch(/async exportQdbGlMonthlyAnalysisWorkbookXlsx\(/);
-    expect(qdbGlMonthlyAnalysisClientSource).toMatch(/async refreshQdbGlMonthlyAnalysis\(/);
-    expect(qdbGlMonthlyAnalysisClientSource).toMatch(/async getQdbGlMonthlyAnalysisRefreshStatus\(/);
-    expect(qdbGlMonthlyAnalysisClientSource).toMatch(/async getQdbGlMonthlyAnalysisScenario\(/);
-    expect(qdbGlMonthlyAnalysisClientSource).toMatch(/async createQdbGlMonthlyAnalysisManualAdjustment\(/);
-    expect(qdbGlMonthlyAnalysisClientSource).toMatch(/async updateQdbGlMonthlyAnalysisManualAdjustment\(/);
-    expect(qdbGlMonthlyAnalysisClientSource).toMatch(/async revokeQdbGlMonthlyAnalysisManualAdjustment\(/);
-    expect(qdbGlMonthlyAnalysisClientSource).toMatch(/async restoreQdbGlMonthlyAnalysisManualAdjustment\(/);
-    expect(qdbGlMonthlyAnalysisClientSource).toMatch(/async getQdbGlMonthlyAnalysisManualAdjustments\(/);
-    expect(qdbGlMonthlyAnalysisClientSource).toMatch(/async exportQdbGlMonthlyAnalysisManualAdjustmentsCsv\(/);
+    expect(qdbGlMonthlyAnalysisMockClientSource).toMatch(/async getQdbGlMonthlyAnalysisDates\(/);
+    expect(qdbGlMonthlyAnalysisMockClientSource).toMatch(/async getQdbGlMonthlyAnalysisWorkbook\(/);
+    expect(qdbGlMonthlyAnalysisMockClientSource).toMatch(/async exportQdbGlMonthlyAnalysisWorkbookXlsx\(/);
+    expect(qdbGlMonthlyAnalysisMockClientSource).toMatch(/async refreshQdbGlMonthlyAnalysis\(/);
+    expect(qdbGlMonthlyAnalysisMockClientSource).toMatch(/async getQdbGlMonthlyAnalysisRefreshStatus\(/);
+    expect(qdbGlMonthlyAnalysisMockClientSource).toMatch(/async getQdbGlMonthlyAnalysisScenario\(/);
+    expect(qdbGlMonthlyAnalysisMockClientSource).toMatch(/async createQdbGlMonthlyAnalysisManualAdjustment\(/);
+    expect(qdbGlMonthlyAnalysisMockClientSource).toMatch(/async updateQdbGlMonthlyAnalysisManualAdjustment\(/);
+    expect(qdbGlMonthlyAnalysisMockClientSource).toMatch(/async revokeQdbGlMonthlyAnalysisManualAdjustment\(/);
+    expect(qdbGlMonthlyAnalysisMockClientSource).toMatch(/async restoreQdbGlMonthlyAnalysisManualAdjustment\(/);
+    expect(qdbGlMonthlyAnalysisMockClientSource).toMatch(/async getQdbGlMonthlyAnalysisManualAdjustments\(/);
+    expect(qdbGlMonthlyAnalysisMockClientSource).toMatch(/async exportQdbGlMonthlyAnalysisManualAdjustmentsCsv\(/);
   });
 
   it("requires cashflowClient.ts to own Cashflow API implementations", () => {
-    expect(cashflowClientSource).toContain("createDemoCashflowClient");
+    expect(cashflowClientSource).not.toContain("createDemoCashflowClient");
     expect(cashflowClientSource).toContain("createRealCashflowClient");
     expect(cashflowClientSource).toContain("/api/cashflow-projection");
-    expect(cashflowClientSource).toContain("cashflow_projection.overview");
-    expect(cashflowClientSource).toMatch(/async getCashflowProjection\(/);
+    expect(cashflowClientSource).toMatch(/getCashflowProjection: \(/);
     expect(cashflowClientSource).not.toContain("/ui/qdb-gl-monthly-analysis");
     expect(cashflowClientSource).not.toContain("/api/positions/");
   });
 
-  it("requires pnlCoreClient.ts to own PnL core API implementations", () => {
-    expect(pnlCoreClientSource).toContain("createDemoPnlCoreClient");
+  it("keeps bond, positions, and cashflow demo factories in their mock clients", () => {
+    const bondAnalyticsMockClientSource = readFileSync(
+      resolve(process.cwd(), "src/mocks/bondAnalyticsMockClient.ts"),
+      "utf8",
+    );
+    const positionsMockClientSource = readFileSync(
+      resolve(process.cwd(), "src/mocks/positionsMockClient.ts"),
+      "utf8",
+    );
+    const cashflowMockClientSource = readFileSync(
+      resolve(process.cwd(), "src/mocks/cashflowMockClient.ts"),
+      "utf8",
+    );
+    expect(bondAnalyticsMockClientSource).toContain("createDemoBondAnalyticsClient");
+    expect(bondAnalyticsMockClientSource).toContain("createDemoBondDashboardClient");
+    expect(bondAnalyticsMockClientSource).toContain("bond_dashboard.headline_kpis");
+    expect(bondAnalyticsMockClientSource).toContain("bond_dashboard.home_summary");
+    expect(bondAnalyticsMockClientSource).toContain("bond_dashboard.risk_indicators");
+    expect(bondAnalyticsMockClientSource).toContain("bond_analytics.return_decomposition");
+    expect(bondAnalyticsMockClientSource).toContain("bond_analytics.credit_spread_migration");
+    expect(positionsMockClientSource).toContain("createDemoPositionsClient");
+    expect(positionsMockClientSource).toContain("positions.bonds.sub_types");
+    expect(positionsMockClientSource).toContain("positions.counterparty.interbank.split");
+    expect(cashflowMockClientSource).toContain("createDemoCashflowClient");
+    expect(cashflowMockClientSource).toContain("cashflow_projection.overview");
+  });
+
+  it("requires pnlCoreClient.ts to own real PnL core API implementations", () => {
     expect(pnlCoreClientSource).toContain("createRealPnlCoreClient");
+    expect(pnlCoreClientSource).not.toContain("createDemoPnlCoreClient");
+    expect(pnlCoreClientSource).not.toContain("../mocks/");
     expect(pnlCoreClientSource).toContain("/api/pnl/dates");
     expect(pnlCoreClientSource).toContain("/api/pnl/data");
     expect(pnlCoreClientSource).toContain("/api/pnl/overview");
     expect(pnlCoreClientSource).toContain("/api/ledger-pnl/dates");
     expect(pnlCoreClientSource).toContain("/api/ledger-pnl/data");
     expect(pnlCoreClientSource).toContain("/api/ledger-pnl/summary");
+    expect(pnlCoreClientSource).toContain("/api/ledger-pnl/analysis");
+    expect(pnlCoreClientSource).toContain("/api/ledger-pnl/account-detail");
     expect(pnlCoreClientSource).toContain("/api/ledger-pnl/formal-financial-indicators");
+    expect(pnlCoreClientSource).toContain("/api/ledger-pnl/candidate-financial-indicators");
+    expect(pnlCoreClientSource).toContain("/api/ledger-pnl/candidate-financial-indicators/revalidate");
     expect(pnlCoreClientSource).toContain("/api/pnl/bridge");
     expect(pnlCoreClientSource).toContain("/api/data/refresh_pnl");
     expect(pnlCoreClientSource).toContain("/api/data/import_status/pnl");
-    expect(pnlCoreClientSource).toContain("pnl.dates");
-    expect(pnlCoreClientSource).toContain("pnl.data");
-    expect(pnlCoreClientSource).toContain("pnl.overview");
-    expect(pnlCoreClientSource).toContain("ledger_pnl.dates");
-    expect(pnlCoreClientSource).toContain("ledger_pnl.data");
-    expect(pnlCoreClientSource).toContain("ledger_pnl.summary");
-    expect(pnlCoreClientSource).toContain("ledger_pnl.formal_financial_indicator_source_contract");
-    expect(pnlCoreClientSource).toContain("pnl.bridge");
-    expect(pnlCoreClientSource).toMatch(/async getFormalPnlDates\(/);
-    expect(pnlCoreClientSource).toMatch(/async getFormalPnlData\(/);
-    expect(pnlCoreClientSource).toMatch(/async getFormalPnlOverview\(/);
-    expect(pnlCoreClientSource).toMatch(/async getLedgerPnlDates\(/);
-    expect(pnlCoreClientSource).toMatch(/async getLedgerPnlData\(/);
-    expect(pnlCoreClientSource).toMatch(/async getLedgerPnlSummary\(/);
-    expect(pnlCoreClientSource).toMatch(/async getLedgerPnlFormalFinancialIndicators\(/);
-    expect(pnlCoreClientSource).toMatch(/async getPnlBridge\(/);
-    expect(pnlCoreClientSource).toMatch(/async refreshFormalPnl\(/);
-    expect(pnlCoreClientSource).toMatch(/async getFormalPnlImportStatus\(/);
+    expect(pnlCoreClientSource).toContain("revalidateLedgerPnlCandidateFinancialIndicators");
     expect(pnlCoreClientSource).not.toContain("/api/pnl-attribution/");
     expect(pnlCoreClientSource).not.toContain("/ui/qdb-gl-monthly-analysis");
   });
 
-  it("requires pnlAttributionClient.ts to own PnL attribution API implementations", () => {
-    expect(pnlAttributionClientSource).toContain("createDemoPnlAttributionClient");
+  it("keeps pnl core demo factory in pnlCoreMockClient.ts", () => {
+    const pnlCoreMockClientSource = readFileSync(
+      resolve(process.cwd(), "src/mocks/pnlCoreMockClient.ts"),
+      "utf8",
+    );
+    expect(pnlCoreMockClientSource).toContain("createDemoPnlCoreClient");
+    expect(pnlCoreMockClientSource).toContain("pnl.dates");
+    expect(pnlCoreMockClientSource).toContain("pnl.data");
+    expect(pnlCoreMockClientSource).toContain("pnl.overview");
+    expect(pnlCoreMockClientSource).toContain("ledger_pnl.dates");
+    expect(pnlCoreMockClientSource).toContain("ledger_pnl.data");
+    expect(pnlCoreMockClientSource).toContain("ledger_pnl.summary");
+    expect(pnlCoreMockClientSource).toContain("ledger_pnl.analysis");
+    expect(pnlCoreMockClientSource).toContain("ledger_pnl.account_detail");
+    expect(pnlCoreMockClientSource).toContain("ledger_pnl.formal_financial_indicator_source_contract");
+    expect(pnlCoreMockClientSource).toContain("ledger_pnl.candidate_financial_indicators");
+    expect(pnlCoreMockClientSource).toContain("pnl.bridge");
+    expect(pnlCoreMockClientSource).toMatch(/async getFormalPnlDates\(/);
+    expect(pnlCoreMockClientSource).toMatch(/async getFormalPnlData\(/);
+    expect(pnlCoreMockClientSource).toMatch(/async getFormalPnlOverview\(/);
+    expect(pnlCoreMockClientSource).toMatch(/async getLedgerPnlDates\(/);
+    expect(pnlCoreMockClientSource).toMatch(/async getLedgerPnlData\(/);
+    expect(pnlCoreMockClientSource).toMatch(/async getLedgerPnlSummary\(/);
+    expect(pnlCoreMockClientSource).toMatch(/async getLedgerPnlAnalysis\(/);
+    expect(pnlCoreMockClientSource).toMatch(/async getLedgerPnlAccountDetail\(/);
+    expect(pnlCoreMockClientSource).toMatch(/async getLedgerPnlFormalFinancialIndicators\(/);
+    expect(pnlCoreMockClientSource).toMatch(/async getLedgerPnlCandidateFinancialIndicators\(/);
+    expect(pnlCoreMockClientSource).toMatch(/async getPnlBridge\(/);
+    expect(pnlCoreMockClientSource).toMatch(/async refreshFormalPnl\(/);
+    expect(pnlCoreMockClientSource).toMatch(/async getFormalPnlImportStatus\(/);
+  });
+
+  it("requires pnlAttributionClient.ts to own real PnL attribution API implementations", () => {
     expect(pnlAttributionClientSource).toContain("createRealPnlAttributionClient");
+    expect(pnlAttributionClientSource).not.toContain("createDemoPnlAttributionClient");
+    expect(pnlAttributionClientSource).not.toContain("../mocks/");
     expect(pnlAttributionClientSource).toContain("/ui/pnl/attribution");
     expect(pnlAttributionClientSource).toContain("/api/pnl-attribution/volume-rate");
     expect(pnlAttributionClientSource).toContain("/api/pnl-attribution/tpl-market");
@@ -1919,34 +2052,42 @@ describe("ApiClient composition boundary", () => {
     expect(pnlAttributionClientSource).toContain("/api/pnl-attribution/campisi/four-effects");
     expect(pnlAttributionClientSource).toContain("/api/pnl-attribution/campisi/enhanced");
     expect(pnlAttributionClientSource).toContain("/api/pnl-attribution/campisi/maturity-buckets");
-    expect(pnlAttributionClientSource).toContain("executive.pnl-attribution");
-    expect(pnlAttributionClientSource).toContain("pnl_attribution.volume_rate");
-    expect(pnlAttributionClientSource).toContain("pnl_attribution.tpl_market");
-    expect(pnlAttributionClientSource).toContain("pnl_attribution.composition");
-    expect(pnlAttributionClientSource).toContain("pnl_attribution.summary");
-    expect(pnlAttributionClientSource).toContain("pnl_attribution.carry_rolldown");
-    expect(pnlAttributionClientSource).toContain("pnl_attribution.spread");
-    expect(pnlAttributionClientSource).toContain("pnl_attribution.krd");
-    expect(pnlAttributionClientSource).toContain("pnl_attribution.advanced_summary");
-    expect(pnlAttributionClientSource).toContain("pnl_attribution.campisi");
-    expect(pnlAttributionClientSource).toContain("campisi.four_effects");
-    expect(pnlAttributionClientSource).toContain("campisi.enhanced");
-    expect(pnlAttributionClientSource).toContain("campisi.maturity_buckets");
-    expect(pnlAttributionClientSource).toMatch(/async getPnlAttribution\(/);
-    expect(pnlAttributionClientSource).toMatch(/async getVolumeRateAttribution\(/);
-    expect(pnlAttributionClientSource).toMatch(/async getTplMarketCorrelation\(/);
-    expect(pnlAttributionClientSource).toMatch(/async getPnlCompositionBreakdown\(/);
-    expect(pnlAttributionClientSource).toMatch(/async getPnlAttributionAnalysisSummary\(/);
-    expect(pnlAttributionClientSource).toMatch(/async getPnlCarryRollDown\(/);
-    expect(pnlAttributionClientSource).toMatch(/async getPnlSpreadAttribution\(/);
-    expect(pnlAttributionClientSource).toMatch(/async getPnlKrdAttribution\(/);
-    expect(pnlAttributionClientSource).toMatch(/async getPnlAdvancedAttributionSummary\(/);
-    expect(pnlAttributionClientSource).toMatch(/async getPnlCampisiAttribution\(/);
-    expect(pnlAttributionClientSource).toMatch(/async getPnlCampisiFourEffects\(/);
-    expect(pnlAttributionClientSource).toMatch(/async getPnlCampisiEnhanced\(/);
-    expect(pnlAttributionClientSource).toMatch(/async getPnlCampisiMaturityBuckets\(/);
     expect(pnlAttributionClientSource).not.toContain("/api/pnl/bridge");
     expect(pnlAttributionClientSource).not.toContain("/ui/qdb-gl-monthly-analysis");
+  });
+
+  it("keeps pnl attribution demo factory in pnlAttributionMockClient.ts", () => {
+    const pnlAttributionMockClientSource = readFileSync(
+      resolve(process.cwd(), "src/mocks/pnlAttributionMockClient.ts"),
+      "utf8",
+    );
+    expect(pnlAttributionMockClientSource).toContain("createDemoPnlAttributionClient");
+    expect(pnlAttributionMockClientSource).toContain("executive.pnl-attribution");
+    expect(pnlAttributionMockClientSource).toContain("pnl_attribution.volume_rate");
+    expect(pnlAttributionMockClientSource).toContain("pnl_attribution.tpl_market");
+    expect(pnlAttributionMockClientSource).toContain("pnl_attribution.composition");
+    expect(pnlAttributionMockClientSource).toContain("pnl_attribution.summary");
+    expect(pnlAttributionMockClientSource).toContain("pnl_attribution.carry_rolldown");
+    expect(pnlAttributionMockClientSource).toContain("pnl_attribution.spread");
+    expect(pnlAttributionMockClientSource).toContain("pnl_attribution.krd");
+    expect(pnlAttributionMockClientSource).toContain("pnl_attribution.advanced_summary");
+    expect(pnlAttributionMockClientSource).toContain("pnl_attribution.campisi");
+    expect(pnlAttributionMockClientSource).toContain("campisi.four_effects");
+    expect(pnlAttributionMockClientSource).toContain("campisi.enhanced");
+    expect(pnlAttributionMockClientSource).toContain("campisi.maturity_buckets");
+    expect(pnlAttributionMockClientSource).toMatch(/async getPnlAttribution\(/);
+    expect(pnlAttributionMockClientSource).toMatch(/async getVolumeRateAttribution\(/);
+    expect(pnlAttributionMockClientSource).toMatch(/async getTplMarketCorrelation\(/);
+    expect(pnlAttributionMockClientSource).toMatch(/async getPnlCompositionBreakdown\(/);
+    expect(pnlAttributionMockClientSource).toMatch(/async getPnlAttributionAnalysisSummary\(/);
+    expect(pnlAttributionMockClientSource).toMatch(/async getPnlCarryRollDown\(/);
+    expect(pnlAttributionMockClientSource).toMatch(/async getPnlSpreadAttribution\(/);
+    expect(pnlAttributionMockClientSource).toMatch(/async getPnlKrdAttribution\(/);
+    expect(pnlAttributionMockClientSource).toMatch(/async getPnlAdvancedAttributionSummary\(/);
+    expect(pnlAttributionMockClientSource).toMatch(/async getPnlCampisiAttribution\(/);
+    expect(pnlAttributionMockClientSource).toMatch(/async getPnlCampisiFourEffects\(/);
+    expect(pnlAttributionMockClientSource).toMatch(/async getPnlCampisiEnhanced\(/);
+    expect(pnlAttributionMockClientSource).toMatch(/async getPnlCampisiMaturityBuckets\(/);
   });
 
   it("requires healthClient.ts to own health endpoint implementations", () => {
@@ -1968,12 +2109,23 @@ describe("ApiClient composition boundary", () => {
     expect(clientContextSource).toContain("createDeferredApiClient");
     expect(clientContextSource).toContain("MACRO_TOOLKIT_METHODS");
     expect(clientContextSource).toContain("HOME_MARKET_TICKER_METHODS");
+    expect(clientContextSource).toContain("STOCK_ANALYSIS_MARKET_DATA_METHODS");
     expect(clientContextSource).toContain("createRealMacroToolkitClient");
     expect(clientContextSource).toContain("createMockMacroToolkitClient");
+    const macroToolkitMethodSet = clientContextSource.match(
+      /const MACRO_TOOLKIT_METHODS[\s\S]*?\]\);/,
+    )?.[0];
+    expect(macroToolkitMethodSet).toContain("getCffexMemberRankRefreshStatus");
+    expect(macroToolkitMethodSet).toContain("getMacroSourceBackfillRefreshStatus");
+    expect(macroToolkitMethodSet).toContain("getCommodityFuturesRefreshStatus");
     expect(clientContextSource).toContain("createRealHomeMarketTickerClient");
     expect(clientContextSource).toContain("createMockHomeMarketTickerClient");
-    expect(clientContextSource).not.toContain("createRealMarketDataClient");
-    expect(clientContextSource).not.toContain("createMockMarketDataClient");
+    expect(clientContextSource).toMatch(/import\(["']\.\/marketDataClient["']\)/);
+    const marketOverviewMethodSet = clientContextSource.match(
+      /const MARKET_OVERVIEW_METHODS[\s\S]*?\]\);/,
+    )?.[0];
+    expect(marketOverviewMethodSet).toContain("getMarketOverviewSnapshot");
+    expect(clientContextSource).toMatch(/import\(["']\.\/stockAnalysisWorkbenchClient["']\)/);
     expect(clientContextSource).not.toMatch(/import\s+\{[^}]*createApiClient/);
     expect(clientSource).toContain("from \"./clientContext\"");
   });
@@ -1999,6 +2151,78 @@ describe("ApiClient composition boundary", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(fetchImpl).toHaveBeenCalledWith(
       "http://backend.local/ui/macro/toolkit/analysis?detail=core",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
+  it("routes the first-screen stock workbench through its lightweight domain client", async () => {
+    expect(stockAnalysisWorkbenchClientSource).toContain(
+      "/ui/market-data/stock-analysis/workbench",
+    );
+    expect(stockAnalysisWorkbenchClientSource).not.toContain("createRealMarketDataClient");
+    const marketMethodSet = clientContextSource.match(
+      /const STOCK_ANALYSIS_MARKET_DATA_METHODS[\s\S]*?\]\);/,
+    )?.[0];
+    expect(marketMethodSet).toBeDefined();
+    expect(marketMethodSet).not.toContain("getStockAnalysisWorkbench");
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          result_meta: {
+            basis: "analytical",
+            result_kind: "market_data.stock_analysis.workbench",
+          },
+          result: { modules: {}, module_states: [], links: {} },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    ) as unknown as typeof fetch;
+    const client = createDeferredApiClient({
+      mode: "real",
+      baseUrl: "http://backend.local",
+      fetchImpl,
+    });
+
+    await client.getStockAnalysisWorkbench({ topK: 10 });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://backend.local/ui/market-data/stock-analysis/workbench?top_k=10",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
+  it("routes stock portfolio construction through the lightweight stock-analysis domain client", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          result_meta: {
+            basis: "analytical",
+            result_kind: "market_data.stock_analysis.portfolio_construction",
+          },
+          result: { page_id: "GAP-STOCK-ANALYSIS-PORTFOLIO", route: "/stock-analysis/portfolio" },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    ) as unknown as typeof fetch;
+    const client = createDeferredApiClient({
+      mode: "real",
+      baseUrl: "http://backend.local",
+      fetchImpl,
+    });
+
+    await client.getStockAnalysisPortfolioConstruction({
+      portfolioId: "SHADOW-STOCK-RESEARCH",
+      asOfDate: "2026-08-24",
+    });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://backend.local/ui/market-data/stock-analysis/portfolio-construction?portfolio_id=SHADOW-STOCK-RESEARCH&as_of_date=2026-08-24",
       expect.objectContaining({
         headers: expect.objectContaining({ Accept: "application/json" }),
       }),

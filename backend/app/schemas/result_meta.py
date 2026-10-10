@@ -64,7 +64,22 @@ class ResultMeta(BaseModel):
     as_of_date: str | None = None
     date_basis: str | None = None
     fallback_date: str | None = None
-    generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    generated_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description=(
+            "Response assembly time. Not a data freshness signal: a response "
+            "generated now may serve data materialized days ago. Use "
+            "data_built_at for when the underlying data was written."
+        ),
+    )
+    data_built_at: datetime | None = Field(
+        default=None,
+        description=(
+            "Completion time of the governed build that produced the data "
+            "behind this result, sourced from cache_build_run.finished_at. "
+            "None when the result does not resolve a completed build terminal."
+        ),
+    )
     filters_applied: dict[str, Any] = Field(default_factory=dict)
     tables_used: list[str] = Field(default_factory=list)
     evidence_rows: int | None = None

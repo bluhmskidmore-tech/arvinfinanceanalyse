@@ -19,4 +19,18 @@ describe("WorkbenchShell theme guard", () => {
     expect(heroRule).not.toMatch(/moss-color-warm-|designTokens\.color\.warm/);
     expect(heroRule).toContain("var(--moss-color-card-bg)");
   });
+
+  it("keeps downward shell ticker readings neutral and legible in Nocturne", () => {
+    const deferredChromeCss = readFileSync(
+      resolve(process.cwd(), "src/styles/workbenchDeferredChrome.css"),
+      "utf8",
+    );
+    const downRule =
+      deferredChromeCss.match(
+        /\.workbench-market-ticker-delta\[data-tone="down"\]\s*\{[^}]+\}/,
+      )?.[0] ?? "";
+
+    expect(downRule).toContain("var(--dh-api-soft");
+    expect(downRule).not.toMatch(/--dh-api-(green|amber|red)/);
+  });
 });

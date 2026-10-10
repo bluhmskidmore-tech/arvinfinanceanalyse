@@ -4,10 +4,13 @@ import { readFile } from "node:fs/promises";
 import { extname, join, normalize, relative } from "node:path";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
+import {
+  collectHomeFullPage, createHomeRuntimeLog, runtimeReceipt,
+  safeRequestUrl, servedFrontendProbes, writeRuntimeReceipt,
+} from "./homeRuntimeAcceptance.mjs";
 
 const FIRST_SCREEN_OBSERVATION_MS = 400;
 const HOME_POST_FIRST_SCREEN_MAX_WAIT_MS = 18_000;
-const REQUEST_POLL_INTERVAL_MS = 250;
 const NON_HOME_SETTLE_MS = 2_000;
 const frontendRoot = process.cwd();
 const distRoot = resolve(frontendRoot, "dist");
@@ -23,18 +26,21 @@ const productionBundleInputs = [
   "src/layouts/WorkbenchShellMarketTicker.tsx",
   "src/layouts/workbenchShellTicker.ts",
   "src/features/workbench/dashboard-home/DashboardHomePage.tsx",
+  "src/features/workbench/dashboard-home/DashboardHomeOptionTwoOverview.tsx",
+  "src/features/workbench/dashboard-home/DashboardHomeOptionTwoLayout.tsx",
+  "src/features/workbench/dashboard-home/dashboardHomeOptionTwoShared.ts",
   "src/features/workbench/dashboard-home/dashboardHomeFirstScreenView.ts",
   "src/features/workbench/dashboard-home/dashboardHomeFirstScreenMockView.ts",
-  "src/features/workbench/dashboard-home/TerminalHomeFirstScreen.tsx",
   "src/features/workbench/dashboard-home/DeferredTerminalHomeContent.tsx",
-  "src/features/workbench/dashboard-home/TerminalHomeContent.tsx",
+  "src/features/workbench/dashboard-home/DeferredTerminalHomeBody.tsx",
   "src/features/workbench/dashboard-home/useDashboardHomeFirstScreenViewModel.ts",
   "src/features/workbench/dashboard-home/useDashboardHomeSupplementalHydration.ts",
   "src/features/workbench/dashboard-home/useMockHomeFirstScreenView.ts",
   "src/features/workbench/dashboard-home/useDashboardHomeViewModel.ts",
   "src/features/workbench/dashboard-home/useDashboardHomeBodyData.ts",
   "src/features/workbench/dashboard-home/dashboardHomeShell.module.css",
-  "src/features/workbench/dashboard-home/dashboardHome.module.css",
+  "src/features/workbench/dashboard-home/dashboardHomeOptionTwo.module.css",
+  "src/features/workbench/dashboard-home/dashboardHomeHoldingDrawer.module.css",
   "src/styles/global.css",
   "src/styles/workbenchInstitutionalConsole.css",
   "src/styles/workbenchDeferredChrome.css",
@@ -59,49 +65,12 @@ function firstRequestAt(requests, needles) {
   return match?.t ?? null;
 }
 
-async function waitForTrackedRequest(page, requestLog, needles, timeoutMs) {
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMs) {
-    if (firstRequestAt(requestLog, needles) != null) {
-      return true;
-    }
-    await page.waitForTimeout(REQUEST_POLL_INTERVAL_MS);
-  }
-  return firstRequestAt(requestLog, needles) != null;
-}
-
-async function waitForTrackedRequests(page, requestLog, needleGroups, timeoutMs) {
-  if (needleGroups.length === 1) {
-    return waitForTrackedRequest(page, requestLog, needleGroups[0], timeoutMs);
-  }
-
-  const startedAt = Date.now();
-  const allRequestsStarted = () =>
-    needleGroups.every((needles) => firstRequestAt(requestLog, needles) != null);
-
-  while (Date.now() - startedAt < timeoutMs) {
-    if (allRequestsStarted()) {
-      return true;
-    }
-    await page.waitForTimeout(REQUEST_POLL_INTERVAL_MS);
-  }
-  return allRequestsStarted();
-}
-
 function normalizeRequest(entry) {
   return {
     t: entry.t,
     type: entry.type,
-    url: entry.url.replace(/^https?:\/\/[^/]+/, ""),
+    url: safeRequestUrl(entry.url),
   };
-}
-
-function trackUrl(requestUrl) {
-  return (
-    requestUrl.includes("/ui/") ||
-    requestUrl.includes("/api/") ||
-    requestUrl.includes("/assets/")
-  );
 }
 
 function assertFreshProductionBundle() {
@@ -245,58 +214,6 @@ async function createProductionStaticServer() {
   };
 }
 
-function createRuntimeLog(page) {
-  const startedAt = Date.now();
-  const requestLog = [];
-  const responseLog = [];
-  const browserMessages = [];
-
-  page.on("request", (request) => {
-    const requestUrl = request.url();
-    if (!trackUrl(requestUrl)) {
-      return;
-    }
-    requestLog.push({
-      t: Date.now() - startedAt,
-      method: request.method(),
-      type: request.resourceType(),
-      url: requestUrl,
-    });
-  });
-
-  page.on("response", (response) => {
-    const responseUrl = response.url();
-    if (!trackUrl(responseUrl)) {
-      return;
-    }
-    responseLog.push({
-      t: Date.now() - startedAt,
-      status: response.status(),
-      url: responseUrl,
-    });
-  });
-
-  page.on("console", (message) => {
-    if (message.type() === "error" || message.type() === "warning") {
-      browserMessages.push({
-        t: Date.now() - startedAt,
-        type: message.type(),
-        text: message.text(),
-      });
-    }
-  });
-
-  page.on("pageerror", (error) => {
-    browserMessages.push({
-      t: Date.now() - startedAt,
-      type: "pageerror",
-      text: error.message,
-    });
-  });
-
-  return { requestLog, responseLog, browserMessages };
-}
-
 async function createIsolatedPage(browser) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   // Any routing disables the HTTP cache in Playwright, keeping route samples independent.
@@ -312,7 +229,7 @@ function failOnUnexpectedResponses(scope, responseLog) {
     addFailure(
       `${scope} saw ${failedResponses.length} failed responses: ${failedResponses
         .slice(0, 5)
-        .map((entry) => `${entry.status} ${entry.url.replace(/^https?:\/\/[^/]+/, "")}`)
+        .map((entry) => `${entry.status} ${safeRequestUrl(entry.url)}`)
         .join(", ")}`,
     );
   }
@@ -320,7 +237,8 @@ function failOnUnexpectedResponses(scope, responseLog) {
 }
 
 async function sampleHome(page, baseUrl) {
-  const { requestLog, responseLog, browserMessages } = createRuntimeLog(page);
+  const log = createHomeRuntimeLog(page);
+  const { requestLog, responseLog, browserMessages } = log;
 
   await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
   await page.waitForSelector('[data-testid="dashboard-home-page"]', { timeout: 30_000 });
@@ -328,19 +246,10 @@ async function sampleHome(page, baseUrl) {
   await page.waitForTimeout(FIRST_SCREEN_OBSERVATION_MS);
 
   const initialUrls = requestLog.map((entry) => entry.url);
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-  await waitForTrackedRequests(
-    page,
-    requestLog,
-    [
-      ["/ui/market-data/rates"],
-      ["/ui/calendar/supply-auctions"],
-      ["/ui/news/choice-events/latest"],
-      ["/ui/home/income-trend"],
-      ["/ui/bond-dashboard/home-summary", "/api/bond-dashboard/home-summary"],
-    ],
-    HOME_POST_FIRST_SCREEN_MAX_WAIT_MS,
-  );
+  const fullPage = await collectHomeFullPage(page, log, { timeoutMs: HOME_POST_FIRST_SCREEN_MAX_WAIT_MS });
+  failures.push(...fullPage.failures);
+  try { frontendProbes = await servedFrontendProbes(page, log, baseUrl); }
+  catch { addFailure("home served frontend document and entry hashes could not be bound"); }
 
   const allUrls = requestLog.map((entry) => entry.url);
   const formalNeedles = [
@@ -385,6 +294,7 @@ async function sampleHome(page, baseUrl) {
     "/assets/WorkbenchShellMarketTicker-",
     "/assets/workbenchShellTicker-",
   ];
+  const antdVendorNeedles = ["/assets/antd-vendor-"];
 
   const ready = {
     page: await page.locator('[data-testid="dashboard-home-page"]').count(),
@@ -406,6 +316,7 @@ async function sampleHome(page, baseUrl) {
     marketTickerMockChunk: countAny(initialUrls, marketTickerMockNeedles),
     firstScreenMockChunk: countAny(initialUrls, firstScreenMockNeedles),
     workbenchShellMarketTickerChunk: countAny(initialUrls, workbenchShellMarketTickerNeedles),
+    antdVendorChunk: countAny(initialUrls, antdVendorNeedles),
     echarts: countAny(initialUrls, echartsNeedles),
     fullDashboardHomeStylesheet: countAny(initialUrls, fullDashboardHomeStyleNeedles),
     firstScreenHomeStylesheet: countAny(initialUrls, firstScreenHomeStyleNeedles),
@@ -425,6 +336,7 @@ async function sampleHome(page, baseUrl) {
     marketTickerMockChunk: countAny(allUrls, marketTickerMockNeedles),
     firstScreenMockChunk: countAny(allUrls, firstScreenMockNeedles),
     workbenchShellMarketTickerChunk: countAny(allUrls, workbenchShellMarketTickerNeedles),
+    antdVendorChunk: countAny(allUrls, antdVendorNeedles),
     fullDashboardHomeStylesheet: countAny(allUrls, fullDashboardHomeStyleNeedles),
     failedResponses: failOnUnexpectedResponses("home", responseLog),
   };
@@ -471,6 +383,11 @@ async function sampleHome(page, baseUrl) {
   }
   if (initialCounts.echarts !== 0) {
     addFailure(`ECharts should stay out of the first-screen window, got ${initialCounts.echarts}`);
+  }
+  if (initialCounts.antdVendorChunk !== 0) {
+    addFailure(
+      `Ant Design should stay out of the first-screen window, got ${initialCounts.antdVendorChunk}`,
+    );
   }
   if (initialCounts.fullDashboardHomeStylesheet !== 0) {
     addFailure(
@@ -522,6 +439,11 @@ async function sampleHome(page, baseUrl) {
       `home should not load the first-screen mock view chunk, got ${allCounts.firstScreenMockChunk}`,
     );
   }
+  if (allCounts.antdVendorChunk !== 0) {
+    addFailure(
+      `home should not load the Ant Design vendor chunk, got ${allCounts.antdVendorChunk}`,
+    );
+  }
 
   return {
     route: "/",
@@ -534,14 +456,15 @@ async function sampleHome(page, baseUrl) {
       .filter((entry) => entry.url.includes("/ui/") || entry.url.includes("/api/"))
       .map((entry) => ({
         t: entry.t,
-        url: entry.url.replace(/^https?:\/\/[^/]+/, ""),
+        url: safeRequestUrl(entry.url),
       })),
     browserMessages,
+    fullPage,
   };
 }
 
 async function sampleNonHomeShell(page, baseUrl) {
-  const { requestLog, responseLog, browserMessages } = createRuntimeLog(page);
+  const { requestLog, responseLog, browserMessages } = createHomeRuntimeLog(page);
   const url = new URL("/cross-asset", baseUrl).toString();
 
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
@@ -563,6 +486,7 @@ async function sampleNonHomeShell(page, baseUrl) {
   const initialCounts = {
     institutionalStylesheet: countAny(initialUrls, ["/assets/workbenchInstitutionalConsole-"]),
     workbenchChromeStylesheet: countAny(initialUrls, ["/assets/workbenchDeferredChrome-"]),
+    antdVendorChunk: countAny(initialUrls, ["/assets/antd-vendor-"]),
   };
   const failedResponses = failOnUnexpectedResponses("cross-asset", responseLog);
   const allCounts = {
@@ -572,6 +496,7 @@ async function sampleNonHomeShell(page, baseUrl) {
       "/assets/WorkbenchShellMarketTicker-",
       "/assets/workbenchShellTicker-",
     ]),
+    antdVendorChunk: countAny(allUrls, ["/assets/antd-vendor-"]),
     failedResponses,
   };
 
@@ -586,6 +511,11 @@ async function sampleNonHomeShell(page, baseUrl) {
   if (initialCounts.workbenchChromeStylesheet < 1) {
     addFailure(
       `cross-asset workbench chrome stylesheet did not load in the first-screen window, got ${initialCounts.workbenchChromeStylesheet}.`,
+    );
+  }
+  if (initialCounts.antdVendorChunk < 1) {
+    addFailure(
+      `cross-asset Ant Design vendor chunk should load in the first-screen window, got ${initialCounts.antdVendorChunk}.`,
     );
   }
   if (allCounts.workbenchShellMarketTickerChunk < 1) {
@@ -644,41 +574,35 @@ async function sampleNonHomeShell(page, baseUrl) {
   };
 }
 
-const server = await createProductionStaticServer();
-const baseUrl = server.baseUrl;
-const browser = await chromium.launch({ headless: true });
-
+const startedAt = new Date().toISOString();
+let server = null;
+let browser = null;
+let baseUrl = "http://127.0.0.1/";
+let homeSummary = null;
+let nonHomeSummary = null;
+let frontendProbes = [];
 try {
+  server = await createProductionStaticServer();
+  baseUrl = server.baseUrl;
+  browser = await chromium.launch({ headless: true });
   assertFreshProductionBundle();
 
   const { context: homeContext, page: homePage } = await createIsolatedPage(browser);
-  const homeSummary = await sampleHome(homePage, baseUrl);
+  homeSummary = await sampleHome(homePage, baseUrl);
   await homeContext.close();
 
   const { context: nonHomeContext, page: nonHomePage } = await createIsolatedPage(browser);
-  const nonHomeSummary = await sampleNonHomeShell(nonHomePage, baseUrl);
+  nonHomeSummary = await sampleNonHomeShell(nonHomePage, baseUrl);
   await nonHomeContext.close();
 
-  const summary = {
-    baseUrl,
-    mode: "production-preview",
-    thresholds: {
-      firstScreenObservationMs: FIRST_SCREEN_OBSERVATION_MS,
-      homePostFirstScreenMaxWaitMs: HOME_POST_FIRST_SCREEN_MAX_WAIT_MS,
-    },
-    samples: [homeSummary, nonHomeSummary],
-    failures,
-  };
-
-  if (failures.length > 0) {
-    console.error("[home-startup-runtime] Runtime guard failed.");
-    console.error(JSON.stringify(summary, null, 2));
-    process.exitCode = 1;
-  } else {
-    console.log("[home-startup-runtime] Runtime guard passed.");
-    console.log(JSON.stringify(summary, null, 2));
-  }
+} catch (error) {
+  addFailure(`home production runtime sampling could not complete: ${error instanceof Error ? error.name : "Error"}`);
 } finally {
-  await browser.close();
-  await server.close();
+  await browser?.close();
+  await server?.close();
 }
+const summary = runtimeReceipt({ baseUrl, startedAt, mode: "production-preview", home: homeSummary,
+  samples: [homeSummary, nonHomeSummary], failures, frontendProbes,
+  thresholds: { firstScreenObservationMs: FIRST_SCREEN_OBSERVATION_MS, homePostFirstScreenMaxWaitMs: HOME_POST_FIRST_SCREEN_MAX_WAIT_MS } });
+await writeRuntimeReceipt(summary);
+if (failures.length) process.exitCode = 1;

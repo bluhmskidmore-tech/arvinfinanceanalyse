@@ -1,0 +1,213 @@
+from __future__ import annotations
+
+import sys
+from types import SimpleNamespace
+
+import pytest
+
+from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
+from backend.app.schemas.formal_compute_runtime import (
+    FormalComputeMaterializeFailure,
+    FormalComputeMaterializeResult,
+)
+
+
+def _live_bond_analytics_task_module():
+    """Return the bond_analytics_materialize module whose function the actor runs.
+
+    ``register_actor_once`` rebinds the shared actor's ``fn`` to the most recently
+    executed module instance, and ``tests.helpers.load_module`` replaces the
+    ``sys.modules`` entry without refreshing the parent package attribute. Patching
+    a module obtained via ``from backend.app.tasks import ...`` can therefore miss
+    the instance that ``materialize_bond_analytics_facts.fn`` actually executes in.
+    """
+    import backend.app.tasks.bond_analytics_materialize  # noqa: F401
+
+    return sys.modules["backend.app.tasks.bond_analytics_materialize"]
+
+
+def test_bond_refresh_service_only_dispatches_and_does_not_prepare_curves(tmp_path, monkeypatch) -> None:
+    from backend.app.services import bond_analytics_service as service
+
+    sent: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        service,
+        "materialize_bond_analytics_facts",
+        SimpleNamespace(send=lambda **kwargs: sent.append(dict(kwargs))),
+    )
+    settings = SimpleNamespace(
+        duckdb_path=tmp_path / "moss.duckdb",
+        governance_path=tmp_path / "governance",
+    )
+
+    payload = service.refresh_bond_analytics(settings, report_date="2026-03-31")
+
+    assert payload["status"] == "queued"
+    assert len(sent) == 1
+    assert sent[0]["run_id"] == payload["run_id"]
+
+
+def test_bond_worker_anchor_dates_include_report_month_start_and_prior_balance_date(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from backend.app.tasks import bond_analytics_materialize as task
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    monkeypatch.setattr(
+        task.BondAnalyticsRepository,
+        "resolve_prior_curve_anchor_report_date",
+        lambda self, *, report_date: "2026-03-01" if report_date == "2026-03-31" else None,
+    )
+
+    anchors = task._yield_curve_anchor_dates_for_materialization(
+        duckdb_path=str(duckdb_path),
+        report_date="2026-03-31",
+    )
+
+    assert anchors == ("2026-03-01", "2026-03-31")
+
+
+def test_bond_worker_existing_curves_only_skips_prepare_while_default_prepares(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    task = _live_bond_analytics_task_module()
+
+    events: list[str] = []
+    monkeypatch.setattr(
+        task,
+        "_yield_curve_anchor_dates_for_materialization",
+        lambda **_kwargs: events.append("anchors") or ("2026-03-01", "2026-03-31"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        task,
+        "ensure_yield_curve_inputs_on_or_before",
+        lambda **_kwargs: events.append("prepare"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        task,
+        "_execute_bond_analytics_materialization",
+        lambda **_kwargs: events.append("main")
+        or FormalComputeMaterializeResult(
+            source_version="sv_bond",
+            vendor_version="vv_none",
+            payload={"row_count": 1},
+        ),
+    )
+    monkeypatch.setattr(
+        task,
+        "_invalidate_bond_analytics_worker_caches",
+        lambda _report_date: events.append("invalidate"),
+        raising=False,
+    )
+
+    existing_only_payload = task.materialize_bond_analytics_facts.fn(
+        report_date="2026-03-31",
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_dir=str(tmp_path / "governance"),
+        use_existing_curves_only=True,
+    )
+
+    assert existing_only_payload["status"] == "completed"
+    assert events == ["main", "invalidate"]
+
+    events.clear()
+    default_payload = task.materialize_bond_analytics_facts.fn(
+        report_date="2026-03-31",
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_dir=str(tmp_path / "governance"),
+    )
+
+    assert default_payload["status"] == "completed"
+    assert events == ["anchors", "prepare", "main", "invalidate"]
+
+
+def test_bond_worker_curve_prepare_failure_blocks_main_materialization_and_is_traced(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    task = _live_bond_analytics_task_module()
+
+    main_calls: list[str] = []
+    monkeypatch.setattr(
+        task,
+        "_yield_curve_anchor_dates_for_materialization",
+        lambda **_kwargs: ("2026-03-01", "2026-03-31"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        task,
+        "ensure_yield_curve_inputs_on_or_before",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("curve vendor unavailable")),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        task,
+        "_execute_bond_analytics_materialization",
+        lambda **_kwargs: main_calls.append("main")
+        or (_ for _ in ()).throw(AssertionError("main materialization must not run")),
+    )
+
+    with pytest.raises(FormalComputeMaterializeFailure, match="yield_curve_prepare_failed"):
+        task.materialize_bond_analytics_facts.fn(
+            report_date="2026-03-31",
+            duckdb_path=str(tmp_path / "moss.duckdb"),
+            governance_dir=str(tmp_path / "governance"),
+            run_id="bond-worker-curve-failure",
+        )
+
+    records = GovernanceRepository(base_dir=tmp_path / "governance").read_all(CACHE_BUILD_RUN_STREAM)
+    assert main_calls == []
+    assert records[-1]["run_id"] == "bond-worker-curve-failure"
+    assert records[-1]["status"] == "failed"
+    assert "yield_curve_prepare_failed" in records[-1]["error_message"]
+
+
+def test_bond_worker_prepares_curves_before_main_and_invalidates_cache_after_success(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    task = _live_bond_analytics_task_module()
+
+    events: list[str] = []
+    monkeypatch.setattr(
+        task,
+        "_yield_curve_anchor_dates_for_materialization",
+        lambda **_kwargs: ("2026-03-01", "2026-03-31"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        task,
+        "ensure_yield_curve_inputs_on_or_before",
+        lambda **_kwargs: events.append("prepare"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        task,
+        "_execute_bond_analytics_materialization",
+        lambda **_kwargs: events.append("main")
+        or FormalComputeMaterializeResult(
+            source_version="sv_bond",
+            vendor_version="vv_none",
+            payload={"row_count": 1},
+        ),
+    )
+    monkeypatch.setattr(
+        task,
+        "_invalidate_bond_analytics_worker_caches",
+        lambda _report_date: events.append("invalidate"),
+        raising=False,
+    )
+
+    payload = task.materialize_bond_analytics_facts.fn(
+        report_date="2026-03-31",
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_dir=str(tmp_path / "governance"),
+        run_id="bond-worker-success",
+    )
+
+    assert payload["status"] == "completed"
+    assert events == ["prepare", "main", "invalidate"]

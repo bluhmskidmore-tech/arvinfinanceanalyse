@@ -1,4 +1,5 @@
 import type { BondDashboardHeadlinePayload, Numeric } from "../../../api/contracts";
+import { numericRaw } from "../../../pageModel";
 import { BOND_ALIGNMENT_THRESHOLDS, type BondAlignmentMetricKind } from "./alignmentThresholds";
 
 export type BondHomeKpiKey =
@@ -19,11 +20,9 @@ function isFiniteNumber(value: number | null | undefined): value is number {
   return value !== null && value !== undefined && Number.isFinite(value);
 }
 
+/** 与共享 `numericRaw` 同构，保留导出名供本模块消费方使用。 */
 export function toRawNumber(value: Numeric | null | undefined): number | null {
-  if (!value || value.raw === null || !Number.isFinite(value.raw)) {
-    return null;
-  }
-  return value.raw;
+  return numericRaw(value);
 }
 
 export function toBp(value: Numeric | null | undefined): number | null {

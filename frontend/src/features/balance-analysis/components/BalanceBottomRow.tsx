@@ -1,5 +1,8 @@
-import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import { ChartCard } from "../../../components/charts/ChartCard";
+import { CHART_CARD_HEIGHTS } from "../../../components/charts/chartCardScale";
 import { CalendarList } from "../../../components/CalendarList";
+import { type EChartsOption } from "../../../lib/echarts";
+import { designTokens, nocturneTokens } from "../../../theme/designSystem";
 import { useBalanceAnalysisThreeColumnGridStyle } from "./balanceAnalysisLayout";
 import { BalanceStageTerminalPanel } from "./BalanceStageTerminalPanel";
 import rowStyles from "./balanceAnalysisStageRow.module.css";
@@ -10,44 +13,52 @@ type BalanceBottomRowProps = {
   variant?: "default" | "terminal";
 };
 
-function buildMaturityOption(model: BalanceStageBottomModel, includeTitle: boolean): EChartsOption {
-  const categories = model.maturityCategories.length ? model.maturityCategories : ["无真实数据"];
-  const assetSeries = model.maturityCategories.length ? model.assetSeries : [0];
-  const liabilitySeries = model.maturityCategories.length ? model.liabilitySeries : [0];
-  const gapSeries = model.maturityCategories.length ? model.gapSeries : [0];
+function buildMaturityOption(model: BalanceStageBottomModel): EChartsOption {
+  const nct = nocturneTokens.color;
+  const hasCategories = model.maturityCategories.length > 0;
+  const categories = hasCategories ? model.maturityCategories : ["无真实数据"];
+  // Missing buckets stay null so ECharts leaves a gap instead of drawing a zero bar.
+  const assetSeries = hasCategories ? model.assetSeries : [null];
+  const liabilitySeries = hasCategories ? model.liabilitySeries : [null];
+  const gapSeries = hasCategories ? model.gapSeries : [null];
   return {
-    title: includeTitle
-      ? {
-          text: "期限结构（资产/负债/净缺口）",
-          left: 0,
-          top: 0,
-          textStyle: { fontSize: 14, fontWeight: 700, color: "#162033" },
-        }
-      : undefined,
-    legend: { top: includeTitle ? 28 : 8, textStyle: { fontSize: 10 } },
-    grid: { left: 48, right: 16, top: includeTitle ? 56 : 36, bottom: 28 },
+    grid: { left: 48, right: 16, top: 36 },
     tooltip: { trigger: "axis" },
-    xAxis: { type: "category", data: categories, axisLabel: { rotate: 28, fontSize: 10 } },
-    yAxis: { type: "value", name: "亿", nameTextStyle: { fontSize: 10 } },
+    xAxis: {
+      type: "category",
+      data: categories,
+      axisLabel: { rotate: 28, fontSize: designTokens.fontSize[11], color: nct.inkMuted },
+      axisLine: { lineStyle: { color: nct.line } },
+    },
+    yAxis: {
+      type: "value",
+      name: "亿",
+      nameTextStyle: { fontSize: designTokens.fontSize[11], color: nct.inkMuted },
+      axisLabel: { color: nct.inkMuted, fontSize: designTokens.fontSize[11] },
+      splitLine: { lineStyle: { color: nct.lineSoft } },
+    },
     series: [
       {
         name: "资产",
         type: "bar",
         data: assetSeries,
-        itemStyle: { color: "#35679b" },
+        itemStyle: { color: nct.blue },
       },
       {
         name: "负债",
         type: "bar",
         data: liabilitySeries,
-        itemStyle: { color: "#c76b66" },
+        itemStyle: { color: nct.red },
       },
       {
         name: "净缺口",
         type: "bar",
+        /* 2026-07-19 决议：ALM 正缺口≠经营利好，禁止映射 up 绿；正缺口走中性
+           次级墨（系列级色 = 图例色，二者同源），负缺口以 down 红仅标方向。 */
+        itemStyle: { color: nct.inkSoft },
         data: gapSeries.map((value) => ({
           value,
-          itemStyle: { color: value < 0 ? "#b76e00" : "#3f8a6a" },
+          itemStyle: value !== null && value < 0 ? { color: nct.red } : undefined,
         })),
       },
     ],
@@ -57,13 +68,17 @@ function buildMaturityOption(model: BalanceStageBottomModel, includeTitle: boole
 export function BalanceBottomRow({ model, variant = "default" }: BalanceBottomRowProps) {
   const gridStyle = useBalanceAnalysisThreeColumnGridStyle();
   const isTerminal = variant === "terminal";
-  const maturityOption = buildMaturityOption(model, !isTerminal);
+  const maturityOption = buildMaturityOption(model);
 
   const maturityPanel = (
-    <ReactECharts
-      option={maturityOption}
-      style={{ height: isTerminal ? 260 : 300 }}
-      opts={{ renderer: "canvas" }}
+    <ChartCard
+      flat
+      title={isTerminal ? undefined : "期限结构"}
+      ariaLabel="期限结构"
+      question="资产、负债与净缺口"
+      unit="亿元"
+      height={CHART_CARD_HEIGHTS.hero}
+      option={model.maturityCategories.length ? maturityOption : null}
     />
   );
 
@@ -104,8 +119,10 @@ export function BalanceBottomRow({ model, variant = "default" }: BalanceBottomRo
         </div>
       )}
       {isTerminal ? (
-        <BalanceStageTerminalPanel title="关键日历（负债到期关注）">
-          <CalendarList items={model.calendarItems} />
+        <BalanceStageTerminalPanel title="关键日历（负债到期关注）" wide>
+          <div className={rowStyles.calendarGrid}>
+            <CalendarList items={model.calendarItems} />
+          </div>
         </BalanceStageTerminalPanel>
       ) : (
         <div className={rowStyles.panelDefault}>

@@ -8,9 +8,14 @@ import sys
 from pathlib import Path
 
 import duckdb
+import pytest
 
+import scripts.portfolio_home_maturity_remediation_export as maturity_export
 from scripts.portfolio_home_maturity_remediation_export import build_export_packet
-from scripts.portfolio_home_maturity_remediation_queue import build_queue
+from scripts.portfolio_home_maturity_remediation_queue import (
+    MATURITY_REMEDIATION_ACTIONS,
+    build_queue,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -274,6 +279,54 @@ def _insert_clean_data(path: Path) -> None:
         connection.close()
 
 
+def _insert_june_no_maturity_counts(path: Path) -> None:
+    connection = duckdb.connect(str(path), read_only=False)
+    try:
+        connection.execute(
+            """
+            insert into fact_formal_bond_analytics_daily
+            select
+              '2026-06-30',
+              'BOND-NO-MATURITY-' || cast(row_number as varchar),
+              'Bond Without Maturity',
+              'book',
+              'cc',
+              case when row_number = 0 then 44190587082.30000032 else 0 end,
+              null,
+              0,
+              null,
+              'sv_bond',
+              'rv_bond',
+              'batch-bond',
+              'trace-bond-' || cast(row_number as varchar)
+            from range(127) as rows(row_number)
+            """
+        )
+        connection.execute(
+            """
+            insert into fact_formal_tyw_balance_daily
+            select
+              '2026-06-30',
+              'TYW-MISSING-' || cast(row_number as varchar),
+              'deposit',
+              'short',
+              'Counterparty',
+              'liability',
+              'CNY',
+              case when row_number = 0 then 47032453217.05000088 else 0 end,
+              0,
+              null,
+              'sv_tyw',
+              'rv_tyw',
+              'batch-tyw',
+              'trace-tyw-' || cast(row_number as varchar)
+            from range(1476) as rows(row_number)
+            """
+        )
+    finally:
+        connection.close()
+
+
 def _run_queue(*args: str) -> tuple[int, dict[str, object]]:
     completed = subprocess.run(
         [sys.executable, str(SCRIPT), *args],
@@ -331,56 +384,45 @@ def test_portfolio_home_maturity_remediation_queue_reports_blocked_rows_and_samp
     queue = build_queue(duckdb_path=duckdb_path, report_date=REPORT_DATE, limit=1)
 
     assert queue["remediation_status"] == "blocked"
-    assert queue["remediation_blockers"] == [
-        "bond_maturity_queue_not_empty",
-        "tyw_liability_maturity_queue_not_empty",
-    ]
+    assert queue["remediation_blockers"] == ["tyw_liability_maturity_queue_not_empty"]
     assert queue["remediation_scope"] == {
-        "bond_queue": "fact_formal_bond_analytics_daily rows where maturity_date is null",
+        "bond_no_maturity_information": (
+            "fact_formal_bond_analytics_daily rows where maturity_date is null; "
+            "ledger null means formally no maturity date"
+        ),
+        "bond_queue": (
+            "compatibility-only empty queue; bond ledger null maturity requires no remediation"
+        ),
         "tyw_liability_queue": "fact_formal_tyw_balance_daily liability CNY rows where maturity_date is null",
     }
     assert queue["remediation_actions"] == [
         {
-            "blocker": "bond_maturity_queue_not_empty",
-            "owner": "data_owner",
-            "next_action": "Fill missing bond maturity_date values at source or capture a signed scoped exclusion.",
-            "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
-            "exit_criteria": "Bond missing-maturity queue is empty or signed exclusion evidence is captured and surfaced as a boundary.",
-        },
-        {
             "blocker": "tyw_liability_maturity_queue_not_empty",
             "owner": "data_owner",
             "next_action": "Fill missing TYW liability maturity_date values at source or capture a signed scoped exclusion.",
-            "evidence_command": "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty",
+            "evidence_command": (
+                "python scripts/portfolio_home_maturity_remediation_queue.py "
+                "--report-date 2026-05-31 --require-empty"
+            ),
             "exit_criteria": "TYW liability missing-maturity queue is empty or signed exclusion evidence is captured and surfaced as a boundary.",
         },
     ]
+    assert queue["bond_no_maturity_summary"] == {
+        "row_count": 3,
+        "no_maturity_rows": 2,
+        "no_maturity_market_value": "300.00000000",
+    }
     assert queue["bond_missing_maturity_summary"] == {
         "row_count": 3,
-        "missing_maturity_rows": 2,
-        "missing_maturity_market_value": "300.00000000",
+        "missing_maturity_rows": 0,
+        "missing_maturity_market_value": "0",
     }
     assert queue["tyw_liability_missing_maturity_summary"] == {
         "row_count": 3,
         "missing_maturity_rows": 2,
         "missing_maturity_principal": "40.00000000",
     }
-    assert queue["bond_missing_maturity_rows"] == [
-        {
-            "report_date": REPORT_DATE,
-            "instrument_code": "BOND-LARGE",
-            "instrument_name": "Large Missing Bond",
-            "portfolio_name": "book-b",
-            "cost_center": "cc-b",
-            "market_value": "200.00000000",
-            "dv01": "2.50000000",
-            "tenor_bucket": "20Y",
-            "source_version": "sv_bond",
-            "rule_version": "rv_bond",
-            "ingest_batch_id": "batch-2",
-            "trace_id": "trace-large",
-        }
-    ]
+    assert queue["bond_missing_maturity_rows"] == []
     assert queue["tyw_liability_missing_maturity_rows"] == [
         {
             "report_date": REPORT_DATE,
@@ -398,6 +440,51 @@ def test_portfolio_home_maturity_remediation_queue_reports_blocked_rows_and_samp
             "trace_id": "trace-pos-large",
         }
     ]
+
+
+def test_portfolio_home_maturity_queue_classifies_june_bond_nulls_as_no_maturity(
+    tmp_path: Path,
+) -> None:
+    duckdb_path = tmp_path / "june-no-maturity.duckdb"
+    _create_schema(duckdb_path)
+    _insert_june_no_maturity_counts(duckdb_path)
+
+    queue = build_queue(duckdb_path=duckdb_path, report_date="2026-06-30", limit=1)
+
+    assert queue["bond_no_maturity_summary"] == {
+        "row_count": 127,
+        "no_maturity_rows": 127,
+        "no_maturity_market_value": "44190587082.30000032",
+    }
+    assert queue["bond_missing_maturity_summary"] == {
+        "row_count": 127,
+        "missing_maturity_rows": 0,
+        "missing_maturity_market_value": "0",
+    }
+    assert queue["bond_missing_maturity_rows"] == []
+    assert queue["tyw_liability_missing_maturity_summary"]["missing_maturity_rows"] == 1476
+    assert queue["tyw_liability_missing_maturity_summary"]["missing_maturity_principal"] == (
+        "47032453217.05000088"
+    )
+    assert queue["remediation_blockers"] == ["tyw_liability_maturity_queue_not_empty"]
+
+
+def test_portfolio_home_maturity_actions_scope_evidence_to_requested_report_date_without_mutating_spec(
+    tmp_path: Path,
+) -> None:
+    duckdb_path = tmp_path / "june-blocked.duckdb"
+    _create_schema(duckdb_path)
+    _insert_june_no_maturity_counts(duckdb_path)
+
+    queue = build_queue(duckdb_path=duckdb_path, report_date="2026-06-30", limit=1)
+
+    assert queue["remediation_actions"][0]["evidence_command"] == (
+        "python scripts/portfolio_home_maturity_remediation_queue.py "
+        "--report-date 2026-06-30 --require-empty"
+    )
+    assert MATURITY_REMEDIATION_ACTIONS["tyw_liability_maturity_queue_not_empty"][
+        "evidence_command"
+    ] == "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty"
 
 
 def test_portfolio_home_maturity_candidate_evidence_does_not_clear_strict_gate(
@@ -435,10 +522,7 @@ def test_portfolio_home_maturity_candidate_evidence_does_not_clear_strict_gate(
     queue = build_queue(duckdb_path=duckdb_path, report_date=REPORT_DATE, limit=5)
 
     assert queue["remediation_status"] == "blocked"
-    assert queue["remediation_blockers"] == [
-        "bond_maturity_queue_not_empty",
-        "tyw_liability_maturity_queue_not_empty",
-    ]
+    assert queue["remediation_blockers"] == ["tyw_liability_maturity_queue_not_empty"]
     candidate_evidence = queue["maturity_candidate_evidence"]
     assert candidate_evidence["status"] == "candidate_found"
     assert candidate_evidence["strict_gate_effect"] == "none"
@@ -450,33 +534,15 @@ def test_portfolio_home_maturity_candidate_evidence_does_not_clear_strict_gate(
         "changes_remediation_status": False,
         "certification_effect": "none",
     }
+    assert candidate_evidence["next_action"] == (
+        "Use TYW candidate rows only for data-owner review; strict closure still requires "
+        "TYW source remediation or signed scoped exclusion evidence."
+    )
     sources = {
         str(source["source_table"]): source
         for source in candidate_evidence["candidate_sources"]
     }
-    assert sources["zqtz_bond_daily_snapshot"]["status"] == "candidate_found"
-    assert sources["zqtz_bond_daily_snapshot"]["summary"] == {
-        "missing_rows": 2,
-        "matched_missing_rows": 1,
-        "candidate_rows": 1,
-        "ambiguous_key_count": 0,
-        "candidate_market_value": "200.00000000",
-    }
-    assert sources["zqtz_bond_daily_snapshot"]["sample_candidates"] == [
-        {
-            "instrument_code": "BOND-LARGE",
-            "instrument_name": "Large Missing Bond",
-            "portfolio_name": "book-b",
-            "cost_center": "cc-b",
-            "market_value": "200.00000000",
-            "trace_id": "trace-large",
-            "candidate_maturity_date": "2035-05-31",
-            "candidate_source_version": "sv_candidate_bond",
-            "candidate_rule_version": "rv_candidate_bond",
-            "candidate_ingest_batch_id": "batch-candidate-bond",
-            "candidate_trace_id": "trace-candidate-bond",
-        }
-    ]
+    assert set(sources) == {"tyw_interbank_daily_snapshot"}
     assert sources["tyw_interbank_daily_snapshot"]["status"] == "candidate_found"
     assert sources["tyw_interbank_daily_snapshot"]["summary"] == {
         "missing_rows": 2,
@@ -504,8 +570,6 @@ def test_portfolio_home_maturity_candidate_evidence_reports_no_candidates(
         str(source["source_table"]): source["status"]
         for source in candidate_evidence["candidate_sources"]
     } == {
-        "zqtz_bond_daily_snapshot": "no_candidates",
-        "position_snapshot": "no_candidates",
         "tyw_interbank_daily_snapshot": "no_candidates",
     }
     assert all(
@@ -514,7 +578,7 @@ def test_portfolio_home_maturity_candidate_evidence_reports_no_candidates(
     )
 
 
-def test_portfolio_home_maturity_candidate_evidence_blocks_conflicting_candidates(
+def test_portfolio_home_maturity_candidate_evidence_blocks_conflicting_tyw_candidates(
     tmp_path: Path,
 ) -> None:
     duckdb_path = tmp_path / "conflicting-candidate.duckdb"
@@ -525,14 +589,14 @@ def test_portfolio_home_maturity_candidate_evidence_blocks_conflicting_candidate
     try:
         connection.executemany(
             """
-            insert into zqtz_bond_daily_snapshot values (
-              ?, 'BOND-LARGE', 'book-b', 'cc-b', ?, 'sv_candidate_bond',
-              'rv_candidate_bond', 'batch-candidate-bond', ?
+            insert into tyw_interbank_daily_snapshot values (
+              ?, 'POS-LARGE', 'deposit', 'short', 'Counterparty B', ?,
+              'sv_candidate_tyw', 'rv_candidate_tyw', 'batch-candidate-tyw', ?
             )
             """,
             [
-                [REPORT_DATE, "2035-05-31", "trace-candidate-bond-a"],
-                [REPORT_DATE, "2036-05-31", "trace-candidate-bond-b"],
+                [REPORT_DATE, "2026-08-31", "trace-candidate-tyw-a"],
+                [REPORT_DATE, "2026-09-30", "trace-candidate-tyw-b"],
             ],
         )
     finally:
@@ -547,13 +611,14 @@ def test_portfolio_home_maturity_candidate_evidence_blocks_conflicting_candidate
         str(source["source_table"]): source
         for source in candidate_evidence["candidate_sources"]
     }
-    assert sources["zqtz_bond_daily_snapshot"]["status"] == "conflicting_candidates"
-    assert sources["zqtz_bond_daily_snapshot"]["summary"] == {
+    assert set(sources) == {"tyw_interbank_daily_snapshot"}
+    assert sources["tyw_interbank_daily_snapshot"]["status"] == "conflicting_candidates"
+    assert sources["tyw_interbank_daily_snapshot"]["summary"] == {
         "missing_rows": 2,
         "matched_missing_rows": 1,
         "candidate_rows": 2,
         "ambiguous_key_count": 1,
-        "candidate_market_value": "200.00000000",
+        "candidate_principal": "30.00000000",
     }
 
 
@@ -611,7 +676,7 @@ def test_portfolio_home_maturity_remediation_queue_require_empty_blocks_missing_
 
     assert returncode == 1
     assert payload["remediation_status"] == "blocked"
-    assert "bond_maturity_queue_not_empty" in payload["remediation_blockers"]
+    assert payload["remediation_blockers"] == ["tyw_liability_maturity_queue_not_empty"]
 
 
 def test_portfolio_home_maturity_remediation_queue_require_empty_allows_clean(
@@ -653,21 +718,23 @@ def test_portfolio_home_maturity_remediation_export_writes_data_owner_package(
 
     assert packet["packet_kind"] == "portfolio_home_maturity_remediation_export"
     assert packet["export_status"] == "blocked"
-    assert packet["remediation_blockers"] == [
-        "bond_maturity_queue_not_empty",
-        "tyw_liability_maturity_queue_not_empty",
-    ]
+    assert packet["remediation_blockers"] == ["tyw_liability_maturity_queue_not_empty"]
     assert packet["export_summary"] == {
-        "bond_missing_maturity_rows": 2,
+        "bond_no_maturity_rows": 2,
+        "bond_no_maturity_market_value": "300.00000000",
+        "bond_missing_maturity_rows": 0,
+        "bond_missing_maturity_market_value": "0",
         "tyw_liability_missing_maturity_rows": 2,
-        "bond_missing_maturity_market_value": "300.00000000",
         "tyw_liability_missing_maturity_principal": "40.00000000",
     }
     assert packet["acceptance_criteria"]["strict_gate_command"] == (
-        "python scripts/portfolio_home_maturity_remediation_queue.py --require-empty"
+        "python scripts/portfolio_home_maturity_remediation_queue.py "
+        "--report-date 2026-05-31 --require-empty"
     )
     assert packet["acceptance_criteria"]["no_frontend_or_inferred_fill"] is True
     assert packet["acceptance_criteria"]["generated_owner_fields_must_be_blank"] is True
+    assert packet["acceptance_criteria"]["owner_decision_scope"] == "TYW liability missing-maturity rows only"
+    assert packet["acceptance_criteria"]["bond_no_maturity_requires_owner_decision"] is False
 
     export_files = packet["export_files"]
     assert isinstance(export_files, dict)
@@ -676,41 +743,89 @@ def test_portfolio_home_maturity_remediation_export_writes_data_owner_package(
     manifest = json.loads(Path(str(export_files["manifest_json"])).read_text(encoding="utf-8"))
     owner_summary = Path(str(export_files["owner_summary_md"])).read_text(encoding="utf-8")
 
-    assert [row["instrument_code"] for row in bond_rows] == ["BOND-LARGE", "BOND-SMALL"]
+    assert bond_rows == []
     assert [row["position_id"] for row in tyw_rows] == ["POS-LARGE", "POS-SMALL"]
-    assert bond_rows[0]["proposed_maturity_date"] == ""
-    assert bond_rows[0]["owner_decision"] == ""
     assert tyw_rows[0]["proposed_maturity_date"] == ""
     assert tyw_rows[0]["owner_comment"] == ""
     assert manifest["export_summary"] == packet["export_summary"]
     assert manifest["acceptance_criteria"]["requires_source_remediation_or_signed_exclusion"] is True
+    assert manifest["acceptance_criteria"]["owner_decision_scope"] == "TYW liability missing-maturity rows only"
     assert manifest["acceptance_criteria"]["generated_owner_fields_must_be_blank"] is True
     assert "# Portfolio Home Maturity Remediation Summary" in owner_summary
     assert "This summary is not an approval." in owner_summary
     assert "- Export status: `blocked`" in owner_summary
     assert "- Report date: `2026-05-31`" in owner_summary
-    assert "- Required fields: `proposed_maturity_date`, `owner_decision`, `owner_comment`" in owner_summary
+    assert "- Required TYW fields on every row: `owner_decision`, `owner_comment`" in owner_summary
+    assert (
+        "- Conditionally required TYW field: `proposed_maturity_date` only when "
+        "`owner_decision=remediate_source`"
+    ) in owner_summary
     assert "- Allowed decisions: `remediate_source`, `approve_scoped_exclusion`, `reject`" in owner_summary
-    assert "- Strict gate: `python scripts/portfolio_home_maturity_remediation_queue.py --require-empty`" in owner_summary
-    assert "- Bond missing maturity rows: `2`" in owner_summary
-    assert "- Bond missing maturity market value: `300.00000000`" in owner_summary
+    assert (
+        "- Strict gate: `python scripts/portfolio_home_maturity_remediation_queue.py "
+        "--report-date 2026-05-31 --require-empty`"
+    ) in owner_summary
+    assert "- Bond no-maturity rows: `2`" in owner_summary
+    assert "- Bond no-maturity market value: `300.00000000`" in owner_summary
+    assert "- Bond remediation rows (compatibility): `0`" in owner_summary
     assert "- TYW liability missing maturity rows: `2`" in owner_summary
     assert "- TYW liability missing maturity principal: `40.00000000`" in owner_summary
-    assert "- Decision queue: `bond_missing_maturity.csv`, `tyw_liability_missing_maturity.csv`" in owner_summary
+    assert "- Decision queue: `tyw_liability_missing_maturity.csv` only" in owner_summary
+    assert "- Compatibility file: `bond_missing_maturity.csv` is header-only; no bond owner decision is required." in owner_summary
+    assert "- Bond ledger boundary: null `maturity_date` means no maturity date and requires no owner-supplied date." in owner_summary
     assert "- Generated owner fields must be blank: `true`" in owner_summary
     assert "## Owner Instructions" in owner_summary
-    assert "- Fill `owner_decision` on every bond and TYW liability row." in owner_summary
-    assert "- Fill `owner_comment` on every bond and TYW liability row for every decision value." in owner_summary
-    assert "- Use `remediate_source` only when the source maturity date will be fixed and rematerialized." in owner_summary
-    assert "- Use `approve_scoped_exclusion` only with a signed exclusion rationale in `owner_comment`." in owner_summary
-    assert "- Do not use frontend-inferred dates or synthetic maturity dates as remediation evidence." in owner_summary
-    assert "- Do not edit `manifest.json`; rerun the export after owner decisions are captured." in owner_summary
+    assert "- Fill `owner_decision` on every TYW liability row." in owner_summary
+    assert "- Fill `owner_comment` on every TYW liability row for every decision value." in owner_summary
+    assert (
+        "- Fill `proposed_maturity_date` only when `owner_decision` is "
+        "`remediate_source`; leave it blank for `approve_scoped_exclusion` and `reject`."
+    ) in owner_summary
+    assert "- Use `remediate_source` only when the TYW source maturity date will be fixed and rematerialized." in owner_summary
+    assert "- Use `approve_scoped_exclusion` only with a signed TYW exclusion rationale in `owner_comment`." in owner_summary
+    assert "- Do not use frontend-inferred dates or synthetic TYW maturity dates as remediation evidence." in owner_summary
+    assert "- After owner decisions are captured, do not rerun the normal export; use `--check-current` before owner-decision intake." in owner_summary
     assert "## Post-Decision Verification" in owner_summary
-    assert "- `python scripts/portfolio_home_maturity_remediation_queue.py --require-empty`" in owner_summary
-    assert "- `python scripts/portfolio_home_dependency_consistency_check.py --limit 3 --require-consistent`" in owner_summary
-    assert "- `python scripts/portfolio_home_owner_decision_intake_check.py --limit 3 --require-ready`" in owner_summary
-    assert "- `python scripts/portfolio_home_closure_scorecard.py --limit 3 --require-full-score`" in owner_summary
-    assert "A filled CSV is still not approval until source remediation or signed exclusion evidence is captured and the business-owner approval template is completed." in owner_summary
+    assert (
+        "- `python scripts/portfolio_home_maturity_remediation_export.py "
+        "--report-date 2026-05-31 --output-dir docs/portfolio/maturity-remediation --check-current`"
+    ) in owner_summary
+    assert (
+        "- `python scripts/portfolio_home_maturity_remediation_queue.py "
+        "--report-date 2026-05-31 --require-empty`"
+    ) in owner_summary
+    assert (
+        "- `python scripts/portfolio_home_dependency_consistency_check.py "
+        "--report-date 2026-05-31 --limit 3 --require-consistent`"
+    ) in owner_summary
+    assert (
+        "- `python scripts/portfolio_home_owner_decision_intake_check.py "
+        "--report-date 2026-05-31 --limit 3 --require-ready`"
+    ) in owner_summary
+    assert (
+        "- `python scripts/portfolio_home_closure_scorecard.py "
+        "--report-date 2026-05-31 --limit 3 --require-full-score`"
+    ) in owner_summary
+    assert "A filled TYW CSV is still not approval until source remediation or signed exclusion evidence is captured and the business-owner approval template is completed." in owner_summary
+
+
+def test_portfolio_home_maturity_remediation_export_strict_gate_uses_requested_report_date(
+    tmp_path: Path,
+) -> None:
+    duckdb_path = tmp_path / "clean.duckdb"
+    _create_schema(duckdb_path)
+
+    packet = build_export_packet(
+        duckdb_path=duckdb_path,
+        report_date="2026-06-30",
+        output_dir=tmp_path / "maturity-export",
+        write_files=False,
+    )
+
+    assert packet["acceptance_criteria"]["strict_gate_command"] == (
+        "python scripts/portfolio_home_maturity_remediation_queue.py "
+        "--report-date 2026-06-30 --require-empty"
+    )
 
 
 def test_portfolio_home_maturity_remediation_export_check_current_allows_owner_input_without_rewrite(
@@ -729,14 +844,10 @@ def test_portfolio_home_maturity_remediation_export_check_current_allows_owner_i
     assert isinstance(export_files, dict)
     bond_csv = Path(str(export_files["bond_missing_maturity_csv"]))
     tyw_csv = Path(str(export_files["tyw_liability_missing_maturity_csv"]))
-    bond_rows = _read_csv(bond_csv)
     tyw_rows = _read_csv(tyw_csv)
-    bond_rows[0]["proposed_maturity_date"] = "2030-05-31"
-    bond_rows[0]["owner_decision"] = "remediate_source"
-    bond_rows[0]["owner_comment"] = "owner source remediation ticket opened"
+    tyw_rows[0]["proposed_maturity_date"] = "2030-05-31"
     tyw_rows[0]["owner_decision"] = "approve_scoped_exclusion"
     tyw_rows[0]["owner_comment"] = "owner signed scoped exclusion"
-    _write_csv(bond_csv, bond_rows)
     _write_csv(tyw_csv, tyw_rows)
     before_bond = bond_csv.read_text(encoding="utf-8-sig")
     before_tyw = tyw_csv.read_text(encoding="utf-8-sig")
@@ -762,6 +873,44 @@ def test_portfolio_home_maturity_remediation_export_check_current_allows_owner_i
     assert tyw_csv.read_text(encoding="utf-8-sig") == before_tyw
 
 
+def test_portfolio_home_maturity_remediation_export_refuses_to_overwrite_owner_input(
+    tmp_path: Path,
+) -> None:
+    duckdb_path = tmp_path / "blocked.duckdb"
+    output_dir = tmp_path / "maturity-export"
+    _create_schema(duckdb_path)
+    _insert_blocked_data(duckdb_path)
+    packet = build_export_packet(
+        duckdb_path=duckdb_path,
+        report_date=REPORT_DATE,
+        output_dir=output_dir,
+    )
+    export_files = packet["export_files"]
+    assert isinstance(export_files, dict)
+    tyw_csv = Path(str(export_files["tyw_liability_missing_maturity_csv"]))
+    tyw_rows = _read_csv(tyw_csv)
+    tyw_rows[0]["proposed_maturity_date"] = "2030-05-31"
+    tyw_rows[0]["owner_decision"] = "remediate_source"
+    tyw_rows[0]["owner_comment"] = "owner source remediation ticket opened"
+    _write_csv(tyw_csv, tyw_rows)
+    before_tyw = tyw_csv.read_text(encoding="utf-8-sig")
+
+    try:
+        build_export_packet(
+            duckdb_path=duckdb_path,
+            report_date=REPORT_DATE,
+            output_dir=output_dir,
+        )
+    except ValueError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("normal export must not overwrite nonblank owner input")
+
+    assert "Refusing to overwrite maturity remediation owner input" in message
+    assert "tyw_liability_missing_maturity.csv" in message
+    assert tyw_csv.read_text(encoding="utf-8-sig") == before_tyw
+
+
 def test_portfolio_home_maturity_remediation_export_check_current_blocks_stale_generated_fields(
     tmp_path: Path,
 ) -> None:
@@ -778,7 +927,7 @@ def test_portfolio_home_maturity_remediation_export_check_current_blocks_stale_g
     assert isinstance(export_files, dict)
     manifest_json = Path(str(export_files["manifest_json"]))
     manifest = json.loads(manifest_json.read_text(encoding="utf-8"))
-    manifest["export_summary"]["bond_missing_maturity_rows"] = 1
+    manifest["export_summary"]["bond_no_maturity_rows"] = 1
     manifest_json.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
     returncode, payload = _run_export(
@@ -794,6 +943,35 @@ def test_portfolio_home_maturity_remediation_export_check_current_blocks_stale_g
     assert returncode == 1
     assert payload["status"] == "stale"
     assert "manifest_export_summary_mismatch" in payload["current_blockers"]
+
+
+def test_portfolio_home_maturity_remediation_export_labels_repo_relative_duckdb_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_root = tmp_path / "worktree"
+    fake_root.mkdir()
+    monkeypatch.setattr(maturity_export, "ROOT", fake_root)
+    monkeypatch.chdir(fake_root)
+
+    assert (
+        maturity_export._duckdb_path_label(fake_root / "data" / "moss.duckdb")
+        == "data/moss.duckdb"
+    )
+    external_duckdb = tmp_path / "external" / "moss.duckdb"
+    external_duckdb.parent.mkdir(parents=True, exist_ok=True)
+    external_duckdb.touch()
+    escape_path = fake_root / ".." / "external" / "moss.duckdb"
+    sibling_spelling = external_duckdb.parent / "." / "moss.duckdb"
+    other_external_duckdb = tmp_path / "other" / "moss.duckdb"
+    other_external_duckdb.parent.mkdir(parents=True, exist_ok=True)
+    other_external_duckdb.touch()
+    expected_external_label = str(external_duckdb.resolve())
+
+    assert maturity_export._duckdb_path_label(escape_path) == expected_external_label
+    assert maturity_export._duckdb_path_label(sibling_spelling) == expected_external_label
+    assert maturity_export._duckdb_path_label(external_duckdb) == expected_external_label
+    assert maturity_export._duckdb_path_label(other_external_duckdb) != expected_external_label
 
 
 def test_portfolio_home_maturity_remediation_export_cli_require_clean_blocks_missing_rows(

@@ -168,6 +168,20 @@ def test_balance_analysis_overview_envelope_uses_shared_completed_build_lineage_
     assert payload["result_meta"]["cache_version"] == "cv_balance_analysis_test"
     assert payload["result_meta"]["source_version"] == "sv_balance_analysis_test"
     assert payload["result_meta"]["rule_version"] == "rv_balance_analysis_test"
+    assert payload["result_meta"]["requested_report_date"] == "2025-12-31"
+    assert payload["result_meta"]["resolved_report_date"] == "2025-12-31"
+    assert payload["result_meta"]["as_of_date"] == "2025-12-31"
+    assert payload["result_meta"]["date_basis"] == "balance_analysis_report_date"
+    assert payload["result_meta"]["filters_applied"] == {
+        "report_date": "2025-12-31",
+        "position_scope": "all",
+        "currency_basis": "CNY",
+    }
+    assert payload["result_meta"]["tables_used"] == [
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_tyw_balance_daily",
+    ]
+    assert payload["result_meta"]["evidence_rows"] == 2
     assert payload["result"]["detail_row_count"] == 2
     definitions = {item["key"]: item for item in payload["result"]["metric_definitions"]}
     assert definitions["asset_total_market_value_amount"] == {
@@ -224,6 +238,9 @@ def test_balance_analysis_summary_envelope_uses_shared_completed_build_lineage_h
                 ],
             }
 
+        def fetch_formal_overview(self, **_kwargs):
+            return {"detail_row_count": 3}
+
     calls: list[dict[str, str]] = []
 
     monkeypatch.setattr(service_mod, "BalanceAnalysisRepository", FakeRepo)
@@ -261,6 +278,14 @@ def test_balance_analysis_summary_envelope_uses_shared_completed_build_lineage_h
     assert payload["result_meta"]["cache_version"] == "cv_balance_analysis_test"
     assert payload["result_meta"]["source_version"] == "sv_balance_analysis_test"
     assert payload["result_meta"]["rule_version"] == "rv_balance_analysis_test"
+    assert payload["result_meta"]["filters_applied"] == {
+        "report_date": "2025-12-31",
+        "position_scope": "all",
+        "currency_basis": "CNY",
+        "limit": 10,
+        "offset": 0,
+    }
+    assert payload["result_meta"]["evidence_rows"] == 3
     assert payload["result"]["total_rows"] == 1
     assert isinstance(payload["calibration"], dict)
     assert payload["data_source"] == "balance_analysis_facts"
@@ -330,6 +355,7 @@ def test_balance_analysis_basis_breakdown_envelope_uses_shared_completed_build_l
     assert payload["result_meta"]["cache_version"] == "cv_balance_analysis_test"
     assert payload["result_meta"]["source_version"] == "sv_balance_analysis_test"
     assert payload["result_meta"]["rule_version"] == "rv_balance_analysis_test"
+    assert payload["result_meta"]["evidence_rows"] == 1
     assert payload["result"]["rows"][0]["source_family"] == "zqtz"
 
 
@@ -347,45 +373,44 @@ def test_build_balance_workbook_payload_uses_shared_completed_build_lineage_help
             return ["2025-12-31"]
 
         def fetch_formal_zqtz_rows(self, **kwargs):
-            if kwargs["currency_basis"] == "native":
-                return [
-                    {
-                        "report_date": "2025-12-31",
-                        "instrument_code": "240001.IB",
-                        "instrument_name": "测试债券",
-                        "portfolio_name": "组合A",
-                        "cost_center": "CC100",
-                        "account_category": "可供出售类资产",
-                        "asset_class": "信用债",
-                        "bond_type": "企业债",
-                        "issuer_name": "发行人A",
-                        "industry_name": "工业",
-                        "rating": "AAA",
-                        "invest_type_std": "A",
-                        "accounting_basis": "FVOCI",
-                        "position_scope": kwargs["position_scope"],
-                        "currency_basis": kwargs["currency_basis"],
-                        "currency_code": "CNY",
-                        "face_value_amount": "100.00000000",
-                        "market_value_amount": "100.00000000",
-                        "amortized_cost_amount": "90.00000000",
-                        "accrued_interest_amount": "5.00000000",
-                        "coupon_rate": "0.03000000",
-                        "ytm_value": "0.03100000",
-                        "maturity_date": "2026-12-31",
-                        "interest_mode": "固定",
-                        "is_issuance_like": False,
-                        "overdue_principal_days": 0,
-                        "overdue_interest_days": 0,
-                        "value_date": "2025-12-31",
-                        "customer_attribute": "internal",
-                        "source_version": "sv_balance_analysis_test",
-                        "rule_version": "rv_balance_analysis_test",
-                        "ingest_batch_id": "ib-test",
-                        "trace_id": "trace-test",
-                    }
-                ]
-            return []
+            # Honor requested currency_basis (workbook H-2); fixture amounts are CNY-like.
+            return [
+                {
+                    "report_date": "2025-12-31",
+                    "instrument_code": "240001.IB",
+                    "instrument_name": "测试债券",
+                    "portfolio_name": "组合A",
+                    "cost_center": "CC100",
+                    "account_category": "可供出售类资产",
+                    "asset_class": "信用债",
+                    "bond_type": "企业债",
+                    "issuer_name": "发行人A",
+                    "industry_name": "工业",
+                    "rating": "AAA",
+                    "invest_type_std": "A",
+                    "accounting_basis": "FVOCI",
+                    "position_scope": kwargs["position_scope"],
+                    "currency_basis": kwargs["currency_basis"],
+                    "currency_code": "CNY",
+                    "face_value_amount": "100.00000000",
+                    "market_value_amount": "100.00000000",
+                    "amortized_cost_amount": "90.00000000",
+                    "accrued_interest_amount": "5.00000000",
+                    "coupon_rate": "0.03000000",
+                    "ytm_value": "0.03100000",
+                    "maturity_date": "2026-12-31",
+                    "interest_mode": "固定",
+                    "is_issuance_like": False,
+                    "overdue_principal_days": 0,
+                    "overdue_interest_days": 0,
+                    "value_date": "2025-12-31",
+                    "customer_attribute": "internal",
+                    "source_version": "sv_balance_analysis_test",
+                    "rule_version": "rv_balance_analysis_test",
+                    "ingest_batch_id": "ib-test",
+                    "trace_id": "trace-test",
+                }
+            ]
 
         def fetch_formal_tyw_rows(self, **kwargs):
             return []
@@ -444,6 +469,426 @@ def test_build_balance_workbook_payload_uses_shared_completed_build_lineage_help
     assert build_lineage["source_version"] == "sv_balance_analysis_test"
 
 
+def test_build_balance_workbook_payload_runtime_cache_reuses_matching_build_and_isolates_fingerprint(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb_path.write_bytes(b"v1")
+    service_mod = load_module(
+        "backend.app.services.balance_analysis_service",
+        "backend/app/services/balance_analysis_service.py",
+    )
+    cache = getattr(service_mod, "_BALANCE_WORKBOOK_PAYLOAD_CACHE", None)
+    if cache is not None:
+        cache.clear()
+    build_calls: list[dict[str, object]] = []
+
+    def build_workbook_payload(**kwargs):
+        build_calls.append(kwargs)
+        return (
+            {
+                "report_date": kwargs["report_date"],
+                "position_scope": kwargs["position_scope"],
+                "currency_basis": kwargs["currency_basis"],
+                "cards": [],
+                "tables": [],
+            },
+            {
+                "cache_key": service_mod.CACHE_KEY,
+                "cache_version": "cv_balance_analysis_test",
+                "source_version": "sv_balance_analysis_test",
+                "vendor_version": "vv_none",
+                "rule_version": "rv_balance_analysis_test",
+                "report_date": kwargs["report_date"],
+            },
+        )
+
+    monkeypatch.setattr(
+        service_mod.balance_analysis_workbook_service,
+        "_build_balance_workbook_payload",
+        build_workbook_payload,
+    )
+
+    first = service_mod._build_balance_workbook_payload(
+        duckdb_path=str(duckdb_path),
+        governance_dir="ignored-governance",
+        report_date="2025-12-31",
+        position_scope="all",
+        currency_basis="CNY",
+    )
+    second = service_mod._build_balance_workbook_payload(
+        duckdb_path=str(duckdb_path),
+        governance_dir="ignored-governance",
+        report_date="2025-12-31",
+        position_scope="all",
+        currency_basis="CNY",
+    )
+    scope_variant = service_mod._build_balance_workbook_payload(
+        duckdb_path=str(duckdb_path),
+        governance_dir="ignored-governance",
+        report_date="2025-12-31",
+        position_scope="asset",
+        currency_basis="CNY",
+    )
+    duckdb_path.write_bytes(b"v2-storage-fingerprint")
+    fingerprint_variant = service_mod._build_balance_workbook_payload(
+        duckdb_path=str(duckdb_path),
+        governance_dir="ignored-governance",
+        report_date="2025-12-31",
+        position_scope="all",
+        currency_basis="CNY",
+    )
+
+    assert first == second
+    assert scope_variant[0]["position_scope"] == "asset"
+    assert fingerprint_variant[0]["position_scope"] == "all"
+    assert len(build_calls) == 3
+
+
+def test_build_balance_workbook_payload_runtime_cache_isolates_manifest_fingerprint(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb_path.write_bytes(b"v1")
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir()
+    service_mod = load_module(
+        "backend.app.services.balance_analysis_service",
+        "backend/app/services/balance_analysis_service.py",
+    )
+    cache = getattr(service_mod, "_BALANCE_WORKBOOK_PAYLOAD_CACHE", None)
+    if cache is not None:
+        cache.clear()
+    build_calls = 0
+
+    def build_workbook_payload(**kwargs):
+        nonlocal build_calls
+        build_calls += 1
+        return (
+            {
+                "report_date": kwargs["report_date"],
+                "position_scope": kwargs["position_scope"],
+                "currency_basis": kwargs["currency_basis"],
+                "cards": [],
+                "tables": [],
+                "build_calls": build_calls,
+            },
+            {
+                "cache_key": service_mod.CACHE_KEY,
+                "cache_version": f"cv_balance_analysis_test_{build_calls}",
+                "source_version": f"sv_balance_analysis_test_{build_calls}",
+                "vendor_version": "vv_none",
+                "rule_version": "rv_balance_analysis_test",
+                "report_date": kwargs["report_date"],
+            },
+        )
+
+    monkeypatch.setattr(
+        service_mod.balance_analysis_workbook_service,
+        "_build_balance_workbook_payload",
+        build_workbook_payload,
+    )
+
+    first = service_mod._build_balance_workbook_payload(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        report_date="2025-12-31",
+        position_scope="all",
+        currency_basis="CNY",
+    )
+    second = service_mod._build_balance_workbook_payload(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        report_date="2025-12-31",
+        position_scope="all",
+        currency_basis="CNY",
+    )
+    (governance_dir / f"{service_mod.CACHE_MANIFEST_STREAM}.jsonl").write_text(
+        '{"cache_key":"balance_analysis","source_version":"sv_manifest_new"}\n',
+        encoding="utf-8",
+    )
+    manifest_variant = service_mod._build_balance_workbook_payload(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        report_date="2025-12-31",
+        position_scope="all",
+        currency_basis="CNY",
+    )
+
+    assert first == second
+    assert manifest_variant[0]["build_calls"] == 2
+    assert build_calls == 2
+
+
+def test_balance_workbook_quality_flag_warns_when_maturity_is_missing():
+    service_mod = load_module(
+        "backend.app.services.balance_analysis_service",
+        "backend/app/services/balance_analysis_service.py",
+    )
+    workbook = {
+        "tables": [
+            {
+                "key": "risk_alerts",
+                "section_kind": "risk_alerts",
+                "rows": [
+                    {"rule_id": "bal_wb_risk_maturity_missing_001"},
+                ],
+            },
+        ],
+    }
+
+    assert service_mod._balance_workbook_quality_flag(workbook) == "warning"
+    assert service_mod._balance_workbook_quality_flag({"tables": []}) is None
+
+
+@pytest.fixture
+def balance_workbook_refresh_harness(tmp_path, monkeypatch):
+    from backend.app.services.runtime_cache import InMemoryTTLCache
+
+    service_mod = load_module(
+        "backend.app.services.balance_analysis_service",
+        "backend/app/services/balance_analysis_service.py",
+    )
+    duckdb_path = tmp_path / "refresh.duckdb"
+    duckdb_path.write_bytes(b"v1")
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir()
+    clock = [0.0]
+    cache = InMemoryTTLCache(ttl_seconds=900, clock=lambda: clock[0])
+    state = {"builds": 0, "on_build": None}
+    args = {
+        "duckdb_path": str(duckdb_path),
+        "governance_dir": str(governance_dir),
+        "report_date": "2025-12-31",
+        "position_scope": "all",
+        "currency_basis": "CNY",
+    }
+
+    def build_workbook(**kwargs):
+        state["builds"] += 1
+        callback = state["on_build"]
+        if callback is not None:
+            callback()
+        return (
+            {
+                "report_date": kwargs["report_date"],
+                "position_scope": kwargs["position_scope"],
+                "currency_basis": kwargs["currency_basis"],
+                "builds": state["builds"],
+                "cards": [],
+                "tables": [
+                    {
+                        "key": "decision_items",
+                        "title": "Decision Items",
+                        "section_kind": "decision_items",
+                        "columns": [],
+                        "rows": [
+                            {
+                                "title": "Review balance gap",
+                                "action_label": "Review",
+                                "severity": "high",
+                                "reason": "Gap widened",
+                                "source_section": "maturity_gap",
+                                "rule_id": "bal_gap_rule",
+                                "rule_version": "rv-test",
+                            }
+                        ],
+                    }
+                ],
+            },
+            {
+                "cache_key": service_mod.CACHE_KEY,
+                "cache_version": "cv_balance_analysis_test",
+                "source_version": "sv_balance_analysis_test",
+                "vendor_version": "vv_none",
+                "rule_version": "rv_balance_analysis_test",
+                "report_date": kwargs["report_date"],
+            },
+        )
+
+    monkeypatch.setattr(service_mod, "_BALANCE_WORKBOOK_PAYLOAD_CACHE", cache)
+    monkeypatch.setattr(service_mod, "_resolve_governance_backend_mode", lambda _mode: "jsonl")
+    monkeypatch.setattr(
+        service_mod.balance_analysis_workbook_service,
+        "_build_balance_workbook_payload",
+        build_workbook,
+    )
+    return service_mod, args, cache, clock, state
+
+
+def test_balance_workbook_force_refresh_renews_ttl_before_original_expiry(
+    balance_workbook_refresh_harness,
+):
+    service_mod, args, _cache, clock, state = balance_workbook_refresh_harness
+    service_mod._build_balance_workbook_payload(**args)
+    clock[0] = 800.0
+    renewed = service_mod._build_balance_workbook_payload(**args, force_refresh=True)
+    clock[0] = 901.0
+    after_original_expiry = service_mod._build_balance_workbook_payload(**args)
+
+    assert state["builds"] == 2
+    assert after_original_expiry == renewed
+    clock[0] = 1701.0
+    service_mod._build_balance_workbook_payload(**args)
+    assert state["builds"] == 3
+
+
+def test_balance_workbook_force_refresh_keeps_valid_entry_available_during_build(
+    balance_workbook_refresh_harness,
+):
+    service_mod, args, _cache, _clock, state = balance_workbook_refresh_harness
+    first = service_mod._build_balance_workbook_payload(**args)
+    reads_during_refresh = []
+    state["on_build"] = lambda: reads_during_refresh.append(
+        service_mod._build_balance_workbook_payload(**args)
+    )
+
+    renewed = service_mod._build_balance_workbook_payload(**args, force_refresh=True)
+
+    assert reads_during_refresh == [first]
+    assert state["builds"] == 2
+    assert service_mod._build_balance_workbook_payload(**args) == renewed
+
+
+def test_balance_workbook_force_refresh_failure_preserves_old_entry_and_expiry(
+    balance_workbook_refresh_harness,
+):
+    service_mod, args, _cache, clock, state = balance_workbook_refresh_harness
+    first = service_mod._build_balance_workbook_payload(**args)
+
+    def fail_build():
+        raise RuntimeError("refresh failed")
+
+    state["on_build"] = fail_build
+    clock[0] = 800.0
+    with pytest.raises(RuntimeError, match="refresh failed"):
+        service_mod._build_balance_workbook_payload(**args, force_refresh=True)
+    assert service_mod._build_balance_workbook_payload(**args) == first
+    state["on_build"] = None
+    clock[0] = 901.0
+    assert service_mod._build_balance_workbook_payload(**args)[0]["builds"] == 3
+
+
+def test_balance_workbook_force_refresh_does_not_refill_after_generation_clear(
+    balance_workbook_refresh_harness,
+):
+    service_mod, args, cache, _clock, state = balance_workbook_refresh_harness
+    service_mod._build_balance_workbook_payload(**args)
+    state["on_build"] = cache.clear
+
+    service_mod._build_balance_workbook_payload(**args, force_refresh=True)
+
+    key = service_mod._balance_workbook_payload_cache_key(**args)
+    assert cache.get(key) == (False, None)
+    state["on_build"] = None
+    service_mod._build_balance_workbook_payload(**args)
+    assert state["builds"] == 3
+
+
+@pytest.mark.parametrize("changed_input", ["storage", "governance", "effective_path"])
+def test_balance_workbook_force_refresh_does_not_refill_after_input_change(
+    balance_workbook_refresh_harness,
+    tmp_path,
+    monkeypatch,
+    changed_input,
+):
+    service_mod, args, cache, _clock, state = balance_workbook_refresh_harness
+    first = service_mod._build_balance_workbook_payload(**args)
+    original_key = service_mod._balance_workbook_payload_cache_key(**args)
+    if changed_input == "storage":
+        state["on_build"] = lambda: Path(args["duckdb_path"]).write_bytes(b"new-input")
+    elif changed_input == "governance":
+        stream_path = Path(args["governance_dir"]) / f"{service_mod.CACHE_MANIFEST_STREAM}.jsonl"
+        state["on_build"] = lambda: stream_path.write_bytes(b'{"source_version":"sv_new"}\n')
+    else:
+        new_path = tmp_path / "selected-generation.duckdb"
+        new_path.write_bytes(b"new-input")
+        state["on_build"] = lambda: monkeypatch.setattr(
+            service_mod, "resolve_effective_read_path", lambda _path: new_path
+        )
+
+    service_mod._build_balance_workbook_payload(**args, force_refresh=True)
+
+    changed_key = service_mod._balance_workbook_payload_cache_key(**args)
+    assert original_key != changed_key
+    assert cache.get(original_key) == (True, first)
+    assert cache.get(changed_key) == (False, None)
+    state["on_build"] = None
+    service_mod._build_balance_workbook_payload(**args)
+    assert state["builds"] == 3
+
+
+def test_balance_workbook_force_refresh_does_not_publish_under_changed_system_identity(
+    balance_workbook_refresh_harness,
+    monkeypatch,
+):
+    from backend.app.services import runtime_cache
+
+    service_mod, args, cache, _clock, state = balance_workbook_refresh_harness
+    identity = ["generation_before"]
+
+    def system_identity(key):
+        return identity[0], key
+
+    monkeypatch.setattr(service_mod, "system_read_cache_identity", system_identity, raising=False)
+    monkeypatch.setattr(runtime_cache, "system_read_cache_identity", system_identity)
+    service_mod._build_balance_workbook_payload(**args)
+    state["on_build"] = lambda: identity.__setitem__(0, "generation_after")
+
+    service_mod._build_balance_workbook_payload(**args, force_refresh=True)
+
+    key = service_mod._balance_workbook_payload_cache_key(**args)
+    assert cache.get(key) == (False, None)
+    state["on_build"] = None
+    service_mod._build_balance_workbook_payload(**args)
+    assert state["builds"] == 3
+
+
+def test_balance_workbook_force_refresh_keeps_sql_authority_uncached(
+    balance_workbook_refresh_harness,
+    monkeypatch,
+):
+    service_mod, args, cache, _clock, state = balance_workbook_refresh_harness
+    monkeypatch.setattr(service_mod, "_resolve_governance_backend_mode", lambda _mode: "sql-authority")
+    service_mod._build_balance_workbook_payload(**args, force_refresh=True)
+    service_mod._build_balance_workbook_payload(**args, force_refresh=True)
+    service_mod._build_balance_workbook_payload(**args)
+
+    assert state["builds"] == 3
+    assert service_mod._balance_workbook_payload_cache_key(**args) is None
+    assert not cache._store
+
+
+def test_balance_decision_items_force_refresh_rebuilds_workbook_and_reads_statuses_fresh(
+    balance_workbook_refresh_harness,
+    monkeypatch,
+):
+    service_mod, args, _cache, _clock, state = balance_workbook_refresh_harness
+    statuses = [{}, {"bal_gap_rule": {"decision_key": "bal_gap_rule", "status": "confirmed"}}, {}]
+    status_reads = []
+
+    class FakeDecisionRepo:
+        def __init__(self, _governance_dir):
+            pass
+
+        def list_latest_statuses(self, **kwargs):
+            status_reads.append(kwargs)
+            return statuses.pop(0)
+
+    monkeypatch.setattr(service_mod, "BalanceAnalysisDecisionRepository", FakeDecisionRepo)
+    first = service_mod.balance_analysis_decision_items_envelope(**args)
+    refreshed = service_mod.balance_analysis_decision_items_envelope(**args, force_refresh=True)
+    cached = service_mod.balance_analysis_decision_items_envelope(**args)
+
+    assert state["builds"] == 2
+    assert len(status_reads) == 3
+    assert first["result"]["rows"][0]["latest_status"]["status"] == "pending"
+    assert refreshed["result"]["rows"][0]["latest_status"]["status"] == "confirmed"
+    assert cached["result"]["rows"][0]["latest_status"]["status"] == "pending"
+
+
 def test_balance_analysis_decision_items_envelope_reads_generated_rows_from_workbook_helper(
     monkeypatch,
 ):
@@ -462,6 +907,16 @@ def test_balance_analysis_decision_items_envelope_reads_generated_rows_from_work
                 "currency_basis": "CNY",
                 "cards": [],
                 "tables": [
+                    {
+                        "key": "ifrs9_source_family",
+                        "title": "IFRS9 Source Family",
+                        "section_kind": "table",
+                        "columns": [],
+                        "rows": [
+                            {"source_family": "zqtz", "row_count": 1},
+                            {"source_family": "tyw", "row_count": 1},
+                        ],
+                    },
                     {
                         "key": "decision_items",
                         "title": "Decision Items",
@@ -486,7 +941,18 @@ def test_balance_analysis_decision_items_envelope_reads_generated_rows_from_work
                                 "rule_version": "rv-test",
                             }
                         ],
-                    }
+                    },
+                    {
+                        "key": "risk_alerts",
+                        "title": "风险预警",
+                        "section_kind": "risk_alerts",
+                        "columns": [],
+                        "rows": [
+                            {
+                                "rule_id": "bal_wb_risk_maturity_missing_001",
+                            }
+                        ],
+                    },
                 ],
             },
             {
@@ -496,6 +962,7 @@ def test_balance_analysis_decision_items_envelope_reads_generated_rows_from_work
                 "vendor_version": "vv_none",
                 "rule_version": "rv_balance_analysis_test",
                 "report_date": "2025-12-31",
+                "quality_flag": "ok",
             },
         ),
     )
@@ -518,6 +985,8 @@ def test_balance_analysis_decision_items_envelope_reads_generated_rows_from_work
     )
 
     assert payload["result_meta"]["result_kind"] == "balance-analysis.decision-items"
+    assert payload["result_meta"]["quality_flag"] == "warning"
+    assert payload["result_meta"]["evidence_rows"] == 2
     assert payload["result"]["columns"] == [
         {"key": "title", "label": "标题"},
         {"key": "action_label", "label": "动作"},
@@ -546,6 +1015,115 @@ def test_balance_analysis_decision_items_envelope_reads_generated_rows_from_work
             },
         }
     ]
+
+
+def test_balance_analysis_decision_items_reuses_workbook_but_reads_statuses_fresh(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb_path.write_bytes(b"v1")
+    service_mod = load_module(
+        "backend.app.services.balance_analysis_service",
+        "backend/app/services/balance_analysis_service.py",
+    )
+    cache = getattr(service_mod, "_BALANCE_WORKBOOK_PAYLOAD_CACHE", None)
+    if cache is not None:
+        cache.clear()
+    build_calls = 0
+
+    def build_workbook_payload(**kwargs):
+        nonlocal build_calls
+        build_calls += 1
+        return (
+            {
+                "report_date": kwargs["report_date"],
+                "position_scope": kwargs["position_scope"],
+                "currency_basis": kwargs["currency_basis"],
+                "cards": [],
+                "tables": [
+                    {
+                        "key": "ifrs9_source_family",
+                        "title": "IFRS9 Source Family",
+                        "section_kind": "table",
+                        "columns": [],
+                        "rows": [{"source_family": "zqtz", "row_count": 1}],
+                    },
+                    {
+                        "key": "decision_items",
+                        "title": "Decision Items",
+                        "section_kind": "decision_items",
+                        "columns": [],
+                        "rows": [
+                            {
+                                "title": "Tighten duration gap",
+                                "action_label": "Review",
+                                "severity": "high",
+                                "reason": "Gap widened",
+                                "source_section": "maturity_gap",
+                                "rule_id": "bal_gap_rule",
+                                "rule_version": "rv-test",
+                            }
+                        ],
+                    },
+                ],
+            },
+            {
+                "cache_key": service_mod.CACHE_KEY,
+                "cache_version": "cv_balance_analysis_test",
+                "source_version": "sv_balance_analysis_test",
+                "vendor_version": "vv_none",
+                "rule_version": "rv_balance_analysis_test",
+                "report_date": kwargs["report_date"],
+            },
+        )
+
+    statuses = [
+        {},
+        {
+            "bal_gap_rule": {
+                "decision_key": "bal_gap_rule",
+                "status": "confirmed",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "updated_by": "balance-owner",
+                "comment": "done",
+            }
+        },
+    ]
+
+    class FakeDecisionRepo:
+        def __init__(self, governance_dir: str) -> None:
+            self.governance_dir = governance_dir
+
+        def list_latest_statuses(self, **_kwargs):
+            return statuses.pop(0)
+
+    monkeypatch.setattr(
+        service_mod.balance_analysis_workbook_service,
+        "_build_balance_workbook_payload",
+        build_workbook_payload,
+    )
+    monkeypatch.setattr(service_mod, "BalanceAnalysisDecisionRepository", FakeDecisionRepo)
+
+    first = service_mod.balance_analysis_decision_items_envelope(
+        duckdb_path=str(duckdb_path),
+        governance_dir="ignored-governance",
+        report_date="2025-12-31",
+        position_scope="all",
+        currency_basis="CNY",
+    )
+    second = service_mod.balance_analysis_decision_items_envelope(
+        duckdb_path=str(duckdb_path),
+        governance_dir="ignored-governance",
+        report_date="2025-12-31",
+        position_scope="all",
+        currency_basis="CNY",
+    )
+
+    assert build_calls == 1
+    assert first["result"]["rows"][0]["latest_status"]["status"] == "pending"
+    assert second["result"]["rows"][0]["latest_status"]["status"] == "confirmed"
+    assert second["result"]["rows"][0]["latest_status"]["updated_by"] == "balance-owner"
 
 
 def test_update_balance_analysis_decision_status_rejects_unknown_generated_decision_key(

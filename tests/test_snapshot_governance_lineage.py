@@ -11,7 +11,8 @@ from backend.app.repositories.governance_repo import (
     SNAPSHOT_BUILD_RUN_STREAM,
     SNAPSHOT_MANIFEST_STREAM,
 )
-from tests.helpers import ROOT, load_module
+from tests.business_input_fixtures import business_input_bytes
+from tests.helpers import load_module
 
 
 def _load_tasks():
@@ -36,7 +37,7 @@ def test_snapshot_governance_records_include_linkage_tuple(tmp_path, monkeypatch
     data_root = tmp_path / "data_input"
     data_root.mkdir()
     for file_name in ("ZQTZSHOW-20251231.xls",):
-        (data_root / file_name).write_bytes((ROOT / "data_input" / file_name).read_bytes())
+        (data_root / file_name).write_bytes(business_input_bytes(file_name))
 
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
     monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")

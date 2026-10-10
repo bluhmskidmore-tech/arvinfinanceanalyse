@@ -29,7 +29,7 @@ def test_average_balance_owner_evidence_packet_preserves_candidate_boundary() ->
     packet = build_packet()
 
     assert packet["packet_kind"] == "average_balance_owner_evidence_packet"
-    assert packet["page_id"] == "GAP-AVERAGE-BALANCE-PAGE"
+    assert packet["page_id"] == "PAGE-ADB-001"
     assert packet["page_slug"] == "average-balance"
     assert packet["route"] == "/average-balance"
     assert packet["primary_api"] == "/api/analysis/adb"
@@ -55,7 +55,19 @@ def test_average_balance_owner_evidence_packet_preserves_candidate_boundary() ->
     assert packet["formal_balance_truth_approval_allowed"] is False
     assert packet["governance_record_write_status"] == "not_requested"
     assert packet["governance_validation_status"] == "ready_for_audit_review"
-    assert packet["golden_sample_approval_artifact_status"] == "captured-awaiting-approval"
+    assert (
+        packet["golden_sample_approval_artifact_status"] == "captured-awaiting-approval"
+    )
+    assert packet["monthly_golden_response_model_readiness"] == {
+        "status": "model-valid-awaiting-owner-review",
+        "response_model": "backend.app.schemas.adb_analysis.AdbAnalysisEnvelope",
+        "response_model_valid": True,
+        "recapture_required": False,
+        "missing_required_fields": [],
+        "validation_error_types": [],
+        "writes_golden_sample": False,
+        "captures_golden_sample_approval": False,
+    }
     assert packet["configured_table_names"] == [
         "fact_formal_zqtz_balance_daily",
         "fact_formal_tyw_balance_daily",
@@ -71,8 +83,12 @@ def test_average_balance_owner_evidence_packet_preserves_candidate_boundary() ->
         "validates_required_fields": True,
         "approves_formal_balance_truth": False,
         "approves_monthly_adb_nim_truth": False,
+        "validates_monthly_golden_response_model": True,
     }
-    assert packet["evidence_anchors"]["page_contract"] == "docs/pnl/average-balance-page-contract.md"
+    assert (
+        packet["evidence_anchors"]["page_contract"]
+        == "docs/pnl/average-balance-page-contract.md"
+    )
     assert packet["evidence_anchors"]["owner_signoff_runbook"] == (
         "docs/pnl/average-balance-owner-signoff-runbook.md"
     )
@@ -85,6 +101,12 @@ def test_average_balance_owner_evidence_packet_preserves_candidate_boundary() ->
     assert packet["evidence_anchors"]["monthly_golden_sample"] == (
         "tests/golden_samples/GS-AVERAGE-BALANCE-MONTHLY-A"
     )
+    assert packet["evidence_anchors"]["response_model_preservation_test"] == (
+        "tests/test_api_response_model_field_preservation.py"
+    )
+    assert packet["evidence_anchors"]["monthly_recapture_candidate_tool"] == (
+        "scripts/capture_average_balance_monthly_golden_candidate.py"
+    )
     assert packet["evidence_anchors"]["smoke_command"] == (
         "scripts/codex-page-smoke.ps1 -PageSlug average-balance"
     )
@@ -95,9 +117,12 @@ def test_average_balance_owner_evidence_packet_preserves_candidate_boundary() ->
     assert "monthly ADB/NIM approval" in packet["out_of_scope_surfaces"]
     assert "daily_golden_sample_review" in packet["remaining_blockers"]
     assert "monthly_adb_nim_boundary_acceptance" in packet["remaining_blockers"]
+    assert "monthly_golden_response_model_recapture" not in packet["remaining_blockers"]
 
 
-def test_average_balance_owner_evidence_packet_cli_writes_markdown(tmp_path: Path) -> None:
+def test_average_balance_owner_evidence_packet_cli_writes_markdown(
+    tmp_path: Path,
+) -> None:
     output_path = tmp_path / "packet.md"
     governance_dir = tmp_path / "governance"
 
@@ -114,6 +139,12 @@ def test_average_balance_owner_evidence_packet_cli_writes_markdown(tmp_path: Pat
     assert payload["business_contract_certified"] is False
     assert payload["approval_action_item_count"] == 13
     assert payload["governance_record_write_status"] == "not_requested"
+    assert payload["monthly_golden_response_model_readiness"]["status"] == (
+        "model-valid-awaiting-owner-review"
+    )
+    assert payload["monthly_golden_response_model_readiness"][
+        "missing_required_fields"
+    ] == []
     assert payload["evidence_scope"]["captures_business_owner_approval"] is False
     assert payload["evidence_scope"]["approves_formal_balance_truth"] is False
     assert payload["evidence_scope"]["approves_monthly_adb_nim_truth"] is False
@@ -122,24 +153,56 @@ def test_average_balance_owner_evidence_packet_cli_writes_markdown(tmp_path: Pat
     assert "# Average Balance Owner Evidence Packet" in text
     assert "Business contract status: `evidence-pending`" in text
     assert "Formal use allowed: `formal_use_allowed=false`" in text
-    assert "Dedicated golden samples: `GS-AVERAGE-BALANCE-A`, `GS-AVERAGE-BALANCE-MONTHLY-A`" in text
+    assert (
+        "Dedicated golden samples: `GS-AVERAGE-BALANCE-A`, `GS-AVERAGE-BALANCE-MONTHLY-A`"
+        in text
+    )
     assert "Monthly ADB/NIM approval allowed: `false`" in text
     assert "Formal balance truth approval allowed: `false`" in text
     assert "Existing record line: `dry-run not written`" in text
+    assert "## Monthly Golden Response-Model Readiness" in text
+    assert "Status: `model-valid-awaiting-owner-review`" in text
+    assert "Missing required fields: `none`" in text
+    assert "`writes_golden_sample=false`" in text
+    assert "`captures_golden_sample_approval=false`" in text
     assert "- `MTR-ADB-001`" in text
     assert "- `MTR-ADB-002`" in text
     assert "- `MTR-ADB-003`" in text
     assert "Governance validation status: `ready_for_audit_review`" in text
-    assert "live_smoke_evidence: `docs/audits/2026-06-09-average-balance-live-smoke-evidence.md`" in text
-    assert "owner_signoff_runbook: `docs/pnl/average-balance-owner-signoff-runbook.md`" in text
-    assert "latest_verification_snapshot: `docs/audits/2026-06-10-average-balance-candidate-verification.md`" in text
-    assert "monthly_golden_sample: `tests/golden_samples/GS-AVERAGE-BALANCE-MONTHLY-A`" in text
-    assert "smoke_command: `scripts/codex-page-smoke.ps1 -PageSlug average-balance`" in text
-    assert "verify_command: `scripts/codex-verify-page.ps1 -PageSlug average-balance -Run`" in text
+    assert (
+        "live_smoke_evidence: `docs/audits/2026-06-09-average-balance-live-smoke-evidence.md`"
+        in text
+    )
+    assert (
+        "owner_signoff_runbook: `docs/pnl/average-balance-owner-signoff-runbook.md`"
+        in text
+    )
+    assert (
+        "latest_verification_snapshot: `docs/audits/2026-06-10-average-balance-candidate-verification.md`"
+        in text
+    )
+    assert (
+        "monthly_golden_sample: `tests/golden_samples/GS-AVERAGE-BALANCE-MONTHLY-A`"
+        in text
+    )
+    assert (
+        "monthly_recapture_candidate_command: `python scripts/"
+        "capture_average_balance_monthly_golden_candidate.py --output-dir <new-review-dir>`"
+        in text
+    )
+    assert (
+        "smoke_command: `scripts/codex-page-smoke.ps1 -PageSlug average-balance`"
+        in text
+    )
+    assert (
+        "verify_command: `scripts/codex-verify-page.ps1 -PageSlug average-balance -Run`"
+        in text
+    )
     assert "This packet does not approve page closure" in text
     assert "- `certification_effect=none`" in text
     assert "- `approves_formal_balance_truth=false`" in text
     assert "- `approves_monthly_adb_nim_truth=false`" in text
+    assert "- `validates_monthly_golden_response_model=true`" in text
     assert "Monthly ADB/NIM boundary accepted: `yes` (`pending`)" in text
 
 

@@ -1,17 +1,25 @@
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
 from backend.app.core_finance.config.classification_rules import infer_invest_type
+from backend.app.core_finance.decimal_utils import to_decimal as shared_to_decimal
 from backend.app.core_finance.rate_units import pct_to_decimal
+
+logger = logging.getLogger(__name__)
 
 ZERO = Decimal("0")
 ONE_HUNDRED = Decimal("100")
 ONE_HUNDRED_MILLION = Decimal("100000000")
+
+# 低票息灰区上界：百分点口径下 (0, 0.5] 是真实的 0~0.5% 低票息券，
+# 旧启发式把这一段当成小数口径（0.3 → 30%），系统性高估负债成本 / 资产收益。
+LOW_COUPON_PERCENT_WARN_CEILING = Decimal("0.5")
 
 RISK_BUCKET_ORDER: tuple[str, ...] = (
     "已到期/逾期",
@@ -34,6 +42,7 @@ V1_MONTHLY_BUCKET_ORDER: tuple[str, ...] = (
     "5-10Y",
     "10Y+",
     "Matured",
+    "到期日未提供",
 )
 
 V1_TOTAL_LIABILITY_ORDER: tuple[str, ...] = (
@@ -83,9 +92,16 @@ class MonthlyAggregate:
 
 
 def to_decimal(value: object | None) -> Decimal:
+    """负债分析兼容链的宽松转换 = 共享 ``decimal_utils.to_decimal`` + None/"" 静默归 0。
+
+    - None/"" 是源表空单元格的既有口径，静默归 0（共享版对 None 会记 missing 告警，这里不记）。
+    - 其余值委托共享版：NaN/Inf/坏字符串 → 0 并记一次性告警，避免单个 NaN 污染本模块
+      defaultdict 聚合、坏字符串抛未捕获异常。与 ``decimal_utils.to_decimal`` 同名但差异仅在
+      None/"" 的静默处理。
+    """
     if value in (None, ""):
         return ZERO
-    return Decimal(str(value))
+    return shared_to_decimal(value)
 
 
 def to_float(value: Decimal | None) -> float | None:
@@ -118,6 +134,9 @@ def clean_text(value: object, fallback: str) -> str:
     text = str(value or "").strip()
     return text or fallback
 
+
+# 以下 zqtz_liability_amount 与 zqtz_asset_amount 的取值优先级不对称（负债端含摊余成本，资产端跳过），
+# 为 V1 兼容层的历史行为忠实保留。重构时不得当作 bug"修复"（除非业务侧另有裁定）。
 
 def zqtz_liability_amount(row: dict[str, Any]) -> Decimal:
     amortized = row.get("amortized_cost_native")
@@ -167,12 +186,40 @@ def zqtz_ncd_weight(row: dict[str, Any]) -> Decimal:
 
 
 def normalize_bond_rate_decimal(value: object | None) -> Decimal | None:
+    """把 ZQTZ 债券利率字段归一为小数（2.55 → 0.0255）。
+
+    输入单位是「百分点」，不是启发式推断出来的：本函数的全部调用方都读同一批
+    ZQTZ 行（``zqtz_bond_daily_snapshot`` 与 ``fact_formal_zqtz_balance_daily``
+    的 ``coupon_rate`` / ``ytm_value`` / ``interest_rate``），这些字段落库口径为
+    百分点，与 ``adb_rate_normalize.RATE_INPUT_OVERRIDES`` 的显式声明、
+    ``rate_units.normalize_percent_rate_to_decimal`` 的取证结论一致。
+    因此这里像 ``normalize_interbank_rate_decimal`` 一样直接走 ``pct_to_decimal``，
+    不再用 ``>0.5`` 的启发式区分小数 / 百分点。
+
+    - (0, 0.5]：低票息券（0.3 表示 0.3%），按百分点处理并记 warning；
+      旧启发式在这一段静默当小数，会把 0.3% 放大成 30%。
+    - > 100：百分点口径下代表 > 100% 的脏数据，保留 v1 的原样透出行为
+      （避免口径突变），但记 warning 暴露上游脏值。
+    """
     if value in (None, ""):
         return None
     rate = Decimal(str(value))
-    if rate > Decimal("0.5") and rate <= Decimal("100"):
-        return rate / ONE_HUNDRED
-    return rate
+    if rate > ONE_HUNDRED:
+        logger.warning(
+            "normalize_bond_rate_decimal: value %s > 100 percent points, "
+            "passing through unchanged (v1 compat); upstream unit is likely dirty",
+            rate,
+        )
+        return rate
+    if ZERO < rate <= LOW_COUPON_PERCENT_WARN_CEILING:
+        logger.warning(
+            "normalize_bond_rate_decimal: low-coupon value %s in (0, %s]; "
+            "treated as percent points (%s%%) per ZQTZ storage unit",
+            rate,
+            LOW_COUPON_PERCENT_WARN_CEILING,
+            rate,
+        )
+    return pct_to_decimal(rate)
 
 
 def normalize_interbank_rate_decimal(value: object | None) -> Decimal | None:
@@ -225,7 +272,7 @@ def maturity_bucket(report_date: date, maturity_value: object) -> str:
 def monthly_v1_bucket_name(report_date: date, maturity_value: object) -> str:
     maturity_date = coerce_date(maturity_value)
     if maturity_date is None:
-        return "0-3M"
+        return "到期日未提供"
     days = (maturity_date - report_date).days
     if days < 0:
         return "Matured"
@@ -447,6 +494,8 @@ def compute_liability_risk_buckets(
     issued_terms: dict[str, Decimal] = defaultdict(lambda: ZERO)
     interbank_terms: dict[str, Decimal] = defaultdict(lambda: ZERO)
     total_terms: dict[str, Decimal] = defaultdict(lambda: ZERO)
+    # 未提供到期日的余额单列，保留总额但不得推断为短期到期。
+    missing_maturity_count = 0
 
     for row in zqtz_rows:
         if not bool(row.get("is_issuance_like")):
@@ -457,6 +506,8 @@ def compute_liability_risk_buckets(
         name = clean_text(row.get("bond_type"), "发行债券")
         issued_structure[name] += amount
         bucket_name = monthly_v1_bucket_name(report_dt, row.get("maturity_date"))
+        if coerce_date(row.get("maturity_date")) is None:
+            missing_maturity_count += 1
         issued_terms[bucket_name] += amount
         total_terms[bucket_name] += amount
 
@@ -469,6 +520,8 @@ def compute_liability_risk_buckets(
         name = clean_text(row.get("product_type"), "同业其他")
         interbank_structure[name] += amount
         bucket_name = monthly_v1_bucket_name(report_dt, row.get("maturity_date"))
+        if coerce_date(row.get("maturity_date")) is None:
+            missing_maturity_count += 1
         interbank_terms[bucket_name] += amount
         total_terms[bucket_name] += amount
 
@@ -497,6 +550,7 @@ def compute_liability_risk_buckets(
             preferred_order=V1_ISSUED_PRODUCT_ORDER,
         ),
         "issued_liabilities_term_buckets": build_v1_bucket_amount_payload(issued_terms),
+        "missing_maturity_count": missing_maturity_count,
     }
 
 
@@ -546,7 +600,12 @@ def compute_liability_yield_metrics(
 
     asset_yield = weighted_rate(asset_pairs)
     liability_cost = weighted_rate(liability_pairs)
-    market_liability_cost = weighted_rate(market_liability_pairs) or liability_cost
+    # 只有「算不出来」（无市场化负债或权重全为 0）才回退到整体负债成本。
+    # 用 `is None` 显式判断而非 `or`：全零息市场化负债的加权成本是真实的
+    # Decimal("0")，`or` 会把它当 falsy 换成 liability_cost，虚增市场化成本。
+    market_liability_cost = weighted_rate(market_liability_pairs)
+    if market_liability_cost is None:
+        market_liability_cost = liability_cost
     nim = (
         asset_yield - market_liability_cost
         if asset_yield is not None and market_liability_cost is not None
@@ -596,6 +655,14 @@ def compute_liability_counterparty(
     ranked = sorted(grouped.items(), key=lambda item: (-item[1].value, item[0]))
     top_ranked = ranked[: max(top_n, 1)]
     total_value = sum((item.value for item in grouped.values()), ZERO)
+    population_count = len(ranked)
+    if total_value > ZERO:
+        top10_value = sum((agg.value for _, agg in ranked[:10]), ZERO)
+        top10_share = top10_value / total_value
+        hhi = sum(((agg.value / total_value) ** 2 for _, agg in ranked), ZERO) * Decimal("10000")
+    else:
+        top10_share = None
+        hhi = None
 
     top_items: list[dict[str, Any]] = []
     for name, agg in top_ranked:
@@ -619,12 +686,28 @@ def compute_liability_counterparty(
     return {
         "report_date": report_date,
         "total_value": to_float(total_value) or 0.0,
+        "top10_share": to_float(top10_share),
+        "hhi": to_float(hhi),
+        "population_count": population_count,
+        "is_truncated": len(top_items) < population_count,
         "top_10": top_items,
         "by_type": by_type,
     }
 
 
 def compute_liabilities_monthly(year: int, zqtz_rows: list[dict[str, Any]], tyw_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """月度负债聚合（ZQTZ 发行类 + TYW 同业负债）。
+
+    输入契约：``zqtz_rows`` 只应包含发行类负债行，可同时包含目标年度与
+    上一年度数据以计算自然月环比、同比。历史唯一调用方
+    （``liability_analytics_repo.fetch_zqtz_liability_rows_for_year``）在 SQL 侧以
+    ``coalesce(is_issuance_like, false)`` 预过滤，且其结果集不携带
+    ``is_issuance_like`` 列。因此本函数对「携带 ``is_issuance_like`` 键」的行
+    执行与 ``compute_liability_risk_buckets`` 一致的发行类过滤（falsy/None →
+    剔除，与 SQL ``coalesce(..., false)`` 同语义）；对不携带该键的行按预过滤
+    契约信任。这样预过滤输入行为不变（幂等），而新调用方直接传全量 ZQTZ 行
+    （含资产侧）时，资产债券行不会被静默计入发行负债。
+    """
     if not zqtz_rows and not tyw_rows:
         return {
             "year": year,
@@ -636,8 +719,12 @@ def compute_liabilities_monthly(year: int, zqtz_rows: list[dict[str, Any]], tyw_
     monthly: dict[str, MonthlyAggregate] = {}
 
     for row in zqtz_rows:
+        # 过滤须在 dates 记账之前：全量行输入时，资产侧快照日期不得进入
+        # 月度平均天数分母（与 SQL 预过滤路径的行为保持一致）。
+        if "is_issuance_like" in row and not bool(row["is_issuance_like"]):
+            continue
         report_dt = coerce_date(row.get("report_date"))
-        if report_dt is None or report_dt.year != year:
+        if report_dt is None or report_dt.year not in {year - 1, year}:
             continue
         month_key = report_dt.strftime("%Y-%m")
         month_agg = monthly.setdefault(month_key, MonthlyAggregate())
@@ -661,7 +748,7 @@ def compute_liabilities_monthly(year: int, zqtz_rows: list[dict[str, Any]], tyw_
 
     for row in tyw_rows:
         report_dt = coerce_date(row.get("report_date"))
-        if report_dt is None or report_dt.year != year:
+        if report_dt is None or report_dt.year not in {year - 1, year}:
             continue
         month_key = report_dt.strftime("%Y-%m")
         month_agg = monthly.setdefault(month_key, MonthlyAggregate())
@@ -709,7 +796,9 @@ def compute_liabilities_monthly(year: int, zqtz_rows: list[dict[str, Any]], tyw_
     year_total_amount = ZERO
     year_total_days = 0
 
-    for month_key in sorted(monthly.keys()):
+    current_month_keys = [month_key for month_key in sorted(monthly.keys()) if month_key.startswith(f"{year:04d}-")]
+
+    for month_key in current_month_keys:
         agg = monthly[month_key]
         num_days = len(agg.dates)
         if num_days <= 0:
@@ -721,12 +810,34 @@ def compute_liabilities_monthly(year: int, zqtz_rows: list[dict[str, Any]], tyw_
         avg_issued = agg.issued_sum / divisor
         avg_liability_cost = (agg.weighted_num / agg.weighted_den) if agg.weighted_den > ZERO else None
 
-        # V1 monthly endpoint uses the cached route, whose single-month helper never
-        # threads prev_month_avg_total into the outward payload. Preserve that
-        # outward compatibility behavior here instead of exposing recomputed values.
-        mom_change = None
-        mom_change_pct = None
-        counterparty_total_avg = sum((cpty.value for cpty in agg.counterparty.values()), ZERO) / divisor
+        month_int = int(month_key.split("-")[1])
+        month_start = date(year, month_int, 1)
+        previous_month_date = month_start - timedelta(days=1)
+        previous_month_key = previous_month_date.strftime("%Y-%m")
+        prior_year_month_key = f"{year - 1:04d}-{month_int:02d}"
+
+        def average_total_for(key: str) -> Decimal | None:
+            prior_agg = monthly.get(key)
+            if prior_agg is None or not prior_agg.dates:
+                return None
+            return prior_agg.total_sum / Decimal(len(prior_agg.dates))
+
+        previous_month_avg = average_total_for(previous_month_key)
+        prior_year_month_avg = average_total_for(prior_year_month_key)
+        mom_change = avg_total - previous_month_avg if previous_month_avg is not None else None
+        mom_change_pct = (
+            mom_change / previous_month_avg
+            if mom_change is not None and previous_month_avg is not None and previous_month_avg != ZERO
+            else None
+        )
+        yoy_change = avg_total - prior_year_month_avg if prior_year_month_avg is not None else None
+        yoy_change_pct = (
+            yoy_change / prior_year_month_avg
+            if yoy_change is not None and prior_year_month_avg is not None and prior_year_month_avg != ZERO
+            else None
+        )
+        counterparty_total = sum((cpty.value for cpty in agg.counterparty.values()), ZERO)
+        counterparty_total_avg = counterparty_total / divisor
         details: list[dict[str, Any]] = []
         sorted_counterparties = sorted(
             agg.counterparty.items(),
@@ -736,6 +847,14 @@ def compute_liabilities_monthly(year: int, zqtz_rows: list[dict[str, Any]], tyw_
                 _descending_text_key(item[1].first_position_id),
             ),
         )
+        population_count = len(sorted_counterparties)
+        if counterparty_total > ZERO:
+            top10_value = sum((cpty.value for _, cpty in sorted_counterparties[:10]), ZERO)
+            top10_share = top10_value / counterparty_total
+            hhi = sum(((cpty.value / counterparty_total) ** 2 for _, cpty in sorted_counterparties), ZERO) * Decimal("10000")
+        else:
+            top10_share = None
+            hhi = None
         for cpty_name, cpty in sorted_counterparties:
             avg_value = cpty.value / divisor
             weighted_cost = (cpty.weighted_num / cpty.weighted_den) if cpty.weighted_den > ZERO else None
@@ -769,7 +888,6 @@ def compute_liabilities_monthly(year: int, zqtz_rows: list[dict[str, Any]], tyw_
             if value > ZERO
         ]
 
-        month_int = int(month_key.split("-")[1])
         interbank_pct = (avg_interbank / avg_total) if avg_total > ZERO else ZERO
         issued_pct = (avg_issued / avg_total) if avg_total > ZERO else ZERO
         structure_overview = [
@@ -799,6 +917,12 @@ def compute_liabilities_monthly(year: int, zqtz_rows: list[dict[str, Any]], tyw_
                 "avg_liability_cost": to_float(avg_liability_cost),
                 "mom_change": to_float(mom_change),
                 "mom_change_pct": to_float(mom_change_pct),
+                "yoy_change": to_float(yoy_change),
+                "yoy_change_pct": to_float(yoy_change_pct),
+                "top10_share": to_float(top10_share),
+                "hhi": to_float(hhi),
+                "population_count": population_count,
+                "is_truncated": len(details[:10]) < population_count,
                 "counterparty_top10": details[:10],
                 "by_institution_type": by_institution_type,
                 "structure_overview": structure_overview,
@@ -818,6 +942,7 @@ def compute_liabilities_monthly(year: int, zqtz_rows: list[dict[str, Any]], tyw_
                 ),
                 "issued_term_buckets": monthly_v1_term_items(agg.issued_term, num_days=num_days),
                 "counterparty_details": details,
+                "counterparty_total": to_float(counterparty_total_avg),
                 "num_days": num_days,
             }
         )
@@ -837,4 +962,184 @@ def compute_liabilities_monthly(year: int, zqtz_rows: list[dict[str, Any]], tyw_
         "months": months,
         "ytd_avg_total_liabilities": to_float(ytd_avg_total),
         "ytd_avg_liability_cost": to_float(ytd_avg_cost),
+    }
+
+
+def compute_liabilities_monthly_summary(
+    year: int,
+    zqtz_daily_rows: list[dict[str, Any]],
+    tyw_daily_rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """从日粒度汇总行计算月度概览，不物化全年的逐笔明细。
+
+    仓储层必须按现有负债金额优先级与利率归一规则提供：
+    ``liability_amount``、``weighted_cost_num``、``weighted_cost_den``。
+    本函数只承担日期并集、月日均、自然月环比/同比与目标年度 YTD 聚合。
+    """
+    if not zqtz_daily_rows and not tyw_daily_rows:
+        return {
+            "year": year,
+            "months": [],
+            "ytd_avg_total_liabilities": 0.0,
+            "ytd_avg_liability_cost": None,
+        }
+
+    monthly: dict[str, MonthlyAggregate] = {}
+
+    def accumulate(rows: list[dict[str, Any]], *, source: str) -> None:
+        for row in rows:
+            report_dt = coerce_date(row.get("report_date"))
+            if report_dt is None or report_dt.year not in {year - 1, year}:
+                continue
+            month_key = report_dt.strftime("%Y-%m")
+            month_agg = monthly.setdefault(month_key, MonthlyAggregate())
+            month_agg.dates.add(report_dt)
+
+            amount = to_decimal(row.get("liability_amount"))
+            if amount <= ZERO:
+                continue
+            month_agg.total_sum += amount
+            if source == "issued":
+                month_agg.issued_sum += amount
+            else:
+                month_agg.interbank_sum += amount
+            month_agg.weighted_num += to_decimal(row.get("weighted_cost_num"))
+            month_agg.weighted_den += to_decimal(row.get("weighted_cost_den"))
+
+    accumulate(zqtz_daily_rows, source="issued")
+    accumulate(tyw_daily_rows, source="interbank")
+
+    months: list[dict[str, Any]] = []
+    current_month_keys = [
+        month_key
+        for month_key in sorted(monthly.keys())
+        if month_key.startswith(f"{year:04d}-")
+    ]
+
+    def average_total_for(key: str) -> Decimal | None:
+        prior_agg = monthly.get(key)
+        if prior_agg is None or not prior_agg.dates:
+            return None
+        return prior_agg.total_sum / Decimal(len(prior_agg.dates))
+
+    for month_key in current_month_keys:
+        agg = monthly[month_key]
+        num_days = len(agg.dates)
+        if num_days <= 0:
+            continue
+        divisor = Decimal(num_days)
+        avg_total = agg.total_sum / divisor
+        avg_interbank = agg.interbank_sum / divisor
+        avg_issued = agg.issued_sum / divisor
+        avg_liability_cost = (
+            agg.weighted_num / agg.weighted_den
+            if agg.weighted_den > ZERO
+            else None
+        )
+
+        month_int = int(month_key.split("-")[1])
+        month_start = date(year, month_int, 1)
+        previous_month_key = (month_start - timedelta(days=1)).strftime("%Y-%m")
+        prior_year_month_key = f"{year - 1:04d}-{month_int:02d}"
+        previous_month_avg = average_total_for(previous_month_key)
+        prior_year_month_avg = average_total_for(prior_year_month_key)
+        mom_change = avg_total - previous_month_avg if previous_month_avg is not None else None
+        mom_change_pct = (
+            mom_change / previous_month_avg
+            if mom_change is not None and previous_month_avg is not None and previous_month_avg != ZERO
+            else None
+        )
+        yoy_change = avg_total - prior_year_month_avg if prior_year_month_avg is not None else None
+        yoy_change_pct = (
+            yoy_change / prior_year_month_avg
+            if yoy_change is not None and prior_year_month_avg is not None and prior_year_month_avg != ZERO
+            else None
+        )
+
+        months.append(
+            {
+                "month": month_key,
+                "month_label": f"{year}年{month_int}月",
+                "avg_total_liabilities": to_float(avg_total),
+                "avg_interbank_liabilities": to_float(avg_interbank),
+                "avg_issued_liabilities": to_float(avg_issued),
+                "avg_liability_cost": to_float(avg_liability_cost),
+                "mom_change": to_float(mom_change),
+                "mom_change_pct": to_float(mom_change_pct),
+                "yoy_change": to_float(yoy_change),
+                "yoy_change_pct": to_float(yoy_change_pct),
+                "num_days": num_days,
+            }
+        )
+
+    current_aggs = [monthly[key] for key in current_month_keys]
+    ytd_total_amount = sum((agg.total_sum for agg in current_aggs), ZERO)
+    ytd_total_days = sum((len(agg.dates) for agg in current_aggs), 0)
+    ytd_avg_total = (
+        ytd_total_amount / Decimal(ytd_total_days)
+        if ytd_total_days > 0
+        else ZERO
+    )
+    ytd_weighted_num = sum((agg.weighted_num for agg in current_aggs), ZERO)
+    ytd_weighted_den = sum((agg.weighted_den for agg in current_aggs), ZERO)
+    ytd_avg_cost = (
+        ytd_weighted_num / ytd_weighted_den
+        if ytd_weighted_den > ZERO
+        else None
+    )
+
+    return {
+        "year": year,
+        "months": months,
+        "ytd_avg_total_liabilities": to_float(ytd_avg_total),
+        "ytd_avg_liability_cost": to_float(ytd_avg_cost),
+    }
+
+
+_LIABILITY_MONTHLY_DETAIL_FIELDS: tuple[str, ...] = (
+    "month",
+    "month_label",
+    "counterparty_total",
+    "top10_share",
+    "hhi",
+    "population_count",
+    "is_truncated",
+    "counterparty_top10",
+    "by_institution_type",
+    "structure_overview",
+    "term_buckets",
+    "interbank_by_type",
+    "interbank_term_buckets",
+    "issued_by_type",
+    "issued_term_buckets",
+    "counterparty_details",
+    "num_days",
+)
+
+
+def compute_liabilities_monthly_detail(
+    year: int,
+    selected_month: str,
+    zqtz_rows: list[dict[str, Any]],
+    tyw_rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """计算一个自然月的集中度与结构明细，并剥离概览重复字段。"""
+    monthly_payload = compute_liabilities_monthly(year, zqtz_rows, tyw_rows)
+    full_item = next(
+        (
+            item
+            for item in monthly_payload.get("months", [])
+            if item.get("month") == selected_month
+        ),
+        None,
+    )
+    detail = (
+        {field_name: full_item[field_name] for field_name in _LIABILITY_MONTHLY_DETAIL_FIELDS}
+        if isinstance(full_item, dict)
+        else None
+    )
+    return {
+        "year": year,
+        "selected_month": selected_month,
+        "detail": detail,
     }

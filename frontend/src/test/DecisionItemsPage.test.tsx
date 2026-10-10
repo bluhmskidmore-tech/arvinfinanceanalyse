@@ -1,4 +1,6 @@
 import { useState, type ReactNode } from "react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, useNavigate } from "react-router-dom";
@@ -11,6 +13,15 @@ import type {
   ResultMeta,
 } from "../api/contracts";
 import DecisionItemsPage from "../features/decision-items/pages/DecisionItemsPage";
+
+const decisionItemsPageSourcePath = resolve(
+  process.cwd(),
+  "src/features/decision-items/pages/DecisionItemsPage.tsx",
+);
+const decisionItemsPageCssPath = resolve(
+  process.cwd(),
+  "src/features/decision-items/pages/DecisionItemsPage.css",
+);
 
 const testMeta: ResultMeta = {
   trace_id: "tr_decision_items_test",
@@ -113,6 +124,21 @@ function DecisionItemsNavigationProbe({ to }: { to: string }) {
 }
 
 describe("DecisionItemsPage", () => {
+  it("keeps page-level style debt from regressing", () => {
+    const pageSource = readFileSync(decisionItemsPageSourcePath, "utf8");
+    const cssSource = readFileSync(decisionItemsPageCssPath, "utf8");
+    const pageAndCss = `${pageSource}\n${cssSource}`;
+    const privateShadowDeclarations = (
+      cssSource.match(/box-shadow:[^;]+;/gi) ?? []
+    ).filter((declaration) => !/box-shadow:\s*(none|var\()/i.test(declaration));
+
+    expect(pageSource).not.toContain("style=");
+    expect(pageAndCss).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    expect(pageSource).not.toMatch(/boxShadow|rgba\(/);
+    expect(privateShadowDeclarations).toEqual([]);
+    expect(cssSource).not.toMatch(/rgba\(/);
+  });
+
   it("defaults to the latest available report date and loads decision items for it", async () => {
     const client = createApiClient({ mode: "mock" });
     vi.spyOn(client, "getBalanceAnalysisDates").mockResolvedValue({
@@ -132,7 +158,7 @@ describe("DecisionItemsPage", () => {
         }),
       );
     });
-    expect(await screen.findByTestId("decision-items-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("decision-items-page")).toHaveClass("theme-dh-api");
   });
 
   it("uses the report date from dashboard decision action links", async () => {
@@ -532,7 +558,7 @@ describe("DecisionItemsPage", () => {
     const textarea = within(detail).getByRole("textbox");
     fireEvent.change(textarea, { target: { value: "复核备注" } });
 
-    fireEvent.click(screen.getByTestId("decision-items-confirm-0"));
+    fireEvent.click(await screen.findByTestId("decision-items-confirm-0"));
 
     await waitFor(() => {
       expect(updateSpy).toHaveBeenCalledWith(

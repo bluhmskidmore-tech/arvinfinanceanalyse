@@ -1,4 +1,7 @@
-from WindPy import w
+if __package__:
+    from backend.app.core_finance.macro.toolkit.WindPy import w
+else:
+    from WindPy import w
 
 w.start()
 

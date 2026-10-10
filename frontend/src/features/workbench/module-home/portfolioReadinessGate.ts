@@ -1,4 +1,5 @@
 import type { ResultMeta } from "../../../api/contracts";
+import { EM_DASH } from "../../../utils/format";
 
 export type PortfolioGateTone = "ok" | "watch" | "error" | "muted";
 
@@ -101,10 +102,14 @@ function collectPortfolioMetaBlockers(
   if (metaDates.some((entry) => !entry.date)) {
     blockingReasons.push(`${label} report_date 缺失`);
   }
-  for (const entry of metaDates) {
-    if (expectedDate && entry.date && entry.date !== expectedDate) {
-      blockingReasons.push(`${label} meta_date=${entry.date}`);
-    }
+  // 三个日期字段通常同值，按唯一日期各推一条，避免同一原因重复三次。
+  const mismatchedDates = new Set(
+    metaDates
+      .map((entry) => entry.date)
+      .filter((date) => expectedDate && date && date !== expectedDate),
+  );
+  for (const date of mismatchedDates) {
+    blockingReasons.push(`${label} meta_date=${date}`);
   }
 }
 
@@ -153,9 +158,9 @@ export function buildPortfolioReadinessGate(args: {
     }
   }
 
-  const comparableDates = dateEntries.filter((entry) => entry.date && entry.date !== "-");
+  const comparableDates = dateEntries.filter((entry) => entry.date && entry.date !== EM_DASH);
   const uniqueDates = new Set(comparableDates.map((entry) => entry.date));
-  const sourceDates = comparableDates.map((entry) => `${entry.label}=${entry.date}`).join("；") || "-";
+  const sourceDates = comparableDates.map((entry) => `${entry.label}=${entry.date}`).join("；") || EM_DASH;
   if (uniqueDates.size > 1) {
     blockingReasons.push(`日期不一致：${sourceDates}`);
   }

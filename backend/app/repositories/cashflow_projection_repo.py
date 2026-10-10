@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import duckdb
+from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
 
 FACT_TYW_TABLE = "fact_formal_tyw_balance_daily"
 FACT_ZQTZ_TABLE = "fact_formal_zqtz_balance_daily"
@@ -168,6 +169,7 @@ class CashflowProjectionRepository:
 
 
 def _connect_read_only(path: str) -> duckdb.DuckDBPyConnection | None:
+    path = resolve_effective_read_path(path)
     try:
         return duckdb.connect(path, read_only=True)
     except duckdb.IOException:

@@ -8,6 +8,8 @@ from typing import Any, Literal
 
 import pandas as pd
 
+from backend.app.core_finance.field_normalization import is_tradestatus_halted
+
 RiskLevel = Literal["green", "yellow", "orange", "red", "unknown"]
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -20,6 +22,9 @@ DEFAULT_A_SHARE_STAMPEDE_RISK_CONFIG: dict[str, Any] = {
         "yellow": [30, 49],
         "orange": [50, 69],
         "red": [70, 100],
+        # red 除分数下界外还要求的 severe 类别数；历史实现把 2 硬编码在
+        # `_risk_level` 里，与 red 区间声明不一致，这里显式化为配置键。
+        "red_requires_severe_categories": 2,
     },
     "weights": {
         "breadth": 30,
@@ -82,6 +87,26 @@ DEFAULT_A_SHARE_STAMPEDE_RISK_CONFIG: dict[str, Any] = {
     },
 }
 
+#: 各维度硬编码分值所对应的默认权重，用于把配置权重等比缩放到实际分值。
+_DEFAULT_CATEGORY_WEIGHTS: Mapping[str, float] = {
+    "breadth": 30.0,
+    "limit_stress": 25.0,
+    "turnover_stress": 15.0,
+    "reversal": 15.0,
+    "theme_crowding": 15.0,
+}
+
+_INDEX_INTRADAY_PROXY_WARNING = (
+    "INDEX_INTRADAY_PROXY_UNAVAILABLE: 缺少指数日内 high/low/close 序列"
+    "（fact_choice_macro_daily 仅有 CSI300/CSI500 收盘价），尾盘跳水维度不计分；"
+    "横截面平均振幅不得套用按指数标定的回落阈值。"
+)
+
+_TURNOVER_MA20_WARNING = (
+    "TURNOVER_MA20_HISTORY_INSUFFICIENT: 缺少排除当日的前 20 个交易日成交额均值"
+    "或核心等权涨跌幅，放量维度不计分。"
+)
+
 _RISK_NAMES: Mapping[str, str] = {
     "green": "绿色风险",
     "yellow": "黄色风险",
@@ -96,6 +121,7 @@ class _CategorySignal:
     score: int = 0
     severe: bool = False
     triggered_rules: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
 
 def load_a_share_stampede_risk_config(path: str | Path | None = None) -> dict[str, Any]:
@@ -127,7 +153,9 @@ def compute_a_share_stampede_risk(
     if latest.empty:
         return _unavailable_payload("choice_stock_daily_observation 最新交易日无可用股票观察。")
 
-    latest = _apply_universe_flags(latest)
+    latest = _apply_universe_flags(
+        latest, include_bse_in_core=_bool(active_config, "universe", "include_bse_in_core", default=False)
+    )
     core = latest[latest["core_eligible"]].copy()
     warnings: list[str] = []
     if latest["is_st"].any():
@@ -144,6 +172,16 @@ def compute_a_share_stampede_risk(
 
     history_core = frame[frame["stock_code"].isin(set(core["stock_code"]))].copy()
     metrics = _build_metrics(core, latest, history_core, theme_frame)
+    if core["pctchange"].isna().any():
+        payload = _unavailable_payload(
+            "BREADTH_PCTCHANGE_INCOMPLETE: 核心股票涨跌幅不完整，不能形成完整市场宽度及风险等级。"
+        )
+        payload["trade_date"] = latest_date.date().isoformat()
+        payload["metrics"] = _json_metrics(metrics)
+        payload["warnings"] = warnings + payload["warnings"]
+        payload["tables_used"] = ["choice_stock_daily_observation"]
+        payload["watch_next"] = ["补齐核心股票有效涨跌幅后重新计算。"]
+        return payload
     breadth = _score_breadth(metrics, active_config)
     limit_stress = _score_limit_stress(metrics, active_config)
     turnover = _score_turnover(metrics, active_config)
@@ -180,7 +218,7 @@ def compute_a_share_stampede_risk(
         )
         if signal.severe
     ]
-    risk_level = _risk_level(risk_score, severe_categories)
+    risk_level = _risk_level(risk_score, severe_categories, active_config)
     triggered_rules = _dedupe(
         [
             *breadth.triggered_rules,
@@ -192,6 +230,10 @@ def compute_a_share_stampede_risk(
         ]
     )
     status = "complete"
+    unavailable_inputs = _dedupe([*turnover.warnings, *reversal.warnings])
+    if unavailable_inputs:
+        warnings.extend(unavailable_inputs)
+        status = "degraded"
     if metrics["limit_price_coverage"] < 0.8:
         warnings.append("涨跌停价覆盖不足，跌停压力按可用样本降级计算。")
         status = "degraded"
@@ -208,6 +250,8 @@ def compute_a_share_stampede_risk(
         "risk_level": risk_level,
         "risk_name": _RISK_NAMES[risk_level],
         "category_scores": category_scores,
+        "category_weights": _category_weights(active_config),
+        "risk_level_policy": _risk_level_policy(active_config),
         "severe_categories": severe_categories,
         "summary": _summary(triggered_rules, risk_level),
         "position_rule": _position_rule(risk_level, active_config),
@@ -227,6 +271,8 @@ def _unavailable_payload(warning: str) -> dict[str, Any]:
         "risk_level": "unknown",
         "risk_name": _RISK_NAMES["unknown"],
         "category_scores": {},
+        "category_weights": {},
+        "risk_level_policy": {},
         "severe_categories": [],
         "summary": "A股踩踏风险数据不足，当前不能形成风险等级判断。",
         "position_rule": "不输出仓位权限；请先补齐股票日线与涨跌停读面。",
@@ -259,7 +305,7 @@ def _clean_observations(observations: pd.DataFrame) -> pd.DataFrame:
     ):
         if column not in frame.columns:
             frame[column] = pd.NA
-        frame[column] = pd.to_numeric(frame[column], errors="coerce")
+        frame[column] = pd.to_numeric(frame[column], errors="coerce").replace([float("inf"), float("-inf")], float("nan"))
     for column in ("is_st", "has_price_limit", "is_bse"):
         if column not in frame.columns:
             frame[column] = False if column != "has_price_limit" else True
@@ -267,14 +313,17 @@ def _clean_observations(observations: pd.DataFrame) -> pd.DataFrame:
     return frame.dropna(subset=["trade_date", "stock_code", "close_value"])
 
 
-def _apply_universe_flags(latest: pd.DataFrame) -> pd.DataFrame:
+def _apply_universe_flags(latest: pd.DataFrame, *, include_bse_in_core: bool = False) -> pd.DataFrame:
     out = latest.copy()
-    tradestatus = out["tradestatus"].astype(str).str.lower() if "tradestatus" in out.columns else pd.Series("", index=out.index)
-    is_suspended = tradestatus.str.contains("停牌|suspend|halt", regex=True, na=False)
+    # 共享互补口径（is_tradestatus_halted）：非空非可交易值（"停牌一天"/
+    # "连续停牌"/"未上市"/未知词值）全部剔出 core_eligible；NaN/空串视为
+    # 正常交易日保留，与旧 contains 词表在空值上的行为一致。
+    tradestatus = out["tradestatus"] if "tradestatus" in out.columns else pd.Series("", index=out.index)
+    is_suspended = tradestatus.fillna("").map(is_tradestatus_halted).astype(bool)
     out["core_eligible"] = (
         ~out["is_st"].astype(bool)
         & out["has_price_limit"].astype(bool)
-        & ~out["is_bse"].astype(bool)
+        & (include_bse_in_core | ~out["is_bse"].astype(bool))
         & ~is_suspended
     )
     return out
@@ -289,6 +338,8 @@ def _build_metrics(
     pct = pd.to_numeric(core["pctchange"], errors="coerce").dropna()
     valid_stock_count = int(len(latest))
     core_stock_count = int(len(core))
+    pctchange_observed_count = int(len(pct))
+    breadth_complete = pctchange_observed_count == core_stock_count
     up_count = int((pct > 0).sum())
     down_count = int((pct < 0).sum())
     flat_count = int((pct == 0).sum())
@@ -315,36 +366,32 @@ def _build_metrics(
     st_limit_down_count = int(((st_lowlimit.notna()) & (st_close <= st_lowlimit * 1.001)).sum())
     daily_amount = history_core.groupby("trade_date")["amount"].sum(min_count=1).dropna().sort_index()
     market_amount = float(daily_amount.iloc[-1]) if not daily_amount.empty else None
-    amount_ma20 = float(daily_amount.tail(20).mean()) if len(daily_amount) >= 2 else None
+    # 20日均量必须排除当日，否则当日放量会抬高自己的基准并压低放量倍数。
+    prior_amount = daily_amount.iloc[-21:-1]
+    amount_ma20 = float(prior_amount.mean()) if len(prior_amount) >= 20 else None
     amount_ratio = market_amount / amount_ma20 if market_amount is not None and amount_ma20 and amount_ma20 > 0 else None
-    index_series = history_core.groupby("trade_date")["close_value"].mean().dropna().sort_index()
-    index_return = None
-    if len(index_series) >= 2 and float(index_series.iloc[-2]) > 0:
-        index_return = float(index_series.iloc[-1] / index_series.iloc[-2] - 1)
-    high = pd.to_numeric(core["high_value"], errors="coerce")
-    low = pd.to_numeric(core["low_value"], errors="coerce")
-    avg_high = float(high.mean()) if high.notna().any() else None
-    avg_low = float(low.mean()) if low.notna().any() else None
-    avg_close = float(close.mean()) if close.notna().any() else None
+    # 指数日变化取核心股票逐股涨跌幅的等权均值（pctchange 为百分数）。横截面
+    # 平均股价的日变化会把成分变动（缺行、新股上市）记成涨跌，不能当指数用。
+    index_return = float(pct.mean()) / 100.0 if not pct.empty and breadth_complete else None
+    # index_drawdown_from_high / close_location 需要真实指数的日内 high/low/close。
+    # 生产库没有该序列，横截面平均振幅不是指数回落，按 fail-closed 置空。
     drawdown_from_high = None
     close_location = None
-    if avg_high and avg_high > 0 and avg_close is not None:
-        drawdown_from_high = max(0.0, avg_high / avg_close - 1)
-    if avg_high is not None and avg_low is not None and avg_close is not None and avg_high > avg_low:
-        close_location = (avg_close - avg_low) / (avg_high - avg_low)
     theme_metrics = _theme_metrics(core, theme_frame)
     return {
         "valid_stock_count": valid_stock_count,
         "core_stock_count": core_stock_count,
-        "up_count": up_count,
-        "down_count": down_count,
-        "flat_count": flat_count,
-        "up_ratio": _ratio(up_count, core_stock_count),
-        "median_return": float(pct.median()) if not pct.empty else None,
-        "drop_3_count": drop_3_count,
-        "drop_5_count": drop_5_count,
-        "drop_3_ratio": _ratio(drop_3_count, core_stock_count),
-        "drop_5_ratio": _ratio(drop_5_count, core_stock_count),
+        "pctchange_observed_count": pctchange_observed_count,
+        "pctchange_coverage": _ratio(pctchange_observed_count, core_stock_count),
+        "up_count": up_count if breadth_complete else None,
+        "down_count": down_count if breadth_complete else None,
+        "flat_count": flat_count if breadth_complete else None,
+        "up_ratio": _ratio(up_count, core_stock_count) if breadth_complete else None,
+        "median_return": float(pct.median()) if not pct.empty and breadth_complete else None,
+        "drop_3_count": drop_3_count if breadth_complete else None,
+        "drop_5_count": drop_5_count if breadth_complete else None,
+        "drop_3_ratio": _ratio(drop_3_count, core_stock_count) if breadth_complete else None,
+        "drop_5_ratio": _ratio(drop_5_count, core_stock_count) if breadth_complete else None,
         "limit_down_count": int(is_limit_down.sum()),
         "limit_up_count": int(is_limit_up.sum()),
         "limit_down_up_ratio": int(is_limit_down.sum()) / max(int(is_limit_up.sum()), 1),
@@ -389,7 +436,27 @@ def _theme_metrics(core: pd.DataFrame, theme_frame: pd.DataFrame | None) -> dict
     }
 
 
+def _weighted(config: Mapping[str, Any], category: str, base_score: int) -> int:
+    """把维度的默认分值按 `weights[category]` 与默认权重之比等比缩放。"""
+
+    default_weight = _DEFAULT_CATEGORY_WEIGHTS[category]
+    weight = _number(_cfg(config, "weights", category), default_weight)
+    if weight < 0:
+        weight = default_weight
+    return int(round(base_score * weight / default_weight))
+
+
+def _category_weights(config: Mapping[str, Any]) -> dict[str, float]:
+    return {
+        category: _number(_cfg(config, "weights", category), default_weight)
+        for category, default_weight in _DEFAULT_CATEGORY_WEIGHTS.items()
+    }
+
+
 def _score_breadth(metrics: Mapping[str, Any], config: Mapping[str, Any]) -> _CategorySignal:
+    red_score = _weighted(config, "breadth", 30)
+    orange_score = _weighted(config, "breadth", 24)
+    yellow_score = _weighted(config, "breadth", 15)
     score = 0
     rules: list[str] = []
     severe = False
@@ -399,30 +466,30 @@ def _score_breadth(metrics: Mapping[str, Any], config: Mapping[str, Any]) -> _Ca
     drop_3_ratio = _number(metrics.get("drop_3_ratio"), 0)
     drop_5_ratio = _number(metrics.get("drop_5_ratio"), 0)
     if up_count < _number(_cfg(config, "breadth", "red_up_count"), 500) or up_ratio < _number(_cfg(config, "breadth", "red_up_ratio"), 0.12):
-        score = 30
+        score = red_score
         severe = True
         rules.append(f"上涨家数低于{int(_cfg(config, 'breadth', 'red_up_count') or 500)}或上涨比例低于红色阈值")
     elif up_count < _number(_cfg(config, "breadth", "orange_up_count"), 700) or up_ratio < _number(_cfg(config, "breadth", "orange_up_ratio"), 0.18):
-        score = 24
+        score = orange_score
         severe = True
         rules.append("上涨家数低于700或上涨比例低于18%")
     elif up_count < _number(_cfg(config, "breadth", "yellow_up_count"), 1000) or up_ratio < _number(_cfg(config, "breadth", "yellow_up_ratio"), 0.25):
-        score = 15
+        score = yellow_score
         rules.append("上涨家数低于1000或上涨比例低于25%")
     if median_return is not None and float(median_return) < _number(_cfg(config, "breadth", "red_median_return"), -2.5):
-        score = max(score, 30)
+        score = max(score, red_score)
         severe = True
         rules.append("涨跌幅中位数低于-2.5%")
     elif median_return is not None and float(median_return) < _number(_cfg(config, "breadth", "orange_median_return"), -1.5):
-        score = max(score, 24)
+        score = max(score, orange_score)
         severe = True
         rules.append("涨跌幅中位数低于-1.5%")
     if drop_5_ratio > _number(_cfg(config, "breadth", "red_drop_5_ratio"), 0.18):
-        score = max(score, 30)
+        score = max(score, red_score)
         severe = True
         rules.append("跌超5%比例超过18%")
     elif drop_3_ratio > _number(_cfg(config, "breadth", "orange_drop_3_ratio"), 0.35):
-        score = max(score, 24)
+        score = max(score, orange_score)
         severe = True
         rules.append("跌超3%比例超过35%")
     return _CategorySignal(score=score, severe=severe, triggered_rules=rules)
@@ -432,29 +499,32 @@ def _score_limit_stress(metrics: Mapping[str, Any], config: Mapping[str, Any]) -
     limit_down = _number(metrics.get("limit_down_count"), 0)
     ratio = _number(metrics.get("limit_down_up_ratio"), 0)
     near_down = _number(metrics.get("near_down_count"), 0)
+    red_score = _weighted(config, "limit_stress", 25)
+    orange_score = _weighted(config, "limit_stress", 21)
+    yellow_score = _weighted(config, "limit_stress", 13)
     score = 0
     rules: list[str] = []
     severe = False
     if limit_down > _number(_cfg(config, "limit_stress", "red_limit_down_count"), 80):
-        score = 25
+        score = red_score
         severe = True
         rules.append("跌停家数超过80")
     elif limit_down > _number(_cfg(config, "limit_stress", "orange_limit_down_count"), 50):
-        score = 21
+        score = orange_score
         severe = True
         rules.append("跌停家数超过50")
     elif limit_down > _number(_cfg(config, "limit_stress", "yellow_limit_down_count"), 30):
-        score = 13
+        score = yellow_score
         rules.append("跌停家数超过30")
     if ratio > _number(_cfg(config, "limit_stress", "orange_down_up_ratio"), 2.0):
-        score = max(score, 21)
+        score = max(score, orange_score)
         severe = True
         rules.append("跌停/涨停比超过2")
     elif ratio > _number(_cfg(config, "limit_stress", "yellow_down_up_ratio"), 1.0):
-        score = max(score, 13)
+        score = max(score, yellow_score)
         rules.append("跌停/涨停比超过1")
     if near_down > _number(_cfg(config, "limit_stress", "orange_near_down_count"), 100):
-        score = max(score, 21)
+        score = max(score, orange_score)
         severe = True
         rules.append("近跌停家数超过100")
     return _CategorySignal(score=score, severe=severe, triggered_rules=rules)
@@ -465,23 +535,25 @@ def _score_turnover(metrics: Mapping[str, Any], config: Mapping[str, Any]) -> _C
     index_return = metrics.get("index_return")
     close_location = metrics.get("close_location")
     if amount_ratio is None or index_return is None:
-        return _CategorySignal()
+        return _CategorySignal(warnings=[_TURNOVER_MA20_WARNING])
+    orange_score = _weighted(config, "turnover_stress", 15)
+    yellow_score = _weighted(config, "turnover_stress", 8)
     if (
         float(amount_ratio) > _number(_cfg(config, "turnover_stress", "orange_amount_ratio"), 1.5)
         and float(index_return) < _number(_cfg(config, "turnover_stress", "orange_index_return"), 0.0)
     ):
-        return _CategorySignal(score=15, severe=True, triggered_rules=["放量下跌：成交额高于20日均量1.5倍且指数收跌"])
+        return _CategorySignal(score=orange_score, severe=True, triggered_rules=["放量下跌：成交额高于20日均量1.5倍且指数收跌"])
     if (
         float(amount_ratio) > _number(_cfg(config, "turnover_stress", "orange_amount_ratio"), 1.5)
         and close_location is not None
         and float(close_location) < _number(_cfg(config, "turnover_stress", "red_close_location"), 0.2)
     ):
-        return _CategorySignal(score=15, severe=True, triggered_rules=["放量滞涨：成交额高于20日均量1.5倍且收在低位"])
+        return _CategorySignal(score=orange_score, severe=True, triggered_rules=["放量滞涨：成交额高于20日均量1.5倍且收在低位"])
     if (
         float(amount_ratio) > _number(_cfg(config, "turnover_stress", "yellow_amount_ratio"), 1.3)
         and float(index_return) < _number(_cfg(config, "turnover_stress", "yellow_index_return"), 0.005)
     ):
-        return _CategorySignal(score=8, triggered_rules=["放量滞涨：成交额高于20日均量1.3倍但指数推进不足"])
+        return _CategorySignal(score=yellow_score, triggered_rules=["放量滞涨：成交额高于20日均量1.3倍但指数推进不足"])
     return _CategorySignal()
 
 
@@ -489,36 +561,41 @@ def _score_reversal(metrics: Mapping[str, Any], config: Mapping[str, Any]) -> _C
     drawdown = metrics.get("index_drawdown_from_high")
     close_location = metrics.get("close_location")
     if drawdown is None:
-        return _CategorySignal()
+        return _CategorySignal(warnings=[_INDEX_INTRADAY_PROXY_WARNING])
+    red_score = _weighted(config, "reversal", 15)
+    orange_score = _weighted(config, "reversal", 12)
+    yellow_score = _weighted(config, "reversal", 8)
     if float(drawdown) > _number(_cfg(config, "reversal", "red_drawdown"), 0.02):
-        return _CategorySignal(score=15, severe=True, triggered_rules=["指数从日内高点回落超过2%"])
+        return _CategorySignal(score=red_score, severe=True, triggered_rules=["指数从日内高点回落超过2%"])
     if (
         float(drawdown) > _number(_cfg(config, "reversal", "orange_drawdown"), 0.015)
         and close_location is not None
         and float(close_location) < _number(_cfg(config, "reversal", "low_close_location"), 0.25)
     ):
-        return _CategorySignal(score=12, severe=True, triggered_rules=["指数从日内高点回落超过1.5%且收在低位"])
+        return _CategorySignal(score=orange_score, severe=True, triggered_rules=["指数从日内高点回落超过1.5%且收在低位"])
     if float(drawdown) > _number(_cfg(config, "reversal", "yellow_drawdown"), 0.01):
-        return _CategorySignal(score=8, triggered_rules=["指数从日内高点回落超过1%"])
+        return _CategorySignal(score=yellow_score, triggered_rules=["指数从日内高点回落超过1%"])
     return _CategorySignal()
 
 
 def _score_theme(metrics: Mapping[str, Any], config: Mapping[str, Any]) -> _CategorySignal:
     theme_down = metrics.get("hot_theme_down_ratio")
     leader_break = metrics.get("leader_break_ma5_ratio")
+    red_score = _weighted(config, "theme_crowding", 15)
+    orange_score = _weighted(config, "theme_crowding", 12)
     rules: list[str] = []
     score = 0
     severe = False
     if theme_down is not None and float(theme_down) > _number(_cfg(config, "theme_crowding", "red_theme_down_ratio"), 0.75):
-        score = 15
+        score = red_score
         severe = True
         rules.append("热门主线下跌比例超过75%")
     elif theme_down is not None and float(theme_down) > _number(_cfg(config, "theme_crowding", "orange_theme_down_ratio"), 0.6):
-        score = 12
+        score = orange_score
         severe = True
         rules.append("热门主线下跌比例超过60%")
     if leader_break is not None and float(leader_break) > _number(_cfg(config, "theme_crowding", "orange_leader_break_ma5_ratio"), 0.5):
-        score = max(score, 12)
+        score = max(score, orange_score)
         severe = True
         rules.append("主题龙头跌破5日线比例超过50%")
     return _CategorySignal(score=score, severe=severe, triggered_rules=rules)
@@ -544,14 +621,36 @@ def _score_index_mask(metrics: Mapping[str, Any], config: Mapping[str, Any]) -> 
     return _CategorySignal()
 
 
-def _risk_level(risk_score: int, severe_categories: list[str]) -> RiskLevel:
-    if risk_score >= 70 and len(severe_categories) >= 2:
+def _risk_level(risk_score: int, severe_categories: list[str], config: Mapping[str, Any]) -> RiskLevel:
+    policy = _risk_level_policy(config)
+    if risk_score >= policy["red"] and len(severe_categories) >= policy["red_requires_severe_categories"]:
         return "red"
-    if risk_score >= 50:
+    if risk_score >= policy["orange"]:
         return "orange"
-    if risk_score >= 30:
+    if risk_score >= policy["yellow"]:
         return "yellow"
     return "green"
+
+
+def _risk_level_policy(config: Mapping[str, Any]) -> dict[str, float]:
+    """`risk_levels` 的实际消费口径：各档分数下界 + red 的 severe 附加条件。"""
+
+    return {
+        "green": _level_floor(config, "green", 0),
+        "yellow": _level_floor(config, "yellow", 30),
+        "orange": _level_floor(config, "orange", 50),
+        "red": _level_floor(config, "red", 70),
+        "red_requires_severe_categories": int(
+            _number(_cfg(config, "risk_levels", "red_requires_severe_categories"), 2)
+        ),
+    }
+
+
+def _level_floor(config: Mapping[str, Any], level: str, default: float) -> float:
+    bounds = _cfg(config, "risk_levels", level)
+    if isinstance(bounds, (list, tuple)):
+        return _number(bounds[0], default) if bounds else default
+    return _number(bounds, default)
 
 
 def _summary(triggered_rules: list[str], risk_level: str) -> str:

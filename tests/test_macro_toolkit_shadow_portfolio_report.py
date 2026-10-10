@@ -4,6 +4,7 @@ from pathlib import Path
 
 import duckdb
 import pandas as pd
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -20,6 +21,11 @@ from tests.test_macro_toolkit_scripts import (
     MACRO_TOOLKIT_READ_HEADERS,
     _seed_macro_toolkit_read_scope,
 )
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_macro_toolkit,
+]
 
 
 def test_shadow_portfolio_report_marks_duckdb_busy_when_file_is_locked(
@@ -67,7 +73,7 @@ def test_macro_toolkit_strategy_endpoint_exposes_read_only_shadow_portfolio_repo
     report = body["result"]["shadow_portfolio_report"]
     assert report["status"] == "complete"
     assert report["basis"] == "read_only_shadow"
-    assert report["rule_version"] == "rv_macro_toolkit_shadow_portfolio_v1"
+    assert report["rule_version"] == "rv_macro_toolkit_shadow_portfolio_v2"
     assert report["completed_periods"] == 2
     assert report["cost_model"]["cost_bps"] == [0, 10, 20, 50]
     assert report["cost_model"]["initial_build_included"] is True
@@ -77,6 +83,7 @@ def test_macro_toolkit_strategy_endpoint_exposes_read_only_shadow_portfolio_repo
     assert set(report["tables_used"]) == {
         "choice_stock_daily_observation",
         "choice_stock_factor_snapshot",
+        "stock_adjustment_factor",
     }
 
     portfolios = {item["key"]: item for item in report["portfolios"]}
@@ -139,11 +146,12 @@ def test_macro_toolkit_strategy_endpoint_exposes_unavailable_shadow_portfolio_re
     body = response.json()
     report = body["result"]["shadow_portfolio_report"]
     assert report["status"] == "unavailable"
-    assert report["rule_version"] == "rv_macro_toolkit_shadow_portfolio_v1"
-    assert "MISSING_TABLES: choice_stock_daily_observation, choice_stock_factor_snapshot" in report["warnings"]
+    assert report["rule_version"] == "rv_macro_toolkit_shadow_portfolio_v2"
+    assert "MISSING_TABLES: choice_stock_daily_observation, choice_stock_factor_snapshot, stock_adjustment_factor" in report["warnings"]
     assert set(report["tables_used"]) == {
         "choice_stock_daily_observation",
         "choice_stock_factor_snapshot",
+        "stock_adjustment_factor",
     }
     assert report["portfolios"] == []
 
@@ -336,6 +344,11 @@ def _seed_shadow_report_db(path: Path) -> None:
                 for trade_date, closes in prices.items()
                 for stock_code, close_value in closes.items()
             ],
+        )
+        conn.execute("create table stock_adjustment_factor(stock_code varchar, trade_date varchar, adj_factor double)")
+        conn.executemany(
+            "insert into stock_adjustment_factor values (?, ?, ?)",
+            [(stock_code, trade_date, 1.0) for stock_code in stock_codes for trade_date in trade_dates],
         )
         industries = (
             "Technology",

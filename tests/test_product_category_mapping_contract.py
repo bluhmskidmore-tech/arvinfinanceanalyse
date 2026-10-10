@@ -48,20 +48,70 @@ def test_default_ftp_rate_pct_is_one_point_seven_five() -> None:
     assert DEFAULT_FTP_RATE_PCT == Decimal("1.75")
 
 
-def test_report_year_ftp_policy_pins_2025_and_2026_rates() -> None:
+def test_report_year_ftp_policy_pins_2024_2025_and_2026_rates() -> None:
     assert FTP_RATE_PCT_BY_REPORT_YEAR == {
+        2024: Decimal("2.00"),
         2025: Decimal("1.75"),
         2026: Decimal("1.60"),
     }
+    assert resolve_product_category_ftp_rate_pct(
+        date(2024, 12, 31), Decimal("2.25")
+    ) == Decimal("2.00")
     assert resolve_product_category_ftp_rate_pct(
         date(2025, 12, 31), Decimal("2.25")
     ) == Decimal("1.75")
     assert resolve_product_category_ftp_rate_pct(
         date(2026, 2, 28), Decimal("2.25")
     ) == Decimal("1.60")
+    # 未登记年份不再静默套用 fallback，改为沿用最近已登记年份（见下方专项用例）。
     assert resolve_product_category_ftp_rate_pct(
-        date(2024, 12, 31), Decimal("2.25")
-    ) == Decimal("2.25")
+        date(2027, 12, 31), Decimal("2.25")
+    ) == Decimal("1.60")
+
+
+def test_unregistered_future_year_carries_forward_nearest_year_with_warning(caplog) -> None:
+    """未登记的未来年份沿用最后一个已登记年份，并显式告警（不静默用 fallback）。"""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        resolved = resolve_product_category_ftp_rate_pct(date(2030, 6, 30), Decimal("2.25"))
+
+    assert resolved == FTP_RATE_PCT_BY_REPORT_YEAR[max(FTP_RATE_PCT_BY_REPORT_YEAR)]
+    warnings = [
+        record
+        for record in caplog.records
+        if record.levelno == logging.WARNING and "not registered" in record.getMessage()
+    ]
+    assert len(warnings) == 1
+    assert "2030" in warnings[0].getMessage()
+
+
+def test_unregistered_year_before_table_start_uses_earliest_registered_year(caplog) -> None:
+    """早于年表起点的年份沿用最早已登记年份，同样告警。"""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        resolved = resolve_product_category_ftp_rate_pct(date(2019, 12, 31), Decimal("2.25"))
+
+    assert resolved == FTP_RATE_PCT_BY_REPORT_YEAR[min(FTP_RATE_PCT_BY_REPORT_YEAR)]
+    assert [
+        record
+        for record in caplog.records
+        if record.levelno == logging.WARNING and "not registered" in record.getMessage()
+    ]
+
+
+def test_registered_year_resolves_without_fallback_warning(caplog) -> None:
+    """已登记年份必须命中年表且不产生回退告警。"""
+    import logging
+
+    with caplog.at_level(logging.WARNING):
+        resolved = resolve_product_category_ftp_rate_pct(date(2026, 2, 28), Decimal("2.25"))
+
+    assert resolved == Decimal("1.60")
+    assert not [
+        record for record in caplog.records if "not registered" in record.getMessage()
+    ]
 
 
 def test_report_date_config_applies_year_policy_to_all_items() -> None:

@@ -9,6 +9,10 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
+from backend.app.core_finance.config.product_category_contract import PRODUCT_CATEGORY_RULE_VERSION
+from backend.app.core_finance.product_category_pnl_attribution import (
+    build_product_category_attribution_payload,
+)
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.user_scope_repo import UserScopeRepository
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
@@ -16,6 +20,115 @@ from tests.helpers import load_module
 
 ZERO = Decimal("0")
 DAYS_IN_YEAR = Decimal("365")
+
+
+def test_closure_error_surfaces_real_top_down_vs_bottom_up_gap() -> None:
+    """closure_error must be a genuine reconciliation check, not an always-0 identity.
+
+    When a total's own reported delta differs from the sum of its children deltas,
+    closure_error must expose that gap (previously it was forced to 0 = fake closure).
+    """
+
+    def _row(category_id: str, side: str, bni: str) -> dict[str, object]:
+        return {
+            "category_id": category_id,
+            "category_name": category_id,
+            "side": side,
+            "level": 0,
+            "report_date": "",
+            "business_net_income": Decimal(bni),
+            "cnx_scale": ZERO,
+            "cnx_cash": ZERO,
+            "cny_ftp": ZERO,
+            "foreign_ftp": ZERO,
+            "baseline_ftp_rate_pct": ZERO,
+            "weighted_yield": None,
+            "children_json": "[]",
+        }
+
+    current_rows = [
+        _row("bond_direct", "asset", "110"),
+        _row("asset_total", "asset", "115"),
+        _row("liability_total", "liability", "0"),
+        _row("grand_total", "all", "115"),
+    ]
+    prior_rows = [
+        _row("bond_direct", "asset", "100"),
+        _row("asset_total", "asset", "100"),
+        _row("liability_total", "liability", "0"),
+        _row("grand_total", "all", "100"),
+    ]
+
+    payload = build_product_category_attribution_payload(
+        current_rows=current_rows,
+        prior_rows=prior_rows,
+        current_report_date="2026-02-28",
+        prior_report_date="2026-01-31",
+        compare="mom",
+    )
+
+    leaf = next(r for r in payload["rows"] if r["category_id"] == "bond_direct")
+    # Leaf decomposition is exact by construction -> closure ~ 0 (but a real recomputation).
+    assert abs(leaf["effects"]["closure_error"]) < Decimal("0.000001")
+
+    asset_total = payload["totals"]["asset_total"]["effects"]
+    # child bottom-up delta = 10, but asset_total's own delta = 15 -> real gap of 5.
+    assert asset_total["closure_error"] == Decimal("5")
+
+
+def test_attribution_totals_exclude_overlapping_interest_earning_asset_row() -> None:
+    def _row(category_id: str, side: str, bni: str) -> dict[str, object]:
+        return {
+            "category_id": category_id,
+            "category_name": category_id,
+            "side": side,
+            "level": 0,
+            "report_date": "",
+            "business_net_income": Decimal(bni),
+            "cnx_scale": ZERO,
+            "cnx_cash": ZERO,
+            "cny_ftp": ZERO,
+            "foreign_ftp": ZERO,
+            "baseline_ftp_rate_pct": ZERO,
+            "weighted_yield": None,
+            "children_json": "[]",
+        }
+
+    current_rows = [
+        _row("repo_assets", "asset", "110"),
+        _row("interest_earning_assets", "asset", "140"),
+        _row("asset_total", "asset", "110"),
+        _row("liability_total", "liability", "0"),
+        _row("grand_total", "all", "110"),
+    ]
+    prior_rows = [
+        _row("repo_assets", "asset", "100"),
+        _row("interest_earning_assets", "asset", "100"),
+        _row("asset_total", "asset", "100"),
+        _row("liability_total", "liability", "0"),
+        _row("grand_total", "all", "100"),
+    ]
+
+    payload = build_product_category_attribution_payload(
+        current_rows=current_rows,
+        prior_rows=prior_rows,
+        current_report_date="2026-02-28",
+        prior_report_date="2026-01-31",
+        compare="mom",
+    )
+
+    overlapping_row = next(
+        row for row in payload["rows"] if row["category_id"] == "interest_earning_assets"
+    )
+    assert overlapping_row["effects"]["delta_business_net_income"] == Decimal("40")
+
+    asset_effects = payload["totals"]["asset_total"]["effects"]
+    grand_effects = payload["totals"]["grand_total"]["effects"]
+    assert asset_effects["delta_business_net_income"] == Decimal("10")
+    assert asset_effects["direct_effect"] == Decimal("10")
+    assert asset_effects["closure_error"] == ZERO
+    assert grand_effects["direct_effect"] == Decimal("10")
+    assert grand_effects["closure_error"] == ZERO
 
 
 def test_product_category_attribution_endpoint_closes_scale_rate_day_ftp(tmp_path, monkeypatch) -> None:
@@ -47,7 +160,7 @@ def test_product_category_attribution_endpoint_closes_scale_rate_day_ftp(tmp_pat
         current_scale=Decimal("110"),
         prior_cash_rate=Decimal("0.05"),
         current_cash_rate=Decimal("0.06"),
-        prior_ftp_rate=Decimal("0.0175"),
+        prior_ftp_rate=Decimal("0.0160"),
         current_ftp_rate=Decimal("0.0160"),
     )
     assert Decimal(str(effects["scale_effect"])) == pytest.approx(expected["scale_effect"])
@@ -542,6 +655,7 @@ def _insert_direct_hierarchy_pair(duckdb_path: Path) -> None:
 def _insert_direct_child_under_non_direct_total_pair(duckdb_path: Path) -> None:
     for report_date, direct_net in (("2025-02-28", Decimal("1")), ("2026-02-28", Decimal("3"))):
         source_version = f"sv_{report_date}"
+        baseline_rate = Decimal("1.75") if report_date.startswith("2025") else Decimal("1.60")
         rows = [
             _row(
                 report_date=report_date,
@@ -554,7 +668,7 @@ def _insert_direct_child_under_non_direct_total_pair(duckdb_path: Path) -> None:
                 ftp=Decimal("2"),
                 net=Decimal("3"),
                 weighted_yield=Decimal("5"),
-                baseline_ftp_rate_pct=Decimal("2"),
+                baseline_ftp_rate_pct=baseline_rate,
                 is_total=False,
                 source_version=source_version,
             ),
@@ -569,7 +683,7 @@ def _insert_direct_child_under_non_direct_total_pair(duckdb_path: Path) -> None:
                 ftp=ZERO,
                 net=direct_net,
                 weighted_yield=None,
-                baseline_ftp_rate_pct=Decimal("2"),
+                baseline_ftp_rate_pct=baseline_rate,
                 is_total=False,
                 source_version=source_version,
             ),
@@ -584,7 +698,7 @@ def _insert_direct_child_under_non_direct_total_pair(duckdb_path: Path) -> None:
                 ftp=Decimal("2"),
                 net=Decimal("3") + direct_net,
                 weighted_yield=Decimal("5"),
-                baseline_ftp_rate_pct=Decimal("2"),
+                baseline_ftp_rate_pct=baseline_rate,
                 is_total=True,
                 source_version=source_version,
             ),
@@ -599,7 +713,7 @@ def _insert_direct_child_under_non_direct_total_pair(duckdb_path: Path) -> None:
                 ftp=ZERO,
                 net=ZERO,
                 weighted_yield=None,
-                baseline_ftp_rate_pct=Decimal("2"),
+                baseline_ftp_rate_pct=baseline_rate,
                 is_total=True,
                 source_version=source_version,
             ),
@@ -614,7 +728,7 @@ def _insert_direct_child_under_non_direct_total_pair(duckdb_path: Path) -> None:
                 ftp=Decimal("2"),
                 net=Decimal("3") + direct_net,
                 weighted_yield=Decimal("5"),
-                baseline_ftp_rate_pct=Decimal("2"),
+                baseline_ftp_rate_pct=baseline_rate,
                 is_total=True,
                 source_version=source_version,
             ),
@@ -697,7 +811,7 @@ def _row(
         is_total,
         children_json,
         source_version,
-        "rv_product_category_pnl_v1",
+        PRODUCT_CATEGORY_RULE_VERSION,
     )
 
 

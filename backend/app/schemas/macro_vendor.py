@@ -89,10 +89,13 @@ class MacroVendorSeries(BaseModel):
 
     series_id: str
     series_name: str
+    display_name: str | None = None
     vendor_name: str
     vendor_version: str
     frequency: str
     unit: str
+    theme: str = "unknown"
+    tags: list[str] = Field(default_factory=list)
     refresh_tier: ChoiceMacroRefreshTier | None = None
     fetch_mode: ChoiceMacroFetchMode | None = None
     fetch_granularity: ChoiceMacroFetchGranularity | None = None
@@ -110,7 +113,7 @@ class ChoiceMacroRecentPoint(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     trade_date: str
-    value_numeric: float
+    value_numeric: float | None
     source_version: str
     vendor_version: str
     quality_flag: Literal["ok", "warning", "error", "stale"] = "warning"
@@ -121,8 +124,9 @@ class ChoiceMacroLatestPoint(BaseModel):
 
     series_id: str
     series_name: str
+    display_name: str | None = None
     trade_date: str
-    value_numeric: float
+    value_numeric: float | None
     frequency: str
     unit: str
     source_version: str
@@ -142,6 +146,13 @@ class ChoiceMacroLatestPayload(BaseModel):
 
     read_target: Literal["duckdb"] = "duckdb"
     series: list[ChoiceMacroLatestPoint]
+    derived_spreads: dict[str, float | None] = Field(
+        default_factory=dict,
+        description=(
+            "Analytical same-date yield spreads in bp; missing, stale, or date-misaligned "
+            "legs are represented as null."
+        ),
+    )
 
 
 class FxFormalStatusRow(BaseModel):
@@ -184,7 +195,7 @@ class FxAnalyticalSeriesPoint(BaseModel):
     series_id: str
     series_name: str
     trade_date: str
-    value_numeric: float
+    value_numeric: float | None
     frequency: str
     unit: str
     source_version: str

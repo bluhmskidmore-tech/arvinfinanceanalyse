@@ -5,8 +5,6 @@ import {
   AnalysisGrid,
   DataStatusStrip,
   EvidencePanel,
-  KpiBand,
-  KpiBandMetric,
   PageDecisionHero,
   PageHeader,
   PageStateSurface,
@@ -57,15 +55,12 @@ describe("PagePrimitives v2 opt-in contract", () => {
     expect(screen.getByRole("button", { name: "导出" })).toBeTruthy();
   });
 
-  it("renders DataStatusStrip, KpiBand, KpiBandMetric, AnalysisGrid, EvidencePanel, PageStateSurface", () => {
+  it("renders DataStatusStrip, AnalysisGrid, EvidencePanel, PageStateSurface", () => {
     render(
       <>
         <DataStatusStrip testId="strip">
           <span data-testid="pill">Stale</span>
         </DataStatusStrip>
-        <KpiBand testId="kpis">
-          <KpiBandMetric label="久期" value="4.26" footer="年" testId="kpi-1" />
-        </KpiBand>
         <AnalysisGrid columns={3} testId="grid">
           <div>a</div>
           <div>b</div>
@@ -80,11 +75,6 @@ describe("PagePrimitives v2 opt-in contract", () => {
 
     expect(screen.getByTestId("strip")).toHaveClass(PAGE_V2_CONTRACT.dataStatusRoot);
     expect(screen.getByTestId("pill")).toBeTruthy();
-
-    expect(screen.getByTestId("kpis")).toHaveClass(PAGE_V2_CONTRACT.kpiBandRoot);
-    expect(screen.getByTestId("kpi-1")).toHaveClass(PAGE_V2_CONTRACT.kpiMetricItem);
-    expect(screen.getByTestId("kpi-1")).toHaveTextContent("4.26");
-    expect(screen.getByTestId("kpi-1").querySelector(".moss-page-v2-kpi-metric__value")).not.toBeNull();
 
     expect(screen.getByTestId("grid")).toHaveClass("moss-page-v2-analysis-grid");
     expect(screen.getByTestId("grid")).toHaveClass("moss-page-v2-analysis-grid--cols-3");

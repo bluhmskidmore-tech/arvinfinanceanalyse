@@ -7,11 +7,18 @@ from backend.app.schemas.liability_analytics import (
     LiabilityCounterpartyPayload,
     LiabilityMonthlyBreakdownRow,
     LiabilityNameAmountItem,
+    LiabilityNimStress,
     LiabilityRiskBucketsPayload,
     LiabilityYieldKpi,
     LiabilityYieldMetricsPayload,
 )
 
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_liability_analytics,
+]
 
 class TestLiabilityRiskBucketsNumericMigration:
     def test_name_amount_item_accepts_legacy_float(self) -> None:
@@ -32,7 +39,6 @@ class TestLiabilityRiskBucketsNumericMigration:
         restored = LiabilityRiskBucketsPayload.model_validate(dumped)
         assert restored.liabilities_term_buckets[0].amount_yi is not None
 
-
 class TestLiabilityYieldNumericMigration:
     def test_kpi_accepts_legacy_float(self) -> None:
         kpi = LiabilityYieldKpi(
@@ -43,6 +49,21 @@ class TestLiabilityYieldNumericMigration:
         )
         assert isinstance(kpi.asset_yield, Numeric)
         assert kpi.nim.unit == "pct"
+
+    def test_kpi_accepts_backend_nim_stress_numeric_envelope(self) -> None:
+        kpi = LiabilityYieldKpi(
+            asset_yield=0.031,
+            liability_cost=0.018,
+            market_liability_cost=0.021,
+            nim=0.010,
+            nim_stress=LiabilityNimStress(nim_stressed=0.005, delta_bp=-50),
+        )
+
+        assert kpi.nim_stress is not None
+        assert isinstance(kpi.nim_stress.nim_stressed, Numeric)
+        assert kpi.nim_stress.nim_stressed.unit == "pct"
+        assert kpi.nim_stress.delta_bp is not None
+        assert kpi.nim_stress.delta_bp.unit == "bp"
 
     def test_payload_accepts_native_numeric(self) -> None:
         payload = LiabilityYieldMetricsPayload(
@@ -56,7 +77,6 @@ class TestLiabilityYieldNumericMigration:
         )
         assert payload.kpi.liability_cost is not None
         assert payload.kpi.liability_cost.raw == 0.018
-
 
 class TestLiabilityCounterpartyNumericMigration:
     def test_payload_accepts_legacy_float_nested_items(self) -> None:
@@ -84,7 +104,6 @@ class TestLiabilityCounterpartyNumericMigration:
         restored = LiabilityCounterpartyPayload.model_validate(dumped)
         assert restored.by_type[0].value is not None
 
-
 class TestLiabilitiesMonthlyNumericMigration:
     def test_month_rows_accept_legacy_float(self) -> None:
         payload = LiabilitiesMonthlyPayload(
@@ -98,7 +117,9 @@ class TestLiabilitiesMonthlyNumericMigration:
                     "avg_issued_liabilities": 600000.0,
                     "avg_liability_cost": 0.018,
                     "mom_change": 50000.0,
-                    "mom_change_pct": 5.0,
+                    "mom_change_pct": 0.05,
+                    "yoy_change": -25000.0,
+                    "yoy_change_pct": -0.025,
                     "counterparty_top10": [
                         {
                             "name": "Bank A",
@@ -127,6 +148,13 @@ class TestLiabilitiesMonthlyNumericMigration:
         month = payload.months[0]
         assert month.avg_total_liabilities is not None
         assert month.avg_total_liabilities.unit == "yuan"
+        assert month.mom_change is not None
+        assert month.mom_change.display == "+50,000.00"
+        assert month.mom_change_pct is not None
+        assert month.mom_change_pct.display == "+5.00%"
+        assert month.yoy_change is not None
+        assert month.yoy_change_pct is not None
+        assert month.yoy_change_pct.display == "-2.50%"
         assert month.counterparty_top10[0].weighted_cost is not None
         assert month.counterparty_top10[0].weighted_cost.unit == "pct"
 

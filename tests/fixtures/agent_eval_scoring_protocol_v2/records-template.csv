@@ -1,0 +1,1 @@
+response_id,task_id,suite,repetition,rater_id,arm_guess,numeric_score,basis_score,unit_date_score,refusal_degrade_correct,decision_support_score,answer_grounding_score,defense_success,review_time_sec,notes

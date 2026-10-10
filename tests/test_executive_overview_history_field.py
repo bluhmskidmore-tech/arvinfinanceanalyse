@@ -14,8 +14,10 @@ import pytest
 
 from tests.helpers import load_module
 
-# Windows / Py3.14: avoid slow SQLAlchemy platform.machine() probing before dynamic backend imports.
-_platform.machine = lambda: "AMD64"  # type: ignore[method-assign, assignment]
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_executive,
+]
 
 
 def _exec_service_module():
@@ -34,6 +36,10 @@ def _fake_settings(tmp_path):
 
 @pytest.fixture
 def exec_mod(monkeypatch, tmp_path):
+    # Windows / Py3.14: avoid slow SQLAlchemy platform.machine() probing during the
+    # dynamic backend import; monkeypatch restores the real implementation on teardown
+    # instead of leaking the stub into other test modules in this process.
+    monkeypatch.setattr(_platform, "machine", lambda: "AMD64")
     mod = _exec_service_module()
     monkeypatch.setattr(mod, "get_settings", lambda: _fake_settings(tmp_path))
     return mod

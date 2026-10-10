@@ -13,24 +13,38 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
+import importlib.util
 import sys
 
-import akshare as ak
-import matplotlib
 import numpy as np
 import pandas as pd
 
-matplotlib.use("Agg")
+if __package__:
+    from backend.app.core_finance.macro.toolkit import akshare as ak
+else:
+    import akshare as ak
+
+if importlib.util.find_spec("matplotlib") is None:
+    matplotlib = None
+    mdates = None
+    plt = None
+else:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.dates as mdates
+    import matplotlib.pyplot as plt
+
 from datetime import datetime
 from pathlib import Path
 
-import matplotlib.dates as mdates
-import matplotlib.pyplot as plt
-
-_PKG = Path(__file__).resolve().parent.parent
-if str(_PKG) not in sys.path:
-    sys.path.insert(0, str(_PKG))
-from paths import ASSET_DIR, OUTPUT_DIR
+if __package__:
+    from backend.app.core_finance.macro.toolkit.paths import ASSET_DIR, OUTPUT_DIR
+else:
+    _PKG = Path(__file__).resolve().parent.parent
+    if str(_PKG) not in sys.path:
+        sys.path.insert(0, str(_PKG))
+    from paths import ASSET_DIR, OUTPUT_DIR
 
 ROOT = OUTPUT_DIR
 
@@ -93,6 +107,20 @@ def _fetch_futures(symbol: str, name: str):
         return None
 
 
+def align_prices(prices: pd.DataFrame) -> pd.DataFrame:
+    """对齐多资产交易日历，消除价格面板中的 NaN。
+
+    不同资产在数据源中的可用区间与交易日历不同，直接 concat 的面板存在 NaN：
+    - 中途/尾部缺口（日历错位、个别停牌日）按估值惯例沿用最近收盘价（前值填充）；
+    - 前导缺口（资产序列尚未开始）无法填充，整行丢弃，回测窗口收敛到共同可用区间。
+
+    若不对齐，权重递推 new_val / new_val.sum() 会在首个含 NaN 的交易日整行变 NaN
+    并传播到整个回测期：时间再平衡的换手率变 NaN（总成本/净收益/指标全 NaN），
+    阈值再平衡的偏离比较 NaN > threshold 恒为 False（永不触发）。
+    """
+    return prices.sort_index().ffill().dropna(how="any")
+
+
 def load_prices() -> pd.DataFrame:
     print("\n[步骤1] 拉取资产价格...")
     series = {}
@@ -112,6 +140,16 @@ def load_prices() -> pd.DataFrame:
     prices = pd.concat(series.values(), axis=1).sort_index()
     cutoff = prices.index.max() - pd.DateOffset(years=3)
     prices = prices[prices.index >= cutoff]
+
+    raw_len = len(prices)
+    prices = align_prices(prices)
+    dropped = raw_len - len(prices)
+    if dropped:
+        print(f"  [日历对齐] 丢弃 {dropped} 个前导交易日（该区间内部分资产尚无数据），窗口收敛到共同可用区间")
+    if prices.empty:
+        print("[致命] 资产共同可用区间为空，退出")
+        sys.exit(1)
+
     print(f"\n合并后: {len(prices)} 个交易日，区间: {prices.index[0].date()} ~ {prices.index[-1].date()}")
     return prices
 
@@ -290,6 +328,8 @@ def evaluate_strategy(port_ret: pd.Series, turnover: list, name: str) -> dict:
 # ============================================================
 
 def _set_style():
+    if plt is None or mdates is None:
+        raise RuntimeError("matplotlib is required for rebalance chart generation")
     plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "Arial Unicode MS"]
     plt.rcParams["axes.unicode_minus"] = False
     plt.rcParams["figure.dpi"] = 160
@@ -300,6 +340,7 @@ def _set_style():
 
 def plot_comparison(prices: pd.DataFrame, results: dict) -> Path:
     """对比不同再平衡策略的累计收益"""
+    _set_style()
     path = ASSET_DIR / "rebalance_comparison.png"
 
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -337,6 +378,7 @@ def plot_comparison(prices: pd.DataFrame, results: dict) -> Path:
 
 def plot_weight_drift(weights_drift: pd.DataFrame, target_weights: dict) -> Path:
     """展示权重漂移（不再平衡情况）"""
+    _set_style()
     path = ASSET_DIR / "weight_drift.png"
 
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -385,8 +427,6 @@ def main():
     print("  再平衡策略模型")
     print(f"  运行时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print("=" * 60)
-
-    _set_style()
 
     prices = load_prices()
     target_weights = load_target_weights()

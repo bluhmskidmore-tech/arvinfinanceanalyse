@@ -1,10 +1,18 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import date, timedelta
 from decimal import Decimal
+from typing import Any
 
 import duckdb
+from backend.app.core_finance.accounting_asset_movement import (
+    GlAccountingAssetBalance,
+    reconcile_chain_fx_adjustments,
+)
 from backend.app.core_finance.zqtz_asset_bond_category import ZQTZ_ASSET_BOND_ROWS as _ZQTZ_ASSET_ROWS
+from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
+from backend.app.repositories.duckdb_repo import DuckDBRepository, read_only_connection
 
 _LEDGER_BUSINESS_ROWS = [
     {
@@ -99,6 +107,16 @@ _LEDGER_BUSINESS_ROWS = [
     },
 ]
 
+
+def _is_missing_table_error(exc: duckdb.Error) -> bool:
+    message = str(exc).lower()
+    return (
+        isinstance(exc, duckdb.CatalogException)
+        and "table with name" in message
+        and "does not exist" in message
+    )
+
+
 _ZQTZ_NCD_ROW = {
     "row_key": "asset_zqtz_interbank_cd",
     "row_label": "资产端-同业存单",
@@ -106,18 +124,85 @@ _ZQTZ_NCD_ROW = {
     "sort_order": 60,
 }
 
+_MOVEMENT_FACT_TABLE = "fact_accounting_asset_movement_monthly"
+# registry slice 42 追加的落库控制结论列。
+_MOVEMENT_CONTROL_COLUMNS = ("chain_status", "position_source_basis")
+
+
+def load_movement_chain_fx_evidence(
+    conn: duckdb.DuckDBPyConnection, *, report_date: str, currency_basis: str,
+) -> dict[str, Any]:
+    """读取本页单一外币折算证据；缺源、混合外币或非相邻月不解释差额。"""
+    if currency_basis != "CNX":
+        return {}
+    prior_date = (date.fromisoformat(report_date).replace(day=1) - timedelta(days=1)).isoformat()
+    try:
+        currencies = conn.execute(
+            """select report_date, currency_code, count(*) from fact_formal_zqtz_balance_daily
+               where report_date in (?, ?) and position_scope = 'asset'
+               group by report_date, currency_code""", [prior_date, report_date],
+        ).fetchall()
+        by_date = {d: {str(ccy or '').upper() for rd, ccy, _ in currencies if str(rd) == d}
+                   for d in (prior_date, report_date)}
+        foreign = by_date[prior_date] - {"CNY"}
+        if len(foreign) != 1 or not next(iter(foreign)) or by_date[report_date] != by_date[prior_date]:
+            return {}
+        currency = next(iter(foreign))
+        rates = conn.execute(
+            """select cast(trade_date as varchar), mid_rate, source_version from fx_daily_mid
+               where cast(trade_date as varchar) in (?, ?) and base_currency = ? and quote_currency = 'CNY'""",
+            [prior_date, report_date, currency],
+        ).fetchall()
+        if len(rates) != 2 or {str(r[0]) for r in rates} != {prior_date, report_date} or any(r[1] is None for r in rates):
+            return {}
+        rate_map = {str(d): Decimal(str(rate)) for d, rate, _ in rates}
+        raw = conn.execute(
+            """select report_date, account_code, currency, beginning_balance, ending_balance
+               from product_category_pnl_canonical_fact
+               where report_date in (?, ?) and currency in ('CNX', 'CNY')
+                 and (account_code like '141%' or account_code like '142%'
+                      or account_code like '143%' or account_code like '1440101%')""",
+            [prior_date, report_date],
+        ).fetchall()
+        if any(beginning is None or ending is None for _, _, _, beginning, ending in raw):
+            return {}
+        gl = [GlAccountingAssetBalance(date.fromisoformat(str(d)), str(code), Decimal(str(beginning)),
+                                      Decimal(str(ending)), currency_basis=str(ccy))
+              for d, code, ccy, beginning, ending in raw]
+        adjustments = reconcile_chain_fx_adjustments(
+            current_gl=[r for r in gl if r.report_date.isoformat() == report_date],
+            prior_gl=[r for r in gl if r.report_date.isoformat() == prior_date],
+            prior_rate=rate_map[prior_date], current_rate=rate_map[report_date],
+        )
+        return {"adjustments": adjustments, "prior_report_date": prior_date,
+                "currency": currency, "prior_rate": rate_map[prior_date], "current_rate": rate_map[report_date],
+                "source_versions": sorted({str(sv) for _, _, sv in rates if sv})}
+    except (duckdb.CatalogException, duckdb.BinderException):
+        # 旧库/测试库未提供证据字段时保留原始断点，绝不自动放行。
+        return {}
+
 
 @dataclass
-class AccountingAssetMovementRepository:
+class AccountingAssetMovementRepository(DuckDBRepository):
     path: str
+    _table_exists_cache: dict[str, bool] = field(
+        default_factory=dict,
+        init=False,
+        repr=False,
+    )
+    _column_exists_cache: dict[tuple[str, str], bool] = field(
+        default_factory=dict,
+        init=False,
+        repr=False,
+    )
 
     def _connect(self) -> duckdb.DuckDBPyConnection:
-        try:
-            return duckdb.connect(self.path, read_only=True)
-        except duckdb.Error as exc:
-            if "different configuration" not in str(exc).lower():
-                raise
-            return duckdb.connect(self.path, read_only=False)
+        scoped = getattr(self._scope, "conn", None)
+        if scoped is not None:
+            self._assert_scoped_path_matches_context()
+            # Each helper closes its cursor; the request scope owns the database.
+            return scoped.cursor()
+        return duckdb.connect(resolve_effective_read_path(self.path), read_only=True)
 
     def list_report_dates(self, *, currency_basis: str = "CNX") -> list[str]:
         try:
@@ -131,12 +216,168 @@ class AccountingAssetMovementRepository:
                 """,
                 [currency_basis],
             ).fetchall()
-        except duckdb.Error:
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
             return []
         finally:
             if "conn" in locals():
                 conn.close()
         return [str(row[0]) for row in rows]
+
+    def list_control_report_dates(self, *, currency_basis: str = "CNX") -> list[str]:
+        try:
+            conn = self._connect()
+            rows = conn.execute(
+                """
+                select distinct cast(report_date as varchar)
+                from product_category_pnl_canonical_fact
+                where currency = ?
+                  and (
+                    account_code like '141%'
+                    or account_code like '142%'
+                    or account_code like '143%'
+                    or account_code like '1440101%'
+                  )
+                order by cast(report_date as varchar) desc
+                """,
+                [currency_basis],
+            ).fetchall()
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
+            return []
+        finally:
+            if "conn" in locals():
+                conn.close()
+        return [str(row[0]) for row in rows]
+
+    def fetch_gl144_family_rows(
+        self,
+        *,
+        report_date: str,
+        currency_basis: str = "CNX",
+    ) -> list[dict[str, object]]:
+        """读取 144 家族全部科目行，供未映射披露分类；不影响控制科目日期判定。"""
+        try:
+            conn = self._connect()
+            if not self._table_exists_with_connection(conn, "product_category_pnl_canonical_fact"):
+                return []
+            rows = conn.execute(
+                """
+                select
+                  account_code,
+                  coalesce(sum(beginning_balance), 0) as beginning_balance,
+                  coalesce(sum(ending_balance), 0) as ending_balance
+                from product_category_pnl_canonical_fact
+                where cast(report_date as varchar) = ?
+                  and currency = ?
+                  and account_code like '144%'
+                group by account_code
+                order by account_code
+                """,
+                [report_date, currency_basis],
+            ).fetchall()
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
+            return []
+        finally:
+            if "conn" in locals():
+                conn.close()
+        return [
+            {
+                "account_code": str(row[0] or ""),
+                "beginning_balance": Decimal(str(row[1] or "0")),
+                "ending_balance": Decimal(str(row[2] or "0")),
+            }
+            for row in rows
+        ]
+
+    def fetch_missing_control_dates(
+        self,
+        *,
+        report_dates: list[str],
+        currency_basis: str,
+    ) -> list[str]:
+        """report_dates lacking product_category_pnl_canonical_fact control-account rows.
+
+        Fails open (treats every requested date as missing) on any DuckDB error
+        or absent table, so refresh callers retry materialization rather than
+        silently skipping it.
+        """
+        if not report_dates:
+            return []
+        try:
+            with read_only_connection(self.path) as conn:
+                if not self._table_exists_with_connection(conn, "product_category_pnl_canonical_fact"):
+                    return report_dates
+                rows = conn.execute(
+                    """
+                    select cast(report_date as varchar) as report_date, count(*) as row_count
+                    from product_category_pnl_canonical_fact
+                    where cast(report_date as varchar) in (select unnest(?))
+                      and currency = ?
+                      and (
+                        account_code like '141%'
+                        or account_code like '142%'
+                        or account_code like '143%'
+                        or account_code like '1440101%'
+                      )
+                    group by 1
+                    """,
+                    [report_dates, currency_basis],
+                ).fetchall()
+        except duckdb.Error:
+            return report_dates
+
+        available_dates = {str(row[0]) for row in rows if int(row[1] or 0) > 0}
+        return [
+            current_report_date
+            for current_report_date in report_dates
+            if current_report_date not in available_dates
+        ]
+
+    def control_source_versions(
+        self,
+        *,
+        currency_basis: str = "CNX",
+    ) -> dict[str, str]:
+        try:
+            conn = self._connect()
+            rows = conn.execute(
+                """
+                select
+                  cast(report_date as varchar),
+                  coalesce(
+                    string_agg(
+                      distinct nullif(source_version, ''),
+                      '__' order by nullif(source_version, '')
+                    ),
+                    ''
+                  )
+                from product_category_pnl_canonical_fact
+                where currency = ?
+                  and (
+                    account_code like '141%'
+                    or account_code like '142%'
+                    or account_code like '143%'
+                    or account_code like '1440101%'
+                  )
+                group by 1
+                order by 1 desc
+                """,
+                [currency_basis],
+            ).fetchall()
+        except duckdb.Error as exc:
+            message = str(exc).lower()
+            if _is_missing_table_error(exc) or "source_version" in message:
+                return {}
+            raise
+        finally:
+            if "conn" in locals():
+                conn.close()
+        return {str(row[0]): str(row[1] or "") for row in rows}
 
     def latest_control_report_date(self, *, currency_basis: str = "CNX") -> str | None:
         try:
@@ -155,7 +396,9 @@ class AccountingAssetMovementRepository:
                 """,
                 [currency_basis],
             ).fetchone()
-        except duckdb.Error:
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
             return None
         finally:
             if "conn" in locals():
@@ -177,7 +420,9 @@ class AccountingAssetMovementRepository:
                 """,
                 [currency_basis],
             ).fetchone()
-        except duckdb.Error:
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
             return "sv_accounting_asset_movement_empty"
         finally:
             if "conn" in locals():
@@ -196,6 +441,209 @@ class AccountingAssetMovementRepository:
             report_dates=[report_date],
             currency_basis=currency_basis,
         )
+
+    def fetch_reconciliation_breaches(
+        self,
+        *,
+        currency_basis: str = "CNX",
+        report_dates: list[str] | None = None,
+    ) -> list[dict[str, object]]:
+        """已落库的、reconciliation_status != 'matched' 的行。
+
+        对账控制的只读取证入口：全部返回 matched 说明控制没有在比对独立数据源，
+        或者两侧真的完全一致——两者可以用 fetch_position_source_coverage 区分。
+        """
+        date_filter = (
+            "and cast(report_date as varchar) in (select unnest(?))"
+            if report_dates
+            else ""
+        )
+        params: list[object] = [currency_basis]
+        if report_dates:
+            params.append(report_dates)
+        try:
+            with read_only_connection(self.path) as conn:
+                if not self._table_exists_with_connection(conn, _MOVEMENT_FACT_TABLE):
+                    return []
+                control_columns = ", ".join(
+                    column
+                    if self._column_exists(conn, _MOVEMENT_FACT_TABLE, column)
+                    else f"cast(null as varchar) as {column}"
+                    for column in _MOVEMENT_CONTROL_COLUMNS
+                )
+                rows = conn.execute(
+                    f"""
+                    select
+                      cast(report_date as varchar),
+                      basis_bucket,
+                      reconciliation_status,
+                      coalesce(zqtz_amount, 0),
+                      coalesce(gl_amount, 0),
+                      coalesce(reconciliation_diff, 0),
+                      {control_columns}
+                    from fact_accounting_asset_movement_monthly
+                    where currency_basis = ?
+                      and coalesce(reconciliation_status, '') <> 'matched'
+                      {date_filter}
+                    order by cast(report_date as varchar), basis_bucket
+                    """,
+                    params,
+                ).fetchall()
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
+            return []
+        keys = (
+            "report_date",
+            "basis_bucket",
+            "reconciliation_status",
+            "zqtz_amount",
+            "gl_amount",
+            "reconciliation_diff",
+            *_MOVEMENT_CONTROL_COLUMNS,
+        )
+        numeric_keys = {"zqtz_amount", "gl_amount", "reconciliation_diff"}
+        return [
+            {
+                key: (
+                    Decimal(str(value or "0"))
+                    if key in numeric_keys
+                    # 控制结论列保留 None：迁移落地前写入的行"未记录"，不能被
+                    # str() 成 'None' 混进已判定的取值里。
+                    else (None if key in _MOVEMENT_CONTROL_COLUMNS and value is None else str(value))
+                )
+                for key, value in zip(keys, row, strict=True)
+            }
+            for row in rows
+        ]
+
+    def fetch_chain_continuity_gaps(
+        self,
+        *,
+        currency_basis: str = "CNX",
+        tolerance: Decimal = Decimal("0.01"),
+    ) -> list[dict[str, object]]:
+        """逐桶比较 previous_balance(M) 与 current_balance(M-1)，返回超容差的衔接。
+
+        行内的 balance_change := current - previous 在代数上必然闭合，对跨月
+        衔接零覆盖；这个方法是从读模型侧证伪该口径的唯一手段。
+        """
+        try:
+            with read_only_connection(self.path) as conn:
+                if not self._table_exists_with_connection(conn, "fact_accounting_asset_movement_monthly"):
+                    return []
+                rows = conn.execute(
+                    """
+                    with ordered as (
+                      select
+                        cast(report_date as varchar) as report_date,
+                        basis_bucket,
+                        coalesce(previous_balance, 0) as previous_balance,
+                        coalesce(current_balance, 0) as current_balance,
+                        lag(cast(report_date as varchar)) over w as prior_report_date,
+                        lag(coalesce(current_balance, 0)) over w as prior_current_balance
+                      from fact_accounting_asset_movement_monthly
+                      where currency_basis = ?
+                      window w as (
+                        partition by basis_bucket
+                        order by cast(report_date as varchar)
+                      )
+                    )
+                    select
+                      report_date,
+                      basis_bucket,
+                      prior_report_date,
+                      prior_current_balance,
+                      previous_balance,
+                      previous_balance - prior_current_balance as gap
+                    from ordered
+                    where prior_report_date is not null
+                      and abs(previous_balance - prior_current_balance) > ?
+                    order by report_date, basis_bucket
+                    """,
+                    [currency_basis, tolerance],
+                ).fetchall()
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
+            return []
+        keys = (
+            "report_date",
+            "basis_bucket",
+            "prior_report_date",
+            "prior_current_balance",
+            "previous_balance",
+            "gap",
+        )
+        return [
+            {
+                key: Decimal(str(value or "0")) if key not in {"report_date", "basis_bucket", "prior_report_date"} else str(value)
+                for key, value in zip(keys, row, strict=True)
+            }
+            for row in rows
+        ]
+
+    def fetch_position_source_coverage(
+        self,
+        *,
+        report_dates: list[str],
+        currency_basis: str = "CNX",
+    ) -> dict[str, dict[str, object]]:
+        """每个报告日在独立头寸源里实际可用的 currency_basis 与行数。
+
+        总账用 CNX 标记本外币折人民币口径，fact_formal_zqtz_balance_daily 用
+        CNY 表示同一口径（native 才是原币），所以这里按 CNX -> CNY 的既有别名
+        回退。两个口径都没有行时 resolved_currency_basis 为 None，调用方必须把
+        该日视为"对账无对手方"，不能当成对平。
+        """
+        if not report_dates:
+            return {}
+        table = "fact_formal_zqtz_balance_daily"
+        candidates = ("CNX", "CNY") if currency_basis.upper() == "CNX" else (currency_basis,)
+        coverage: dict[str, dict[str, object]] = {
+            report_date: {
+                "resolved_currency_basis": None,
+                "row_count": 0,
+                "candidates": list(candidates),
+            }
+            for report_date in report_dates
+        }
+        try:
+            with read_only_connection(self.path) as conn:
+                if not self._table_exists_with_connection(conn, table):
+                    return coverage
+                rows = conn.execute(
+                    f"""
+                    select
+                      cast(report_date as varchar),
+                      currency_basis,
+                      count(*)
+                    from {table}
+                    where cast(report_date as varchar) in (select unnest(?))
+                      and currency_basis in (select unnest(?))
+                      and position_scope = 'asset'
+                    group by 1, 2
+                    """,
+                    [report_dates, list(candidates)],
+                ).fetchall()
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
+            return coverage
+
+        counts_by_date: dict[str, dict[str, int]] = {}
+        for report_date, basis, row_count in rows:
+            counts_by_date.setdefault(str(report_date), {})[str(basis)] = int(row_count or 0)
+        for report_date, counts in counts_by_date.items():
+            for candidate in candidates:
+                if counts.get(candidate, 0) > 0:
+                    coverage[report_date] = {
+                        "resolved_currency_basis": candidate,
+                        "row_count": counts[candidate],
+                        "candidates": list(candidates),
+                    }
+                    break
+        return coverage
 
     def fetch_recent_rows(
         self,
@@ -217,7 +665,9 @@ class AccountingAssetMovementRepository:
                 """,
                 [currency_basis, report_date, month_count],
             ).fetchall()
-        except duckdb.Error:
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
             return []
         finally:
             if "conn" in locals():
@@ -247,7 +697,7 @@ class AccountingAssetMovementRepository:
             return []
         try:
             conn = self._connect()
-            rows: list[dict[str, object]] = []
+            rows: list[dict[str, Any]] = []
             for date_value in report_dates:
                 rows.extend(
                     self._fetch_ledger_business_rows(
@@ -256,23 +706,26 @@ class AccountingAssetMovementRepository:
                         currency_basis=currency_basis,
                     )
                 )
-                rows.extend(
-                    self._fetch_zqtz_asset_rows(
-                        conn,
-                        report_date=date_value,
-                        currency_basis=currency_basis,
-                    )
+            rows.extend(
+                self._fetch_zqtz_asset_rows_for_dates(
+                    conn,
+                    report_dates=report_dates,
+                    currency_basis=currency_basis,
                 )
-        except duckdb.Error:
+            )
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
             return []
         finally:
             if "conn" in locals():
                 conn.close()
-        return sorted(
+        ordered: list[dict[str, Any]] = sorted(
             rows,
             key=lambda row: (str(row["report_date"]), -int(row["sort_order"])),
             reverse=True,
         )
+        return ordered
 
     def fetch_zqtz_asset_business_rows(
         self,
@@ -287,7 +740,9 @@ class AccountingAssetMovementRepository:
                 report_date=report_date,
                 currency_basis=currency_basis,
             )
-        except duckdb.Error:
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
             return []
         finally:
             if "conn" in locals():
@@ -302,7 +757,7 @@ class AccountingAssetMovementRepository:
         table = "product_category_pnl_canonical_fact"
         try:
             conn = self._connect()
-            if not self._table_exists(conn, table):
+            if not self._table_exists_with_connection(conn, table):
                 return {
                     "status": "unsupported_missing_columns",
                     "missing_columns": [table],
@@ -367,6 +822,8 @@ class AccountingAssetMovementRepository:
                 [report_date, currency_basis],
             ).fetchall()
         except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
             return {
                 "status": "unsupported_missing_columns",
                 "missing_columns": [str(exc)],
@@ -412,10 +869,23 @@ class AccountingAssetMovementRepository:
             }
         try:
             conn = self._connect()
-            if not self._table_exists(conn, table):
+            if not self._table_exists_with_connection(conn, table):
                 return {
                     "status": "unsupported_missing_columns",
                     "missing_columns": [table],
+                    "zqtz_currency_basis": zqtz_currency_basis,
+                    "rows": [],
+                }
+            required_columns = ("report_date", "currency_basis", "position_scope")
+            missing_required_columns = [
+                column
+                for column in required_columns
+                if not self._column_exists(conn, table, column)
+            ]
+            if missing_required_columns:
+                return {
+                    "status": "unsupported_missing_columns",
+                    "missing_columns": missing_required_columns,
                     "zqtz_currency_basis": zqtz_currency_basis,
                     "rows": [],
                 }
@@ -429,6 +899,11 @@ class AccountingAssetMovementRepository:
                 }
             concentration_columns = ("maturity_date", "issuer_name", "rating", "industry_name")
             descriptor_columns = (
+                "instrument_code",
+                "portfolio_name",
+                "accounting_basis",
+                "overdue_principal_days",
+                "overdue_interest_days",
                 "bond_type",
                 "business_type_primary",
                 "business_type_final",
@@ -454,6 +929,11 @@ class AccountingAssetMovementRepository:
                 select
                   cast(report_date as varchar) as report_date,
                   {amount_expr} as amount,
+                  {select_exprs["instrument_code"]},
+                  {select_exprs["portfolio_name"]},
+                  {select_exprs["accounting_basis"]},
+                  {select_exprs["overdue_principal_days"]},
+                  {select_exprs["overdue_interest_days"]},
                   {select_exprs["maturity_date"]},
                   {select_exprs["issuer_name"]},
                   {select_exprs["rating"]},
@@ -472,6 +952,8 @@ class AccountingAssetMovementRepository:
                 [report_dates, zqtz_currency_basis, *filter_params],
             ).fetchall()
         except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
             return {
                 "status": "unsupported_missing_columns",
                 "missing_columns": [str(exc)],
@@ -485,6 +967,11 @@ class AccountingAssetMovementRepository:
         keys = [
             "report_date",
             "amount",
+            "instrument_code",
+            "portfolio_name",
+            "accounting_basis",
+            "overdue_principal_days",
+            "overdue_interest_days",
             "maturity_date",
             "issuer_name",
             "rating",
@@ -518,8 +1005,16 @@ class AccountingAssetMovementRepository:
             return []
         try:
             conn = self._connect()
+            # 控制结论列由 registry slice 42 追加。迁移应用前这两列不存在，读路径
+            # 必须继续供数（按未记录处理），不能因为一次尚未落地的迁移而 500。
+            control_columns = ", ".join(
+                column
+                if self._column_exists(conn, _MOVEMENT_FACT_TABLE, column)
+                else f"cast(null as varchar) as {column}"
+                for column in _MOVEMENT_CONTROL_COLUMNS
+            )
             rows = conn.execute(
-                """
+                f"""
                 select
                   report_date,
                   report_month,
@@ -536,7 +1031,8 @@ class AccountingAssetMovementRepository:
                   reconciliation_diff,
                   reconciliation_status,
                   source_version,
-                  rule_version
+                  rule_version,
+                  {control_columns}
                 from fact_accounting_asset_movement_monthly
                 where report_date in (select unnest(?))
                   and currency_basis = ?
@@ -544,7 +1040,15 @@ class AccountingAssetMovementRepository:
                 """,
                 [report_dates, currency_basis],
             ).fetchall()
-        except duckdb.Error:
+            fx_by_date = {
+                day: load_movement_chain_fx_evidence(
+                    conn, report_date=day, currency_basis=currency_basis,
+                )
+                for day in {str(row[0]) for row in rows if row[-2] == "fx_adjusted"}
+            }
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
             return []
         finally:
             if "conn" in locals():
@@ -567,8 +1071,22 @@ class AccountingAssetMovementRepository:
             "reconciliation_status",
             "source_version",
             "rule_version",
+            *_MOVEMENT_CONTROL_COLUMNS,
         ]
-        return [dict(zip(keys, row, strict=True)) for row in rows]
+        result = [dict(zip(keys, row, strict=True)) for row in rows]
+        for item in result:
+            if item.get("chain_status") != "fx_adjusted":
+                continue
+            evidence = fx_by_date.get(str(item["report_date"]), {})
+            amount = evidence.get("adjustments", {}).get(item["basis_bucket"])
+            if amount is None:
+                item["chain_status"] = "broken"
+                if item["reconciliation_status"] == "matched":
+                    item["reconciliation_status"] = "chain_broken"
+                continue
+            item.update(chain_fx_adjustment=amount, chain_fx_currency=evidence["currency"],
+                        chain_fx_prior_rate=evidence["prior_rate"], chain_fx_current_rate=evidence["current_rate"])
+        return result
 
     def _fetch_recent_report_dates(
         self,
@@ -590,7 +1108,9 @@ class AccountingAssetMovementRepository:
                 """,
                 [currency_basis, report_date, month_count],
             ).fetchall()
-        except duckdb.Error:
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
             return []
         finally:
             if "conn" in locals():
@@ -604,7 +1124,7 @@ class AccountingAssetMovementRepository:
         report_date: str,
         currency_basis: str,
     ) -> list[dict[str, object]]:
-        if not self._table_exists(conn, "product_category_pnl_canonical_fact"):
+        if not self._table_exists_with_connection(conn, "product_category_pnl_canonical_fact"):
             return [
                 self._business_row(
                     report_date=report_date,
@@ -654,7 +1174,7 @@ class AccountingAssetMovementRepository:
     ) -> dict[str, object]:
         row_def = _ZQTZ_NCD_ROW
         zqtz_currency_basis = "CNY" if currency_basis.upper() == "CNX" else currency_basis
-        if not self._table_exists(conn, "fact_formal_zqtz_balance_daily"):
+        if not self._table_exists_with_connection(conn, "fact_formal_zqtz_balance_daily"):
             return self._business_row(
                 report_date=report_date,
                 currency_basis=currency_basis,
@@ -734,18 +1254,86 @@ class AccountingAssetMovementRepository:
             for row_def in _ZQTZ_ASSET_ROWS
         ]
 
+    def _fetch_zqtz_asset_rows_for_dates(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+        *,
+        report_dates: list[str],
+        currency_basis: str,
+    ) -> list[dict[str, object]]:
+        if not report_dates:
+            return []
+
+        table = "fact_formal_zqtz_balance_daily"
+        table_exists = self._table_exists_with_connection(conn, table)
+        zqtz_currency_basis = "CNY" if currency_basis.upper() == "CNX" else currency_basis
+        amount_expr = self._zqtz_amount_expression(conn) if table_exists else "0"
+        rows_by_date: dict[str, list[dict[str, object]]] = {
+            report_date: [] for report_date in report_dates
+        }
+
+        for row_def in _ZQTZ_ASSET_ROWS:
+            full_row_def = {**row_def, "side": "asset"}
+            source_note = str(row_def.get("source_note", "ZQTZSHOW asset classification"))
+            fetched_by_date: dict[str, tuple[object, object, object]] = {}
+            if table_exists:
+                filter_sql, params = self._zqtz_asset_predicate(conn, row_def)
+                if filter_sql != "false":
+                    fetched_rows = conn.execute(
+                        f"""
+                        select
+                          cast(report_date as varchar) as report_date,
+                          coalesce(sum({amount_expr}), 0) as current_balance,
+                          coalesce(string_agg(distinct nullif(source_version, ''), '__' order by nullif(source_version, '')), '') as source_version,
+                          coalesce(string_agg(distinct nullif(rule_version, ''), '__' order by nullif(rule_version, '')), '') as rule_version
+                        from {table}
+                        where cast(report_date as varchar) in (select unnest(?))
+                          and currency_basis = ?
+                          and position_scope = 'asset'
+                          and ({filter_sql})
+                        group by 1
+                        """,
+                        [report_dates, zqtz_currency_basis, *params],
+                    ).fetchall()
+                    fetched_by_date = {
+                        str(report_date): (current_balance, source_version, rule_version)
+                        for report_date, current_balance, source_version, rule_version in fetched_rows
+                    }
+
+            for report_date in report_dates:
+                fetched = fetched_by_date.get(report_date)
+                rows_by_date[report_date].append(
+                    self._business_row(
+                        report_date=report_date,
+                        currency_basis=currency_basis,
+                        row_def=full_row_def,
+                        current_balance=Decimal(str(fetched[0] if fetched else "0")),
+                        source_kind="zqtz",
+                        source_note=source_note,
+                        source_version=str(fetched[1] if fetched else ""),
+                        rule_version=str(fetched[2] if fetched else ""),
+                    )
+                )
+
+        return [
+            row
+            for report_date in report_dates
+            for row in rows_by_date[report_date]
+        ]
+
     def _fetch_zqtz_asset_row(
         self,
         conn: duckdb.DuckDBPyConnection,
         *,
         report_date: str,
         currency_basis: str,
-        row_def: dict[str, object],
+        # row_def 来自 ZQTZ_ASSET_BOND_ROWS（声明为 dict[str, Any]），与上游注解对齐。
+        row_def: dict[str, Any],
     ) -> dict[str, object]:
         full_row_def = {**row_def, "side": "asset"}
         source_note = str(row_def.get("source_note", "ZQTZSHOW asset classification"))
         zqtz_currency_basis = "CNY" if currency_basis.upper() == "CNX" else currency_basis
-        if not self._table_exists(conn, "fact_formal_zqtz_balance_daily"):
+        if not self._table_exists_with_connection(conn, "fact_formal_zqtz_balance_daily"):
             return self._business_row(
                 report_date=report_date,
                 currency_basis=currency_basis,
@@ -799,7 +1387,8 @@ class AccountingAssetMovementRepository:
     def _zqtz_asset_predicate(
         self,
         conn: duckdb.DuckDBPyConnection,
-        row_def: dict[str, object],
+        # row_def 来自 ZQTZ_ASSET_BOND_ROWS（声明为 dict[str, Any]），与上游注解对齐。
+        row_def: dict[str, Any],
     ) -> tuple[str, list[str]]:
         table = "fact_formal_zqtz_balance_daily"
         parts: list[str] = []
@@ -835,15 +1424,20 @@ class AccountingAssetMovementRepository:
             params.extend(exclude_bond_types)
 
         instrument_prefixes = tuple(str(value) for value in row_def.get("instrument_prefixes", ()))
-        if instrument_prefixes:
+        additional_instrument_codes = tuple(
+            str(value) for value in row_def.get("additional_instrument_codes", ())
+        )
+        if instrument_prefixes or additional_instrument_codes:
             if not self._column_exists(conn, table, "instrument_code"):
                 return "false", []
-            parts.append(
-                "("
-                + " or ".join("upper(instrument_code) like ?" for _ in instrument_prefixes)
-                + ")"
-            )
+            # 统一代码前后空格及大小写；正式快照解析已 strip 源代码。
+            code_parts = ["upper(trim(instrument_code)) like ?" for _ in instrument_prefixes]
             params.extend(f"{prefix.upper()}%" for prefix in instrument_prefixes)
+            if additional_instrument_codes:
+                placeholders = ", ".join("?" for _ in additional_instrument_codes)
+                code_parts.append(f"upper(trim(instrument_code)) in ({placeholders})")
+                params.extend(code.upper() for code in additional_instrument_codes)
+            parts.append("(" + " or ".join(code_parts) + ")")
 
         exclude_instrument_prefixes = tuple(
             str(value) for value in row_def.get("exclude_instrument_prefixes", ())
@@ -852,7 +1446,7 @@ class AccountingAssetMovementRepository:
             if not self._column_exists(conn, table, "instrument_code"):
                 return "false", []
             for prefix in exclude_instrument_prefixes:
-                parts.append("(instrument_code is null or upper(instrument_code) not like ?)")
+                parts.append("(instrument_code is null or upper(trim(instrument_code)) not like ?)")
                 params.append(f"{prefix.upper()}%")
 
         instrument_codes = tuple(str(value) for value in row_def.get("instrument_codes", ()))
@@ -860,7 +1454,7 @@ class AccountingAssetMovementRepository:
             if not self._column_exists(conn, table, "instrument_code"):
                 return "false", []
             placeholders = ", ".join("?" for _ in instrument_codes)
-            parts.append(f"upper(instrument_code) in ({placeholders})")
+            parts.append(f"upper(trim(instrument_code)) in ({placeholders})")
             params.extend(code.upper() for code in instrument_codes)
 
         exclude_instrument_codes = tuple(
@@ -871,7 +1465,7 @@ class AccountingAssetMovementRepository:
                 return "false", []
             placeholders = ", ".join("?" for _ in exclude_instrument_codes)
             parts.append(
-                f"(instrument_code is null or upper(instrument_code) not in ({placeholders}))"
+                f"(instrument_code is null or upper(trim(instrument_code)) not in ({placeholders}))"
             )
             params.extend(code.upper() for code in exclude_instrument_codes)
 
@@ -964,7 +1558,7 @@ class AccountingAssetMovementRepository:
                 terms.append(f"{column} like ?")
                 params.append(f"%{keyword}%")
 
-        if self._table_exists(conn, "phase1_zqtz_preview_rows") and self._column_exists(
+        if self._table_exists_with_connection(conn, "phase1_zqtz_preview_rows") and self._column_exists(
             conn,
             table,
             "instrument_code",
@@ -1058,7 +1652,7 @@ class AccountingAssetMovementRepository:
             )
         return f"{standard_amount_expr}{interest_addend}"
 
-    def _ledger_business_predicate(self, row_def: dict[str, object]) -> tuple[str, list[str]]:
+    def _ledger_business_predicate(self, row_def: dict[str, Any]) -> tuple[str, list[str]]:
         parts: list[str] = []
         params: list[str] = []
         exact_codes = tuple(row_def["exact_codes"])
@@ -1090,7 +1684,7 @@ class AccountingAssetMovementRepository:
             return {}
         try:
             conn = self._connect()
-            if not self._table_exists(conn, "product_category_pnl_canonical_fact"):
+            if not self._table_exists_with_connection(conn, "product_category_pnl_canonical_fact"):
                 return {}
             rows = conn.execute(
                 """
@@ -1119,7 +1713,9 @@ class AccountingAssetMovementRepository:
                 """,
                 [report_dates, currency_basis],
             ).fetchall()
-        except duckdb.Error:
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
             return {}
         finally:
             if "conn" in locals():
@@ -1147,7 +1743,7 @@ class AccountingAssetMovementRepository:
         }
         try:
             conn = self._connect()
-            if self._table_exists(conn, "product_category_pnl_canonical_fact"):
+            if self._table_exists_with_connection(conn, "product_category_pnl_canonical_fact"):
                 ledger = conn.execute(
                     """
                     select
@@ -1164,7 +1760,7 @@ class AccountingAssetMovementRepository:
                     str(ledger[1] if ledger else "0")
                 )
 
-            if self._table_exists(conn, "fact_formal_zqtz_balance_daily"):
+            if self._table_exists_with_connection(conn, "fact_formal_zqtz_balance_daily"):
                 zqtz_currency_basis = "CNY" if currency_basis.upper() == "CNX" else currency_basis
                 voucher_predicates: list[str] = []
                 voucher_params: list[str] = []
@@ -1238,7 +1834,9 @@ class AccountingAssetMovementRepository:
                 out["formal_voucher_accrued_interest"] = Decimal(
                     str(formal[1] if formal else "0")
                 )
-        except duckdb.Error:
+        except duckdb.Error as exc:
+            if not _is_missing_table_error(exc):
+                raise
             return out
         finally:
             if "conn" in locals():
@@ -1250,7 +1848,7 @@ class AccountingAssetMovementRepository:
         *,
         report_date: str,
         currency_basis: str,
-        row_def: dict[str, object],
+        row_def: dict[str, Any],
         current_balance: Decimal,
         source_version: str,
         rule_version: str,
@@ -1273,7 +1871,9 @@ class AccountingAssetMovementRepository:
             "rule_version": rule_version,
         }
 
-    def _table_exists(self, conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
+    def _table_exists_with_connection(self, conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
+        if table_name in self._table_exists_cache:
+            return self._table_exists_cache[table_name]
         row = conn.execute(
             """
             select count(*)
@@ -1282,7 +1882,9 @@ class AccountingAssetMovementRepository:
             """,
             [table_name],
         ).fetchone()
-        return bool(row and row[0])
+        exists = bool(row and row[0])
+        self._table_exists_cache[table_name] = exists
+        return exists
 
     def _column_exists(
         self,
@@ -1290,6 +1892,9 @@ class AccountingAssetMovementRepository:
         table_name: str,
         column_name: str,
     ) -> bool:
+        cache_key = (table_name, column_name)
+        if cache_key in self._column_exists_cache:
+            return self._column_exists_cache[cache_key]
         row = conn.execute(
             """
             select count(*)
@@ -1299,4 +1904,6 @@ class AccountingAssetMovementRepository:
             """,
             [table_name, column_name],
         ).fetchone()
-        return bool(row and row[0])
+        exists = bool(row and row[0])
+        self._column_exists_cache[cache_key] = exists
+        return exists

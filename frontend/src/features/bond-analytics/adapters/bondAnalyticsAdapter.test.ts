@@ -6,7 +6,6 @@ import {
   bondNumericDisplay,
   bondNumericRaw,
   bondNumericRawOrNull,
-  finiteNumberOr,
   returnDecompositionWaterfallDisplayStrings,
   returnDecompositionWaterfallRawSteps,
 } from "./bondAnalyticsAdapter";
@@ -121,15 +120,6 @@ describe("bondChartMagnitude", () => {
   });
 });
 
-describe("finiteNumberOr", () => {
-  it("keeps finite numbers and uses the explicit fallback for missing chart values", () => {
-    expect(finiteNumberOr(12.5)).toBe(12.5);
-    expect(finiteNumberOr(null)).toBe(0);
-    expect(finiteNumberOr(undefined, -1)).toBe(-1);
-    expect(finiteNumberOr(Number.NaN, 7)).toBe(7);
-  });
-});
-
 describe("returnDecompositionWaterfall helpers", () => {
   it("builds raw steps including final explained bar", () => {
     const d = rd({
@@ -145,7 +135,8 @@ describe("returnDecompositionWaterfall helpers", () => {
     expect(returnDecompositionWaterfallRawSteps(d)).toEqual([1, 2, 3, 4, 5, 6, 7, 28]);
   });
 
-  it("uses chart-safe zeroes for missing values while preserving signed finite values", () => {
+  // 缺失 ≠ 0：缺失/非有限效应保留 null（柱断开 + 区头 partial 披露），真实 0 与负值原样保留。
+  it("keeps missing/non-finite effects as null instead of fake zeroes", () => {
     const d = rd({
       carry: num({ raw: null }),
       roll_down: num({ raw: 0 }),
@@ -157,7 +148,7 @@ describe("returnDecompositionWaterfall helpers", () => {
       explained_pnl: num({ raw: Number.NaN }),
     });
 
-    expect(returnDecompositionWaterfallRawSteps(d)).toEqual([0, 0, -3, 0, 4, 0, -2, 0]);
+    expect(returnDecompositionWaterfallRawSteps(d)).toEqual([null, 0, -3, null, 4, null, -2, null]);
   });
 
   it("builds display strings aligned to waterfall categories", () => {

@@ -1,13 +1,24 @@
 from __future__ import annotations
 
+from backend.app.services import macro_toolkit_analysis_service as macro_toolkit_analysis
+from backend.app.services import macro_toolkit_read_service
+from backend.app.services import macro_toolkit_route_support as macro_toolkit_support
+
+# Governance: 整体标 excluded_surface_acceptance；含 economic_cycle fail-closed、
+# 取消合成回退等审计回归子集，后续可拆分为 regression。
 import importlib
 import importlib.util
 import inspect
+import json
+import os
 import py_compile
+import socket
+import subprocess
 import sys
 import time
 from datetime import UTC, date, datetime
 from pathlib import Path
+from threading import Event, Lock, get_ident
 from types import SimpleNamespace
 
 import duckdb
@@ -42,12 +53,56 @@ from backend.app.governance.settings import get_settings
 from backend.app.repositories.cffex_member_rank_repo import (
     ensure_cffex_member_rank_schema,
 )
-from backend.app.repositories.governance_repo import GovernanceRepository
+from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
 from backend.app.repositories.user_scope_repo import UserScopeRepository
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from backend.app.services import cffex_member_rank_service, macro_toolkit_service
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_macro_toolkit,
+]
+
+
 MACRO_TOOLKIT_READ_HEADERS = {"X-User-Id": "macro-toolkit-read-user", "X-User-Role": "viewer"}
+
+
+@pytest.fixture(autouse=True)
+def _forbid_unmocked_chain_subprocess(request, monkeypatch):
+    if "script_chain" not in request.node.name:
+        return
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("isolated chain tests must never launch a toolkit subprocess")
+
+    monkeypatch.setattr(macro_toolkit_service.subprocess, "run", forbidden)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_macro_read_inputs(tmp_path: Path, monkeypatch, request):
+    """Read/HTTP tests use synthetic outputs and never run a real refresh script."""
+    output_dir = tmp_path / "output"
+    monkeypatch.setattr(macro_toolkit_support, "OUTPUT_DIR", output_dir)
+    monkeypatch.setattr(macro_toolkit_route, "OUTPUT_DIR", output_dir)
+    monkeypatch.setattr(macro_toolkit_support, "OUTPUT_DIR", output_dir)
+
+    def forbidden(*_args, **_kwargs):
+        pytest.fail("isolated macro tests must mock script execution and vendor network calls")
+
+    inline_runner = macro_toolkit_service._run_toolkit_script_inline
+    monkeypatch.setattr(macro_toolkit_service, "_run_toolkit_script_inline", forbidden)
+    original_connect = socket.socket.connect
+
+    def connect_loopback_only(sock, address):
+        # Windows asyncio uses a loopback socketpair for its event-loop wakeup.
+        if address[0] in {"127.0.0.1", "::1"}:
+            return original_connect(sock, address)
+        forbidden()
+
+    monkeypatch.setattr(socket.socket, "connect", connect_loopback_only)
+    if "standalone_vendor_shims_bootstrap_repo_root" not in request.node.name:
+        monkeypatch.setattr(macro_toolkit_service.subprocess, "run", forbidden)
+    return inline_runner
 
 
 def _configure_macro_toolkit_scope_store(tmp_path: Path, monkeypatch):
@@ -79,6 +134,104 @@ def _seed_macro_toolkit_read_scope_for_existing_http_tests(request, tmp_path: Pa
     get_settings.cache_clear()
 
 
+def _macro_toolkit_refresh_health(
+    *,
+    status: str,
+    ready: bool,
+) -> object:
+    receipt_service = macro_toolkit_route.macro_toolkit_refresh_receipt_service
+    return receipt_service.MacroToolkitRefreshReceiptHealth(
+        status=status,
+        ready=ready,
+        cache_fingerprint=f"test:{status}",
+        generated_at="2026-04-10T06:30:00+00:00",
+        run_status=None if not ready else "success",
+        source_version=receipt_service.EXPECTED_SOURCE_VERSION,
+        missing_fields=tuple(),
+        warnings=tuple(),
+        latest_observation_dates={},
+    )
+
+
+def _stub_minimal_macro_toolkit_analysis(monkeypatch, tmp_path: Path) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb.connect(str(duckdb_path), read_only=False).close()
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    monkeypatch.setattr(
+        macro_toolkit_support,
+        "_analysis_indicators",
+        lambda _path: [
+            {
+                "key": "dr007",
+                "alias": "DR007.IB",
+                "label": "DR007",
+                "group": "liquidity",
+                "latest_value": 1.8,
+                "latest_date": "2026-04-10",
+                "recent_points": [],
+            }
+        ],
+    )
+    monkeypatch.setattr(macro_toolkit_support, "_output_files", lambda: [])
+    monkeypatch.setattr(macro_toolkit_route, "_output_files", lambda: [])
+    monkeypatch.setattr(
+        macro_toolkit_route.macro_report_asset_service,
+        "load_report_bundle",
+        lambda _path: {"artifacts": []},
+    )
+    monkeypatch.setattr(
+        macro_toolkit_route.macro_toolkit_service,
+        "macro_model_readiness",
+        lambda **_kwargs: {"model_readiness": [], "readiness_summary": {}},
+    )
+    monkeypatch.setattr(
+        macro_toolkit_read_service,
+        "_build_macro_toolkit_full_analysis_blocks",
+        lambda *_args, **_kwargs: (
+            {"key": "a_share_stampede_risk", "risk_level": "green", "risk_score": 27},
+            [{"key": "crisis_score_cn", "score": 0.1, "result": {"crisis_score": 0.1}}],
+            [],
+        ),
+    )
+    monkeypatch.setattr(macro_toolkit_support, "_source_checks_for_aliases", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(macro_toolkit_support, "_source_checks", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(macro_toolkit_route, "_source_checks", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(macro_toolkit_support, "_capability_plan", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(macro_toolkit_route, "_capability_plan", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        macro_toolkit_support,
+        "_analysis_runtime_status",
+        lambda _scope: {"analysis_scope": _scope, "deferred_sections": []},
+    )
+    monkeypatch.setattr(macro_toolkit_support, "_hason_macro_strategy_summary", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(
+        macro_toolkit_analysis,
+        "_analysis_data_health",
+        lambda **_kwargs: {"analysis_scope": "full", "warnings": []},
+    )
+    monkeypatch.setattr(
+        macro_toolkit_support,
+        "_cffex_member_rank_status",
+        lambda *_args, **_kwargs: {"status": "ok"},
+    )
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_cffex_member_rank_status",
+        lambda *_args, **_kwargs: {"status": "ok"},
+    )
+    monkeypatch.setattr(
+        macro_toolkit_support,
+        "_choice_stock_refresh_overview",
+        lambda *_args, **_kwargs: {"daily_observation": {"latest_trade_date": None}},
+    )
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_choice_stock_refresh_overview",
+        lambda *_args, **_kwargs: {"daily_observation": {"latest_trade_date": None}},
+    )
+
+
 @pytest.mark.parametrize(
     ("path", "params"),
     [
@@ -101,9 +254,10 @@ def test_macro_toolkit_read_surfaces_require_explicit_read_scope(
     def _unexpected_service_call(*_args, **_kwargs):
         raise AssertionError("Macro toolkit read service should not run without macro_toolkit/read.")
 
+    monkeypatch.setattr(macro_toolkit_support, "_source_checks", _unexpected_service_call)
     monkeypatch.setattr(macro_toolkit_route, "_source_checks", _unexpected_service_call)
-    monkeypatch.setattr(macro_toolkit_route, "_build_macro_toolkit_analysis", _unexpected_service_call)
-    monkeypatch.setattr(macro_toolkit_route, "_build_macro_toolkit_strategy_summaries", _unexpected_service_call)
+    monkeypatch.setattr(macro_toolkit_read_service, "build_macro_toolkit_analysis", _unexpected_service_call)
+    monkeypatch.setattr(macro_toolkit_read_service, "build_macro_toolkit_strategy_summaries", _unexpected_service_call)
     monkeypatch.setattr(macro_toolkit_route, "_choice_stock_refresh_status", _unexpected_service_call)
     monkeypatch.setattr(
         macro_toolkit_route.macro_adversarial_signal_service,
@@ -195,7 +349,15 @@ def test_crisis_score_payload_matches_migrated_script_formula(monkeypatch) -> No
 
     legacy_score = legacy.compute_crisis_score(legacy_indicators, z_window=120)
     score = compute_crisis_score(indicators, z_window=120, min_z_observations=60)
-    pd.testing.assert_frame_equal(score, legacy_score, check_exact=False, check_freq=False, rtol=1e-12, atol=1e-12)
+    complete_component_rows = score[[column for column in score.columns if column.endswith("_z")]].notna().all(axis=1)
+    pd.testing.assert_frame_equal(
+        score.loc[complete_component_rows],
+        legacy_score.loc[complete_component_rows],
+        check_exact=False,
+        check_freq=False,
+        rtol=1e-12,
+        atol=1e-12,
+    )
 
     latest_score = float(legacy_score["crisis_score"].dropna().iloc[-1])
     payload = compute_crisis_score_payload(series_data, report_date=dates[-1].date())
@@ -204,8 +366,86 @@ def test_crisis_score_payload_matches_migrated_script_formula(monkeypatch) -> No
     assert payload["warnings"] == []
     assert payload["crisis_score"] == round(latest_score, 4)
     assert payload["regime"] == legacy.classify_regime(latest_score)[0]
+    expected_trend = score["crisis_score"].dropna().tail(20)
+    trend = payload["score_trend"]
+    assert trend["requested_window_points"] == 20
+    assert trend["window_points"] == len(expected_trend)
+    assert trend["start_date"] == expected_trend.index[0].date().isoformat()
+    assert trend["end_date"] == expected_trend.index[-1].date().isoformat()
+    assert trend["start_score"] == round(float(expected_trend.iloc[0]), 4)
+    assert trend["end_score"] == round(float(expected_trend.iloc[-1]), 4)
+    expected_change = round(float(expected_trend.iloc[-1] - expected_trend.iloc[0]), 4)
+    assert trend["score_change"] == expected_change
+    assert trend["direction"] == (
+        "rising" if expected_change > 0 else "falling" if expected_change < 0 else "flat"
+    )
+    assert payload["risk_gate"] == {
+        "eligible": True,
+        "triggered": latest_score >= 2.0,
+        "threshold": 2.0,
+        "reason_code": (
+            "crisis_score_at_or_above_threshold"
+            if latest_score >= 2.0
+            else "crisis_score_below_threshold"
+        ),
+    }
     for sample_score in (-0.1, 0.5, 1.5, 2.5, 3.5):
         assert classify_crisis_score(sample_score)[0] == legacy.classify_regime(sample_score)[0]
+
+
+def test_crisis_score_renormalizes_available_component_weights() -> None:
+    dates = pd.date_range("2026-01-01", periods=5, freq="D")
+    indicators = pd.DataFrame(
+        {
+            "equity_vol": [1.0, 2.0, 3.0, 4.0, 5.0],
+            "credit_spread": [10.0, 11.0, None, 13.0, 14.0],
+        },
+        index=dates,
+    )
+
+    score = compute_crisis_score(
+        indicators,
+        z_window=3,
+        min_z_observations=2,
+        weights={"equity_vol": 0.75, "credit_spread": 0.25},
+    )
+
+    missing_credit_date = dates[2]
+    assert pd.isna(score.loc[missing_credit_date, "credit_spread_z"])
+    assert score.loc[missing_credit_date, "crisis_score"] == pytest.approx(
+        score.loc[missing_credit_date, "equity_vol_z"]
+    )
+    assert score.loc[missing_credit_date, "crisis_score"] != pytest.approx(
+        0.75 * score.loc[missing_credit_date, "equity_vol_z"]
+    )
+
+
+def test_crisis_score_flags_stale_component_after_ffill_limit() -> None:
+    dates = [sample_date.date() for sample_date in pd.date_range("2026-01-01", periods=30, freq="D")]
+    aa_stop_index = 18
+
+    series_data = {
+        "hs300": [(sample_date, 4000.0 + idx * 2.0 + (idx % 2) * 8.0) for idx, sample_date in enumerate(dates)],
+        "aa_5y": [(sample_date, 2.9 + idx * 0.01) for idx, sample_date in enumerate(dates[:aa_stop_index])],
+        "gov_5y": [(sample_date, 2.2 + idx * 0.005) for idx, sample_date in enumerate(dates)],
+        "usdcny": [(sample_date, 7.0 + idx * 0.002 + (idx % 2) * 0.01) for idx, sample_date in enumerate(dates)],
+        "nanhua": [(sample_date, 1000.0 + idx * 3.0 + (idx % 2) * 10.0) for idx, sample_date in enumerate(dates)],
+        "dr007": [(sample_date, 1.8 + idx * 0.01) for idx, sample_date in enumerate(dates)],
+        "reverse_repo_7d": [(sample_date, 1.7) for sample_date in dates],
+    }
+
+    payload = compute_crisis_score_payload(
+        series_data,
+        report_date=dates[-1],
+        vol_window=2,
+        z_window=5,
+        min_z_observations=3,
+    )
+
+    component_keys = {item["key"] for item in payload["components"]}
+    assert "credit_spread" not in component_keys
+    assert "CREDIT_SPREAD_STALE" in payload["warnings"]
+    assert payload["crisis_score"] is not None
 
 
 def test_merrill_clock_calculations_match_documented_formula(monkeypatch) -> None:
@@ -332,6 +572,7 @@ def test_system_choice_tushare_source_layer_reads_default_duckdb(tmp_path, monke
 
     frame = load_system_macro_frame()
     hs300 = load_series_by_alias("sh000300")
+    csi500 = load_series_by_alias("sh000905")
     copper = load_series_by_alias("CU0")
     usdcny = load_series_by_alias("M0067855")
     treasury_5y = load_series_by_alias("S0059747")
@@ -342,6 +583,8 @@ def test_system_choice_tushare_source_layer_reads_default_duckdb(tmp_path, monke
 
     assert {"choice", "tushare"}.issubset(set(frame["vendor_name"]))
     assert hs300["value"].tolist() == [4102.25]
+    assert csi500["series_id"].tolist() == ["CA.CSI500"]
+    assert csi500["value"].tolist() == [6155.8]
     assert copper["value"].tolist() == [81234.5]
     assert usdcny["value"].tolist() == [7.1234]
     assert treasury_5y["value"].tolist() == [2.34]
@@ -355,31 +598,123 @@ def test_system_choice_tushare_source_layer_reads_default_duckdb(tmp_path, monke
     get_settings.cache_clear()
 
 
-def test_series_alias_lookup_reuses_system_frame_until_duckdb_file_changes(tmp_path, monkeypatch) -> None:
+def test_public_cross_asset_refresh_lands_csi500_idempotently_and_shim_resolves(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    from backend.app.tasks import choice_macro as task_module
+
+    fixture_rows = [
+        {
+            "series_id": "CA.CSI300",
+            "trade_date": "2026-04-08",
+            "value_numeric": 4080.0,
+            "vendor_version": "vv_tushare_index_daily_000300SH_20260410",
+            "source_version": "sv_tushare_index_daily_fixture",
+        },
+        {
+            "series_id": "CA.CSI500",
+            "trade_date": "2026-04-08",
+            "value_numeric": 6100.0,
+            "vendor_version": "vv_tushare_index_daily_000905SH_20260410",
+            "source_version": "sv_tushare_index_daily_000905_fixture",
+        },
+        {
+            "series_id": "CA.CSI500",
+            "trade_date": "2026-04-09",
+            "value_numeric": 6120.5,
+            "vendor_version": "vv_tushare_index_daily_000905SH_20260410",
+            "source_version": "sv_tushare_index_daily_000905_fixture",
+        },
+        {
+            "series_id": "CA.CSI500",
+            "trade_date": "2026-04-10",
+            "value_numeric": 6155.8,
+            "vendor_version": "vv_tushare_index_daily_000905SH_20260410",
+            "source_version": "sv_tushare_index_daily_000905_fixture",
+        },
+    ]
+    monkeypatch.setattr(task_module, "_load_public_cross_asset_history_rows", lambda **_: list(fixture_rows))
+
+    first = task_module.refresh_public_cross_asset_headlines(
+        duckdb_path=str(duckdb_path),
+        report_date="2026-04-10",
+        lookback_days=90,
+    )
+    second = task_module.refresh_public_cross_asset_headlines(
+        duckdb_path=str(duckdb_path),
+        report_date="2026-04-10",
+        lookback_days=90,
+    )
+
+    assert first["row_count"] == 4
+    assert second["row_count"] == 4
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        fact_summary = conn.execute(
+            """
+            select series_id, count(*), min(trade_date), max(trade_date)
+            from fact_choice_macro_daily
+            where series_id = 'CA.CSI500'
+            group by series_id
+            """
+        ).fetchone()
+        latest = conn.execute(
+            """
+            select series_id, trade_date, value_numeric, vendor_series_code, vendor_name
+            from choice_market_snapshot
+            where series_id = 'CA.CSI500'
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert fact_summary == ("CA.CSI500", 3, "2026-04-08", "2026-04-10")
+    assert latest == ("CA.CSI500", "2026-04-10", 6155.8, "index_daily:000905.SH.close", "tushare")
+
+    system_sources.clear_system_macro_source_cache()
+    csi500 = load_series_by_alias("sh000905", duckdb_path=duckdb_path)
+    assert csi500["series_id"].tolist() == ["CA.CSI500", "CA.CSI500", "CA.CSI500"]
+    assert csi500["value"].tolist() == [6100.0, 6120.5, 6155.8]
+    get_settings.cache_clear()
+
+
+def test_series_alias_lookup_reuses_cached_frames_until_duckdb_file_changes(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)
     original_load_system_macro_frame = system_sources.load_system_macro_frame
     calls: list[object] = []
 
-    def spy_load_system_macro_frame(duckdb_path_arg=None):
-        calls.append(duckdb_path_arg)
-        return original_load_system_macro_frame(duckdb_path_arg)
+    def spy_load_system_macro_frame(duckdb_path_arg=None, **kwargs):
+        calls.append((duckdb_path_arg, kwargs.get("series_ids")))
+        return original_load_system_macro_frame(duckdb_path_arg, **kwargs)
 
     monkeypatch.setattr(system_sources, "load_system_macro_frame", spy_load_system_macro_frame)
 
     hs300 = load_series_by_alias("sh000300", duckdb_path=duckdb_path)
-    copper = load_series_by_alias("CU0", duckdb_path=duckdb_path)
+    hs300_repeat = load_series_by_alias("sh000300", duckdb_path=duckdb_path)
 
     assert hs300["value"].tolist() == [4102.25]
-    assert copper["value"].tolist() == [81234.5]
+    assert hs300_repeat["value"].tolist() == [4102.25]
+    # Repeated lookups reuse the cached subset frame: exactly one pushdown load.
     assert len(calls) == 1
+    assert calls[0][1] is not None and "CA.CSI300" in calls[0][1]
+
+    copper = load_series_by_alias("CU0", duckdb_path=duckdb_path)
+    assert copper["value"].tolist() == [81234.5]
+    assert len(calls) == 2
 
     time.sleep(0.01)
     duckdb_path.touch()
+    hs300_after_touch = load_series_by_alias("sh000300", duckdb_path=duckdb_path)
     usdcny = load_series_by_alias("M0067855", duckdb_path=duckdb_path)
 
+    # A file change (mtime) invalidates cached frames for every alias.
+    assert hs300_after_touch["value"].tolist() == [4102.25]
     assert usdcny["value"].tolist() == [7.1234]
-    assert len(calls) == 2
+    assert len(calls) == 4
 
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
@@ -397,18 +732,16 @@ def test_series_alias_lookup_reuses_system_frame_until_duckdb_file_changes(tmp_p
 
     assert cache_invalidation_sample["series_id"].tolist() == ["M0099999"]
     assert cache_invalidation_sample["value"].tolist() == [50.5]
-    assert len(calls) == 3
+    assert len(calls) == 5
 
 
-def test_series_alias_lookup_uses_positional_rows_for_cached_alias_index(tmp_path, monkeypatch) -> None:
+def test_series_alias_lookup_does_not_rely_on_frame_index_labels(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)
     original_load_system_macro_frame = system_sources.load_system_macro_frame
-    calls: list[object] = []
 
-    def load_system_macro_frame_with_shifted_index(duckdb_path_arg=None):
-        calls.append(duckdb_path_arg)
-        frame = original_load_system_macro_frame(duckdb_path_arg)
+    def load_system_macro_frame_with_shifted_index(duckdb_path_arg=None, **kwargs):
+        frame = original_load_system_macro_frame(duckdb_path_arg, **kwargs)
         frame.index = pd.RangeIndex(start=10, stop=10 + len(frame))
         return frame
 
@@ -419,7 +752,6 @@ def test_series_alias_lookup_uses_positional_rows_for_cached_alias_index(tmp_pat
 
     assert hs300["value"].tolist() == [4102.25]
     assert copper["value"].tolist() == [81234.5]
-    assert len(calls) == 1
 
 
 def test_system_source_layer_reads_merrill_clock_stable_macro_aliases(tmp_path, monkeypatch) -> None:
@@ -444,6 +776,8 @@ def test_system_source_layer_reads_merrill_clock_stable_macro_aliases(tmp_path, 
     get_settings.cache_clear()
 
     pmi = load_series_by_alias("M0017126")
+    pmi_by_name = load_series_by_alias("制造业PMI")
+    pmi_by_cn = load_series_by_alias("cn_pmi")
     pmi_new_orders = load_series_by_alias("M0017127")
     ppi = load_series_by_alias("M0001227")
     m2 = load_series_by_alias("M0001385")
@@ -451,6 +785,10 @@ def test_system_source_layer_reads_merrill_clock_stable_macro_aliases(tmp_path, 
 
     assert pmi["series_id"].tolist() == ["M0017126"]
     assert pmi["value"].tolist() == [50.0]
+    assert pmi_by_name["series_id"].tolist() == ["M0017126"]
+    assert pmi_by_name["value"].tolist() == [50.0]
+    assert pmi_by_cn["series_id"].tolist() == ["M0017126"]
+    assert pmi_by_cn["value"].tolist() == [50.0]
     assert pmi_new_orders["series_id"].tolist() == ["M0017127"]
     assert pmi_new_orders["value"].tolist() == [48.5]
     assert ppi["series_id"].tolist() == ["tushare.macro.cn_ppi.monthly"]
@@ -513,6 +851,45 @@ def test_system_source_layer_reads_crisis_external_backfill_aliases(tmp_path, mo
     assert reverse_repo["series_id"].tolist() == ["legacy.wind_market_db.reverse_repo_7d"]
     assert reverse_repo["vendor_name"].tolist() == ["moss_derived"]
     assert reverse_repo["value"].tolist() == [1.72]
+    get_settings.cache_clear()
+
+
+def test_m0041653_prefers_choice_over_legacy_on_overlapping_dates(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_tushare_macro_db(duckdb_path)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into fact_choice_macro_daily values
+              ('EMM00088132', 'Open market reverse repo 7D', '2026-04-11',
+               1.40, 'daily', '%', 'sv_choice_repo', 'vv_choice_repo',
+               'rv_crisis_score_inputs_backfill_v1', 'ok', 'run-choice-repo')
+            """
+        )
+        conn.execute(
+            """
+            insert into std_external_macro_daily values
+              ('legacy.wind_market_db.reverse_repo_7d', 'moss_derived', 'macro', '2026-04-10',
+               1.72, 'daily', '%', 'sv_legacy_repo', 'vv_legacy_repo',
+               'rv_macro_crisis_external_backfill_v1', 'run-legacy-repo',
+               'legacy-market.db', current_timestamp),
+              ('legacy.wind_market_db.reverse_repo_7d', 'moss_derived', 'macro', '2026-04-11',
+               1.72, 'daily', '%', 'sv_legacy_repo', 'vv_legacy_repo',
+               'rv_macro_crisis_external_backfill_v1', 'run-legacy-repo',
+               'legacy-market.db', current_timestamp)
+            """
+        )
+    finally:
+        conn.close()
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    reverse_repo = load_series_by_alias("M0041653", start="2026-04-11")
+
+    assert reverse_repo["series_id"].tolist() == ["EMM00088132"]
+    assert reverse_repo["vendor_name"].tolist() == ["choice"]
+    assert reverse_repo["value"].tolist() == [1.4]
     get_settings.cache_clear()
 
 
@@ -638,6 +1015,41 @@ def test_system_windpy_reads_bond_futures_price_oi_volume_from_daily_table(tmp_p
     assert result.Data == [[102.5, 102.75], [67890.0, 77890.0], [12345.0, 22345.0]]
 
 
+def test_system_sources_read_akshare_formal_treasury_curve_aliases(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_tushare_macro_db(duckdb_path)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into fact_formal_yield_curve_daily values
+              ('2026-06-26', 'treasury', '2Y', 1.2345, 'akshare',
+               'vv_akshare_treasury_20260626', 'sv_akshare_treasury_20260626',
+               'rv_yield_curve_formal_materialize_v1'),
+              ('2026-06-26', 'treasury', '30Y', 2.3456, 'akshare',
+               'vv_akshare_treasury_20260626', 'sv_akshare_treasury_20260626',
+               'rv_yield_curve_formal_materialize_v1')
+            """
+        )
+    finally:
+        conn.close()
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    system_sources.clear_system_macro_source_cache()
+
+    two_year = load_series_by_alias("S0059745", start="2026-06-26", end="2026-06-26")
+    thirty_year = load_series_by_alias("S0059752", start="2026-06-26", end="2026-06-26")
+
+    assert two_year[["series_id", "vendor_name", "value"]].to_dict("records") == [
+        {"series_id": "legacy.yield.akshare.treasury.2Y", "vendor_name": "akshare", "value": 1.2345}
+    ]
+    assert thirty_year[["series_id", "vendor_name", "value"]].to_dict("records") == [
+        {"series_id": "legacy.yield.akshare.treasury.30Y", "vendor_name": "akshare", "value": 2.3456}
+    ]
+    get_settings.cache_clear()
+    system_sources.clear_system_macro_source_cache()
+
+
 def test_legacy_vendor_imports_resolve_to_system_choice_tushare(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)
@@ -679,6 +1091,151 @@ def test_legacy_vendor_imports_resolve_to_system_choice_tushare(tmp_path, monkey
     assert member_rank.Data == [["中信期货", "国泰君安"], [12345.0, 8901.0]]
 
 
+def test_macro_toolkit_scripts_package_keeps_vendor_shims_local() -> None:
+    previous_akshare = sys.modules.pop("akshare", None)
+    previous_windpy = sys.modules.pop("WindPy", None)
+    previous_paths = sys.modules.pop("paths", None)
+    toolkit_path_count = sys.path.count(str(TOOLKIT_ROOT))
+    module_names = (
+        "backend.app.core_finance.macro.toolkit.scripts.cta_trend_cn",
+        "backend.app.core_finance.macro.toolkit.scripts.dcc_garch_cn",
+        "backend.app.core_finance.macro.toolkit.scripts.risk_parity_cn",
+        "backend.app.core_finance.macro.toolkit.scripts.credit_bond_data",
+        "backend.app.core_finance.macro.toolkit.scripts.credit_bond_dashboard",
+        "backend.app.core_finance.macro.toolkit.scripts.generate_bond_macro_report",
+    )
+    missing = object()
+    previous_modules = {name: sys.modules.pop(name, missing) for name in module_names}
+    try:
+        cta_script = importlib.import_module("backend.app.core_finance.macro.toolkit.scripts.cta_trend_cn")
+        dcc_script = importlib.import_module("backend.app.core_finance.macro.toolkit.scripts.dcc_garch_cn")
+        rp_script = importlib.import_module("backend.app.core_finance.macro.toolkit.scripts.risk_parity_cn")
+        credit_bond_data = importlib.import_module("backend.app.core_finance.macro.toolkit.scripts.credit_bond_data")
+        credit_bond_dashboard = importlib.import_module("backend.app.core_finance.macro.toolkit.scripts.credit_bond_dashboard")
+        generate_bond_macro_report = importlib.import_module(
+            "backend.app.core_finance.macro.toolkit.scripts.generate_bond_macro_report"
+        )
+
+        assert "akshare" not in sys.modules
+        assert "WindPy" not in sys.modules
+        assert "paths" not in sys.modules
+        assert sys.path.count(str(TOOLKIT_ROOT)) == toolkit_path_count
+    finally:
+        if previous_akshare is not None:
+            sys.modules["akshare"] = previous_akshare
+        else:
+            sys.modules.pop("akshare", None)
+        if previous_windpy is not None:
+            sys.modules["WindPy"] = previous_windpy
+        else:
+            sys.modules.pop("WindPy", None)
+        if previous_paths is not None:
+            sys.modules["paths"] = previous_paths
+        else:
+            sys.modules.pop("paths", None)
+        for module_name, previous_module in previous_modules.items():
+            if previous_module is missing:
+                sys.modules.pop(module_name, None)
+            else:
+                sys.modules[module_name] = previous_module
+
+    assert cta_script.load_prices.__module__ == "backend.app.core_finance.macro.toolkit.scripts.cta_trend_cn"
+    assert dcc_script.load_prices.__module__ == "backend.app.core_finance.macro.toolkit.scripts.dcc_garch_cn"
+    assert rp_script.fetch_data.__module__ == "backend.app.core_finance.macro.toolkit.scripts.risk_parity_cn"
+    assert Path(cta_script.ak.__file__).resolve() == (TOOLKIT_ROOT / "akshare.py").resolve()
+    assert Path(dcc_script.ak.__file__).resolve() == (TOOLKIT_ROOT / "akshare.py").resolve()
+    assert credit_bond_data.w.__class__.__module__ == "backend.app.core_finance.macro.toolkit.WindPy"
+    assert credit_bond_dashboard.paths.__name__ == "backend.app.core_finance.macro.toolkit.paths"
+    assert generate_bond_macro_report.ASSET_DIR == credit_bond_dashboard.paths.ASSET_DIR
+    assert generate_bond_macro_report.OUTPUT_DIR == credit_bond_dashboard.paths.OUTPUT_DIR
+
+
+def test_macro_toolkit_script_matplotlib_internal_import_error_propagates(monkeypatch) -> None:
+    import builtins
+
+    module_name = "backend.app.core_finance.macro.toolkit.scripts.cta_trend_cn"
+    previous_module = sys.modules.pop(module_name, None)
+    real_find_spec = importlib.util.find_spec
+    real_import = builtins.__import__
+    fake_matplotlib = SimpleNamespace(use=lambda *_args, **_kwargs: None)
+
+    def fake_find_spec(name: str, *args, **kwargs):
+        if name == "matplotlib":
+            return object()
+        return real_find_spec(name, *args, **kwargs)
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "matplotlib":
+            return fake_matplotlib
+        if name == "matplotlib.dates":
+            raise ImportError("synthetic internal matplotlib failure")
+        return real_import(name, globals, locals, fromlist, level)
+
+    try:
+        monkeypatch.setattr(importlib.util, "find_spec", fake_find_spec)
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        with pytest.raises(ImportError, match="synthetic internal matplotlib failure"):
+            importlib.import_module(module_name)
+    finally:
+        sys.modules.pop(module_name, None)
+        if previous_module is not None:
+            sys.modules[module_name] = previous_module
+
+
+def test_macro_toolkit_script_docx_internal_import_error_propagates(monkeypatch) -> None:
+    import builtins
+
+    module_name = "backend.app.core_finance.macro.toolkit.scripts.generate_bond_macro_report"
+    previous_module = sys.modules.pop(module_name, None)
+    real_find_spec = importlib.util.find_spec
+    real_import = builtins.__import__
+    fake_docx = SimpleNamespace(Document=object)
+
+    def fake_find_spec(name: str, *args, **kwargs):
+        if name == "matplotlib":
+            return None
+        if name == "docx":
+            return object()
+        return real_find_spec(name, *args, **kwargs)
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "docx":
+            return fake_docx
+        if name == "docx.enum.section":
+            raise ImportError("synthetic internal docx failure")
+        return real_import(name, globals, locals, fromlist, level)
+
+    try:
+        monkeypatch.setattr(importlib.util, "find_spec", fake_find_spec)
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+        with pytest.raises(ImportError, match="synthetic internal docx failure"):
+            importlib.import_module(module_name)
+    finally:
+        sys.modules.pop(module_name, None)
+        if previous_module is not None:
+            sys.modules[module_name] = previous_module
+
+
+@pytest.mark.parametrize("script_name", ["akshare.py", "WindPy.py"])
+def test_macro_toolkit_standalone_vendor_shims_bootstrap_repo_root(script_name: str) -> None:
+    repo_root = Path(__file__).resolve().parent.parent
+    script_path = TOOLKIT_ROOT / "scripts" / script_name
+    assert script_path.resolve().parents[6] == repo_root
+    assert script_path.resolve().parents[6].exists()
+
+    result = subprocess.run(
+        [sys.executable, "-B", str(script_path)],
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "No module named 'backend'" not in result.stderr
+
+
 def test_windpy_cffex_member_rank_missing_rows_remain_read_only(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)
@@ -714,6 +1271,7 @@ def test_crowding_script_reads_system_cffex_cache_for_latest_snapshot(tmp_path, 
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.syspath_prepend(str(TOOLKIT_ROOT))
     get_settings.cache_clear()
 
     script = get_toolkit_script("crowding_cn")
@@ -736,6 +1294,7 @@ def test_crowding_script_reads_system_cffex_cache_for_latest_snapshot(tmp_path, 
 
 
 def test_signal_aggregator_dates_final_signal_to_latest_input_snapshot(monkeypatch) -> None:
+    monkeypatch.syspath_prepend(str(TOOLKIT_ROOT))
     script = get_toolkit_script("signal_aggregator")
     spec = importlib.util.spec_from_file_location("_legacy_signal_aggregator", script.path)
     assert spec is not None and spec.loader is not None
@@ -783,6 +1342,7 @@ def test_signal_aggregator_dates_final_signal_to_latest_input_snapshot(monkeypat
 
 
 def test_risk_monitor_main_writes_risk_state_and_risk_log_when_final_signal_exists(tmp_path, monkeypatch) -> None:
+    monkeypatch.syspath_prepend(str(TOOLKIT_ROOT))
     script = get_toolkit_script("risk_monitor")
     spec = importlib.util.spec_from_file_location("_legacy_risk_monitor", script.path)
     assert spec is not None and spec.loader is not None
@@ -814,6 +1374,7 @@ def test_risk_monitor_main_writes_risk_state_and_risk_log_when_final_signal_exis
 
 
 def test_risk_monitor_log_event_appends_without_rewriting_existing_log(tmp_path, monkeypatch) -> None:
+    monkeypatch.syspath_prepend(str(TOOLKIT_ROOT))
     script = get_toolkit_script("risk_monitor")
     spec = importlib.util.spec_from_file_location("_legacy_risk_monitor_append", script.path)
     assert spec is not None and spec.loader is not None
@@ -846,6 +1407,7 @@ def test_risk_monitor_log_event_appends_without_rewriting_existing_log(tmp_path,
 
 
 def test_cta_trend_main_writes_cta_results_csv_to_output_dir(tmp_path, monkeypatch) -> None:
+    monkeypatch.syspath_prepend(str(TOOLKIT_ROOT))
     script = get_toolkit_script("cta_trend_cn")
     spec = importlib.util.spec_from_file_location("_legacy_cta_trend_cn", script.path)
     assert spec is not None and spec.loader is not None
@@ -879,6 +1441,7 @@ def test_cta_trend_main_writes_cta_results_csv_to_output_dir(tmp_path, monkeypat
 
 
 def test_signal_aggregator_uses_merrill_snapshot_date_when_filters_are_missing(monkeypatch) -> None:
+    monkeypatch.syspath_prepend(str(TOOLKIT_ROOT))
     script = get_toolkit_script("signal_aggregator")
     spec = importlib.util.spec_from_file_location("_legacy_signal_aggregator_merrill_date", script.path)
     assert spec is not None and spec.loader is not None
@@ -1246,22 +1809,93 @@ def test_cffex_member_rank_refresh_materializes_choice_rows(tmp_path, monkeypatc
 def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)
+    # 补齐国债 1Y/3Y/7Y 正式曲线节点：M8/M13/M15 的 data_aliases 修正为实际
+    # 消费的曲线输入（S0059743/S0059746/S0059748）后，能力矩阵在输入齐备时
+    # 应保持 ready；这些节点经 legacy.yield.choice.treasury.* 解析命中。
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into fact_formal_yield_curve_daily values
+              ('2026-04-10', 'treasury', '1Y', 1.62, 'choice',
+               'vv_choice_curve', 'sv_choice_curve', 'rv_yield_curve_formal_materialize_v1'),
+              ('2026-04-10', 'treasury', '3Y', 1.98, 'choice',
+               'vv_choice_curve', 'sv_choice_curve', 'rv_yield_curve_formal_materialize_v1'),
+              ('2026-04-10', 'treasury', '7Y', 2.41, 'choice',
+               'vv_choice_curve', 'sv_choice_curve', 'rv_yield_curve_formal_materialize_v1'),
+              ('2026-04-10', 'treasury', '30Y', 2.62, 'choice',
+               'vv_choice_curve', 'sv_choice_curve', 'rv_yield_curve_formal_materialize_v1')
+            """
+        )
+    finally:
+        conn.close()
     output_dir = tmp_path / "macro_toolkit_output"
     output_dir.mkdir()
+    receipt_service = macro_toolkit_route.macro_toolkit_refresh_receipt_service
+    receipt_path = tmp_path / "macro_toolkit_freshness_refresh_receipt.json"
+    receipt_path.write_text(
+        json.dumps(
+            {
+                "schema_version": receipt_service.RECEIPT_SCHEMA_VERSION,
+                "generated_at": "2026-04-10T06:30:00+00:00",
+                "run_kind": "scheduled",
+                "invocation_mode": "run_once",
+                "task_name": receipt_service.RECEIPT_TASK_NAME,
+                "commit_sha": "test-commit",
+                "source_version": receipt_service.EXPECTED_SOURCE_VERSION,
+                "status": "success",
+                "exit_code": 0,
+                "result": {
+                    "status": "success",
+                    "steps": [
+                        {
+                            "step": step_name,
+                            "status": "success",
+                            "result": {"row_count": 1},
+                        }
+                        for step_name in sorted(
+                            receipt_service.REQUIRED_STEPS | {"cffex_member_rank"}
+                        )
+                    ],
+                    "latest_observation_dates": {
+                        key: "2026-04-10"
+                        for key in receipt_service.CORE_LATEST_OBSERVATION_KEYS
+                    },
+                },
+                "warnings": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    load_refresh_receipt_health = receipt_service.load_macro_toolkit_refresh_receipt_health
+    monkeypatch.setattr(
+        receipt_service,
+        "load_macro_toolkit_refresh_receipt_health",
+        lambda: load_refresh_receipt_health(receipt_path),
+    )
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setattr(macro_toolkit_route, "OUTPUT_DIR", output_dir)
+    monkeypatch.setattr(macro_toolkit_support, "OUTPUT_DIR", output_dir)
     get_settings.cache_clear()
     app = FastAPI()
     app.include_router(macro_toolkit_router)
     client = TestClient(app)
 
+    macro_toolkit_route.market_home_response_cache.invalidate()
+    system_sources.clear_system_macro_source_cache()
     try:
         response = client.get("/ui/macro/toolkit/analysis")
     finally:
         get_settings.cache_clear()
+        system_sources.clear_system_macro_source_cache()
 
     assert response.status_code == 200
     payload = response.json()
+    result_meta = payload["result_meta"]
+    assert result_meta["basis"] == "analytical"
+    assert result_meta["formal_use_allowed"] is False
+    assert result_meta["quality_flag"] == "warning"
+    assert result_meta["as_of_date"] == payload["result"]["as_of_date"] == "2026-04-10"
     assert payload["result"]["default_data_sources"] == ["choice", "tushare"]
     assert payload["result"]["conclusion"]["stance"]
     assert payload["result"]["coverage"]["hit_count"] >= 6
@@ -1288,17 +1922,27 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
         "deferred": False,
         "missing_aliases": ["M0041813"],
     }
+    # M8 诚实降级：缺 30Y-10Y 时发 SPREAD_30Y_10Y_UNAVAILABLE 且 degraded（不再静默填 0）。
+    # 本种子补齐 1Y/3Y/5Y/7Y/10Y/30Y 后 M8 可 complete；其余可算模块多为 degraded。
+    # 薄种子 CTA/DCC/RP unavailable by design（1 日 CSI/CU、缺 NHCI），不膨胀为 260 日历史；
+    # 可读路径见 test_multi_asset_observation_cards_readable_when_price_history_seeded
+    # 与 docs/plans/2026-07-19-macro-due-diligence-wiring.md（W3）。
+    # M12 无可算对照相关腿时诚实计 unavailable（不再 degraded +「常态」）。
+    # M10 共同月对齐后：薄种子缺 PMI/M2/社融/信用利差/Brent → 无 6/6 共同月，诚实 unavailable。
+    # M14 economic_cycle：PMI 核心输入缺失时 fail-closed（unavailable，不再 degraded）。
     assert data_health["capability_results"] == {
-        "complete": 0,
-        "degraded": 5,
-        "unavailable": 6,
-        "total_count": 11,
+        "complete": 1,
+        "degraded": 2,
+        "unavailable": 12,
+        "total_count": 15,
         "deferred": False,
     }
+    # ready=5：种子补齐国债节点后 M7/M8/M13/M15 等声明输入命中；
+    # M12 改为真实别名（CA.BRENT/M0067855/S0059749）后，种子缺 Brent 不再计 ready。
     assert data_health["capability_plan"] == {
-        "ready_count": 4,
-        "wired_count": 11,
-        "total_count": 11,
+        "ready_count": 5,
+        "wired_count": 15,
+        "total_count": 15,
         "deferred": False,
     }
     assert data_health["warnings"] == []
@@ -1337,12 +1981,12 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
         "tags": ["indicator"],
     }
     leading_repair = next(item for item in repair_items if item["key"] == "capability:leading_indicator")
-    assert leading_repair["type"] == "degraded"
+    assert leading_repair["type"] == "missing"
     assert leading_repair["scope"] == "full"
-    assert leading_repair["priority"] == "medium"
+    assert leading_repair["priority"] == "high"
     assert leading_repair["label"] == "宏观领先指标"
-    assert "宏观领先指标 当前 degraded" in leading_repair["suggested_action"]
-    assert "PMI_MISSING" in leading_repair["suggested_action"]
+    assert "宏观领先指标 当前 unavailable" in leading_repair["suggested_action"]
+    assert "LEI_NO_COMMON_COMPUTABLE_MONTH" in leading_repair["suggested_action"]
     assert leading_repair["action"] == {
         "kind": "load_full_analysis",
         "label": "重新完整分析",
@@ -1375,11 +2019,30 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
         "cross_market_linkage",
         "rate_turning_point",
         "economic_cycle",
+        "merrill_clock_cn",
+        "cta_trend_cn",
+        "dcc_garch_cn",
+        "risk_parity_cn",
         "macro_portfolio_impact",
         "decision_summary",
     }
+    # Thin analysis seed keeps CTA/DCC/RP unavailable by design (short history / missing
+    # NHCI) — not a wiring bug. Readable path:
+    # test_multi_asset_observation_cards_readable_when_price_history_seeded
+    # Plan note: docs/plans/2026-07-19-macro-due-diligence-wiring.md (W3).
+    for key in ("cta_trend_cn", "dcc_garch_cn", "risk_parity_cn"):
+        assert capability_results[key]["status"] == "unavailable", (
+            key,
+            capability_results[key]["status"],
+            capability_results[key].get("warnings"),
+        )
     assert capability_results["decision_summary"]["headline"]
     assert capability_results["decision_summary"]["status"] in {"complete", "degraded"}
+    yield_curve_shape = capability_results["yield_curve_shape"]
+    assert yield_curve_shape["status"] == "complete"
+    assert yield_curve_shape["result"]["spreads"]["30Y-10Y"] is not None
+    ycs_warnings = yield_curve_shape.get("warnings") or yield_curve_shape["result"].get("warnings") or []
+    assert "SPREAD_30Y_10Y_UNAVAILABLE" not in ycs_warnings
     monetary_policy = capability_results["monetary_policy_stance"]
     policy_inputs = {
         item["field"]: item
@@ -1393,19 +2056,32 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
 
     leading_indicator = capability_results["leading_indicator"]
     leading_missing = set(leading_indicator["result"]["input_evidence"]["missing_inputs"])
-    assert leading_indicator["status"] == "degraded"
+    assert leading_indicator["status"] == "unavailable"
+    assert leading_indicator["result"]["data_status"] == "unavailable"
+    assert leading_indicator["result"]["lei_index"] is None
     assert {"PMI_MISSING", "SOCIAL_FINANCING_YOY_MISSING", "CREDIT_SPREAD_AAA_MISSING"}.issubset(leading_missing)
     assert "M2_YOY_MISSING" in leading_missing
+    assert "LEI_NO_COMMON_COMPUTABLE_MONTH" in (leading_indicator.get("warnings") or [])
 
     economic_cycle = capability_results["economic_cycle"]
     cycle_missing = set(economic_cycle["result"]["input_evidence"]["missing_inputs"])
-    assert economic_cycle["status"] == "degraded"
+    # 核心输入（PMI）缺失时 economic_cycle fail-closed：unknown 且不给策略建议
+    assert economic_cycle["status"] == "unavailable"
+    assert economic_cycle["result"]["cycle_phase"] == "unknown"
+    assert economic_cycle["result"]["strategy"] == {}
     assert {"PMI_MISSING", "SOCIAL_FINANCING_YOY_MISSING"}.issubset(cycle_missing)
     assert "PPI_YOY_MISSING" in cycle_missing
     assert "M2_YOY_MISSING" in cycle_missing
     indicators = {item["alias"]: item for item in payload["result"]["indicators"]}
     assert indicators["DR007.IB"]["latest_value"] == 1.82
     assert indicators["S0059749"]["latest_value"] == 2.48
+    dr007_points = indicators["DR007.IB"]["recent_points"]
+    assert 0 < len(dr007_points) <= 20
+    assert dr007_points[-1]["value"] == indicators["DR007.IB"]["latest_value"]
+    assert dr007_points[-1]["date"] == indicators["DR007.IB"]["latest_date"]
+    assert [point["date"] for point in dr007_points] == sorted(point["date"] for point in dr007_points)
+    missing_indicators = [item for item in payload["result"]["indicators"] if item["quality"] == "missing"]
+    assert all(item["recent_points"] == [] for item in missing_indicators)
     hason_strategy = payload["result"]["hason_strategy"]
     assert hason_strategy["key"] == "hason_macro_strategy"
     assert hason_strategy["basis"] == "analytical"
@@ -1441,17 +2117,12 @@ def test_macro_toolkit_api_exposes_analysis_payload(tmp_path, monkeypatch) -> No
         item["script"] == "signal_aggregator" and item["available"]
         for item in hason_strategy["source_trace"]
     )
-    strategy_summaries = {item["key"]: item for item in payload["result"]["strategy_summaries"]}
-    assert set(strategy_summaries) == {
-        "moving_average",
-        "mean_reversion_momentum",
-        "multi_factor_selection",
-        "low_crowding_regime_multifactor",
+    assert payload["result"]["strategy_summaries"] == []
+    assert payload["result"]["strategy_data_status"] == {
+        "status": "unavailable",
+        "reason": "no_strategy_summaries",
+        "summary_count": 0,
     }
-    assert strategy_summaries["moving_average"]["status"] == "sample_only"
-    assert strategy_summaries["low_crowding_regime_multifactor"]["status"] == "sample_only"
-    assert strategy_summaries["low_crowding_regime_multifactor"]["result"]["regime"]
-    assert strategy_summaries["multi_factor_selection"]["primary_metric"]["label"] == "样例入选数量"
 
 
 def test_hason_module_payload_marks_partially_available_script_chain(tmp_path) -> None:
@@ -1459,7 +2130,7 @@ def test_hason_module_payload_marks_partially_available_script_chain(tmp_path) -
     available_script.write_text("# available", encoding="utf-8")
     missing_script = tmp_path / "crowding_cn.py"
 
-    payload = macro_toolkit_route._hason_module_payload(
+    payload = macro_toolkit_support._hason_module_payload(
         {
             "key": "strategy_selection",
             "label": "Strategy selection",
@@ -1480,7 +2151,7 @@ def test_hason_module_payload_marks_partially_available_script_chain(tmp_path) -
 def test_hason_summary_counts_partial_modules_and_missing_scripts(tmp_path, monkeypatch) -> None:
     script_names = {
         str(script_name)
-        for module in macro_toolkit_route._HASON_MODULES
+        for module in macro_toolkit_support._HASON_MODULES
         for script_name in module["scripts"]
     }
     scripts = []
@@ -1496,9 +2167,10 @@ def test_hason_summary_counts_partial_modules_and_missing_scripts(tmp_path, monk
                 group="macro",
             )
         )
+    monkeypatch.setattr(macro_toolkit_support, "iter_toolkit_scripts", lambda: iter(scripts))
     monkeypatch.setattr(macro_toolkit_route, "iter_toolkit_scripts", lambda: iter(scripts))
 
-    payload = macro_toolkit_route._hason_macro_strategy_summary(
+    payload = macro_toolkit_support._hason_macro_strategy_summary(
         [{"name": "final_signal.csv"}, {"name": "crowding_latest.csv"}]
     )
 
@@ -1516,7 +2188,7 @@ def test_hason_summary_counts_partial_modules_and_missing_scripts(tmp_path, monk
 def test_hason_summary_counts_shared_missing_script_once(tmp_path, monkeypatch) -> None:
     script_names = {
         str(script_name)
-        for module in macro_toolkit_route._HASON_MODULES
+        for module in macro_toolkit_support._HASON_MODULES
         for script_name in module["scripts"]
     }
     scripts = []
@@ -1532,9 +2204,10 @@ def test_hason_summary_counts_shared_missing_script_once(tmp_path, monkeypatch) 
                 group="macro",
             )
         )
+    monkeypatch.setattr(macro_toolkit_support, "iter_toolkit_scripts", lambda: iter(scripts))
     monkeypatch.setattr(macro_toolkit_route, "iter_toolkit_scripts", lambda: iter(scripts))
 
-    payload = macro_toolkit_route._hason_macro_strategy_summary(
+    payload = macro_toolkit_support._hason_macro_strategy_summary(
         [{"name": "final_signal.csv"}, {"name": "crowding_latest.csv"}]
     )
 
@@ -1545,7 +2218,7 @@ def test_hason_summary_counts_shared_missing_script_once(tmp_path, monkeypatch) 
 def test_hason_source_trace_keeps_shared_script_module_context(tmp_path, monkeypatch) -> None:
     script_names = {
         str(script_name)
-        for module in macro_toolkit_route._HASON_MODULES
+        for module in macro_toolkit_support._HASON_MODULES
         for script_name in module["scripts"]
     }
     scripts = []
@@ -1560,9 +2233,10 @@ def test_hason_source_trace_keeps_shared_script_module_context(tmp_path, monkeyp
                 group="macro",
             )
         )
+    monkeypatch.setattr(macro_toolkit_support, "iter_toolkit_scripts", lambda: iter(scripts))
     monkeypatch.setattr(macro_toolkit_route, "iter_toolkit_scripts", lambda: iter(scripts))
 
-    payload = macro_toolkit_route._hason_macro_strategy_summary(
+    payload = macro_toolkit_support._hason_macro_strategy_summary(
         [{"name": "final_signal.csv"}, {"name": "crowding_latest.csv"}]
     )
 
@@ -1573,7 +2247,7 @@ def test_hason_source_trace_keeps_shared_script_module_context(tmp_path, monkeyp
 
 def test_hason_summary_marks_existing_outputs_stale_against_analysis_date(tmp_path, monkeypatch) -> None:
     scripts = []
-    for module in macro_toolkit_route._HASON_MODULES:
+    for module in macro_toolkit_support._HASON_MODULES:
         for name in module["scripts"]:
             script_name = str(name)
             path = tmp_path / f"{script_name}.py"
@@ -1586,10 +2260,11 @@ def test_hason_summary_marks_existing_outputs_stale_against_analysis_date(tmp_pa
                     group="macro",
                 )
             )
+    monkeypatch.setattr(macro_toolkit_support, "iter_toolkit_scripts", lambda: iter(scripts))
     monkeypatch.setattr(macro_toolkit_route, "iter_toolkit_scripts", lambda: iter(scripts))
 
     stale_modified_at = datetime(2026, 4, 29, 15, 0, tzinfo=UTC).isoformat()
-    payload = macro_toolkit_route._hason_macro_strategy_summary(
+    payload = macro_toolkit_support._hason_macro_strategy_summary(
         [
             {"name": "final_signal.csv", "modified_at": stale_modified_at},
             {"name": "crowding_latest.csv", "modified_at": stale_modified_at},
@@ -1605,7 +2280,7 @@ def test_hason_summary_marks_existing_outputs_stale_against_analysis_date(tmp_pa
 
 def test_hason_summary_compares_output_freshness_in_cn_business_date(tmp_path, monkeypatch) -> None:
     scripts = []
-    for module in macro_toolkit_route._HASON_MODULES:
+    for module in macro_toolkit_support._HASON_MODULES:
         for name in module["scripts"]:
             script_name = str(name)
             path = tmp_path / f"{script_name}.py"
@@ -1618,10 +2293,11 @@ def test_hason_summary_compares_output_freshness_in_cn_business_date(tmp_path, m
                     group="macro",
                 )
             )
+    monkeypatch.setattr(macro_toolkit_support, "iter_toolkit_scripts", lambda: iter(scripts))
     monkeypatch.setattr(macro_toolkit_route, "iter_toolkit_scripts", lambda: iter(scripts))
 
     generated_after_cn_midnight = datetime(2026, 4, 29, 16, 30, tzinfo=UTC).isoformat()
-    payload = macro_toolkit_route._hason_macro_strategy_summary(
+    payload = macro_toolkit_support._hason_macro_strategy_summary(
         [
             {"name": "final_signal.csv", "modified_at": generated_after_cn_midnight},
             {"name": "crowding_latest.csv", "modified_at": generated_after_cn_midnight},
@@ -1639,7 +2315,7 @@ def test_hason_summary_compares_output_freshness_in_cn_business_date(tmp_path, m
 
 def test_hason_summary_prefers_csv_content_date_over_file_modified_date(tmp_path, monkeypatch) -> None:
     scripts = []
-    for module in macro_toolkit_route._HASON_MODULES:
+    for module in macro_toolkit_support._HASON_MODULES:
         for name in module["scripts"]:
             script_name = str(name)
             path = tmp_path / f"{script_name}.py"
@@ -1652,6 +2328,7 @@ def test_hason_summary_prefers_csv_content_date_over_file_modified_date(tmp_path
                     group="macro",
                 )
             )
+    monkeypatch.setattr(macro_toolkit_support, "iter_toolkit_scripts", lambda: iter(scripts))
     monkeypatch.setattr(macro_toolkit_route, "iter_toolkit_scripts", lambda: iter(scripts))
 
     final_signal_path = tmp_path / "final_signal.csv"
@@ -1660,7 +2337,7 @@ def test_hason_summary_prefers_csv_content_date_over_file_modified_date(tmp_path
     crowding_path.write_text("品种,日期,C\nT,2026-04-29,0.5\n", encoding="utf-8-sig")
     current_modified_at = datetime(2026, 4, 29, 16, 30, tzinfo=UTC).isoformat()
 
-    payload = macro_toolkit_route._hason_macro_strategy_summary(
+    payload = macro_toolkit_support._hason_macro_strategy_summary(
         [
             {"name": "final_signal.csv", "path": str(final_signal_path), "modified_at": current_modified_at},
             {"name": "crowding_latest.csv", "path": str(crowding_path), "modified_at": current_modified_at},
@@ -1677,7 +2354,7 @@ def test_hason_summary_prefers_csv_content_date_over_file_modified_date(tmp_path
 
 def test_hason_summary_marks_future_csv_content_date_unknown(tmp_path, monkeypatch) -> None:
     scripts = []
-    for module in macro_toolkit_route._HASON_MODULES:
+    for module in macro_toolkit_support._HASON_MODULES:
         for name in module["scripts"]:
             script_name = str(name)
             path = tmp_path / f"{script_name}.py"
@@ -1690,6 +2367,7 @@ def test_hason_summary_marks_future_csv_content_date_unknown(tmp_path, monkeypat
                     group="macro",
                 )
             )
+    monkeypatch.setattr(macro_toolkit_support, "iter_toolkit_scripts", lambda: iter(scripts))
     monkeypatch.setattr(macro_toolkit_route, "iter_toolkit_scripts", lambda: iter(scripts))
 
     final_signal_path = tmp_path / "final_signal.csv"
@@ -1698,7 +2376,7 @@ def test_hason_summary_marks_future_csv_content_date_unknown(tmp_path, monkeypat
     crowding_path.write_text("品种,日期,C\nT,2026-05-02,0.5\n", encoding="utf-8-sig")
     current_modified_at = datetime(2026, 4, 30, 10, 0, tzinfo=UTC).isoformat()
 
-    payload = macro_toolkit_route._hason_macro_strategy_summary(
+    payload = macro_toolkit_support._hason_macro_strategy_summary(
         [
             {"name": "final_signal.csv", "path": str(final_signal_path), "modified_at": current_modified_at},
             {"name": "crowding_latest.csv", "path": str(crowding_path), "modified_at": current_modified_at},
@@ -1715,7 +2393,7 @@ def test_hason_summary_marks_future_csv_content_date_unknown(tmp_path, monkeypat
 
 def test_hason_summary_marks_mixed_csv_content_dates_unknown(tmp_path, monkeypatch) -> None:
     scripts = []
-    for module in macro_toolkit_route._HASON_MODULES:
+    for module in macro_toolkit_support._HASON_MODULES:
         for name in module["scripts"]:
             script_name = str(name)
             path = tmp_path / f"{script_name}.py"
@@ -1728,6 +2406,7 @@ def test_hason_summary_marks_mixed_csv_content_dates_unknown(tmp_path, monkeypat
                     group="macro",
                 )
             )
+    monkeypatch.setattr(macro_toolkit_support, "iter_toolkit_scripts", lambda: iter(scripts))
     monkeypatch.setattr(macro_toolkit_route, "iter_toolkit_scripts", lambda: iter(scripts))
 
     final_signal_path = tmp_path / "final_signal.csv"
@@ -1739,7 +2418,7 @@ def test_hason_summary_marks_mixed_csv_content_dates_unknown(tmp_path, monkeypat
     crowding_path.write_text("品种,日期,C\nT,2026-04-30,0.5\nTL,2026-04-30,0.6\n", encoding="utf-8-sig")
     current_modified_at = datetime(2026, 4, 30, 10, 0, tzinfo=UTC).isoformat()
 
-    payload = macro_toolkit_route._hason_macro_strategy_summary(
+    payload = macro_toolkit_support._hason_macro_strategy_summary(
         [
             {"name": "final_signal.csv", "path": str(final_signal_path), "modified_at": current_modified_at},
             {"name": "crowding_latest.csv", "path": str(crowding_path), "modified_at": current_modified_at},
@@ -1764,17 +2443,17 @@ def test_hason_output_content_dates_reads_latest_row_beyond_preview_window(tmp_p
     rows.append("T500,2026-04-30,空仓")
     output_path.write_text("\n".join(rows) + "\n", encoding="utf-8-sig")
 
-    content_dates = macro_toolkit_route._hason_output_content_dates({"path": str(output_path)})
+    content_dates = macro_toolkit_support._hason_output_content_dates({"path": str(output_path)})
 
     assert content_dates["min"] == "2026-04-29"
     assert content_dates["max"] == "2026-04-30"
     assert content_dates["invalid_count"] == 0
-    assert content_dates["date_column"] in macro_toolkit_route._HASON_OUTPUT_DATE_COLUMNS
+    assert content_dates["date_column"] in macro_toolkit_support._HASON_OUTPUT_DATE_COLUMNS
 
 
 def test_hason_summary_marks_invalid_csv_content_dates_unknown(tmp_path, monkeypatch) -> None:
     scripts = []
-    for module in macro_toolkit_route._HASON_MODULES:
+    for module in macro_toolkit_support._HASON_MODULES:
         for name in module["scripts"]:
             script_name = str(name)
             path = tmp_path / f"{script_name}.py"
@@ -1787,6 +2466,7 @@ def test_hason_summary_marks_invalid_csv_content_dates_unknown(tmp_path, monkeyp
                     group="macro",
                 )
             )
+    monkeypatch.setattr(macro_toolkit_support, "iter_toolkit_scripts", lambda: iter(scripts))
     monkeypatch.setattr(macro_toolkit_route, "iter_toolkit_scripts", lambda: iter(scripts))
 
     final_signal_path = tmp_path / "final_signal.csv"
@@ -1798,7 +2478,7 @@ def test_hason_summary_marks_invalid_csv_content_dates_unknown(tmp_path, monkeyp
     crowding_path.write_text("品种,日期,C\nT,2026-04-30,0.5\nTL,2026-04-30,0.6\n", encoding="utf-8-sig")
     current_modified_at = datetime(2026, 4, 30, 10, 0, tzinfo=UTC).isoformat()
 
-    payload = macro_toolkit_route._hason_macro_strategy_summary(
+    payload = macro_toolkit_support._hason_macro_strategy_summary(
         [
             {"name": "final_signal.csv", "path": str(final_signal_path), "modified_at": current_modified_at},
             {"name": "crowding_latest.csv", "path": str(crowding_path), "modified_at": current_modified_at},
@@ -1817,7 +2497,7 @@ def test_hason_summary_marks_invalid_csv_content_dates_unknown(tmp_path, monkeyp
 
 def test_hason_summary_does_not_treat_empty_csv_date_column_as_current(tmp_path, monkeypatch) -> None:
     scripts = []
-    for module in macro_toolkit_route._HASON_MODULES:
+    for module in macro_toolkit_support._HASON_MODULES:
         for name in module["scripts"]:
             script_name = str(name)
             path = tmp_path / f"{script_name}.py"
@@ -1830,6 +2510,7 @@ def test_hason_summary_does_not_treat_empty_csv_date_column_as_current(tmp_path,
                     group="macro",
                 )
             )
+    monkeypatch.setattr(macro_toolkit_support, "iter_toolkit_scripts", lambda: iter(scripts))
     monkeypatch.setattr(macro_toolkit_route, "iter_toolkit_scripts", lambda: iter(scripts))
 
     final_signal_path = tmp_path / "final_signal.csv"
@@ -1838,7 +2519,7 @@ def test_hason_summary_does_not_treat_empty_csv_date_column_as_current(tmp_path,
     crowding_path.write_text("asset,date,crowding\nT,2026-04-30,0.5\nTL,2026-04-30,0.6\n", encoding="utf-8")
     current_modified_at = datetime(2026, 4, 30, 10, 0, tzinfo=UTC).isoformat()
 
-    payload = macro_toolkit_route._hason_macro_strategy_summary(
+    payload = macro_toolkit_support._hason_macro_strategy_summary(
         [
             {"name": "final_signal.csv", "path": str(final_signal_path), "modified_at": current_modified_at},
             {"name": "crowding_latest.csv", "path": str(crowding_path), "modified_at": current_modified_at},
@@ -1865,11 +2546,13 @@ def test_macro_toolkit_analysis_core_scope_defers_slow_sections(tmp_path, monkey
     def fail_if_called(*_args: object, **_kwargs: object) -> list[dict[str, object]]:
         raise AssertionError("core analysis should not compute deferred macro toolkit sections")
 
-    monkeypatch.setattr(macro_toolkit_route, "_macro_capability_results", fail_if_called)
-    monkeypatch.setattr(macro_toolkit_route, "_equity_strategy_summaries", fail_if_called)
+    monkeypatch.setattr(macro_toolkit_support, "_macro_capability_results", fail_if_called)
+    monkeypatch.setattr(macro_toolkit_support, "_equity_strategy_summaries", fail_if_called)
+    monkeypatch.setattr(macro_toolkit_support, "_source_checks", fail_if_called)
     monkeypatch.setattr(macro_toolkit_route, "_source_checks", fail_if_called)
+    monkeypatch.setattr(macro_toolkit_support, "_capability_plan", fail_if_called)
     monkeypatch.setattr(macro_toolkit_route, "_capability_plan", fail_if_called)
-    monkeypatch.setattr(macro_toolkit_route, "_a_share_stampede_risk", fail_if_called)
+    monkeypatch.setattr(macro_toolkit_support, "_a_share_stampede_risk", fail_if_called)
 
     app = FastAPI()
     app.include_router(macro_toolkit_router)
@@ -1933,7 +2616,7 @@ def test_macro_toolkit_analysis_core_scope_defers_slow_sections(tmp_path, monkey
 
 
 def test_macro_toolkit_data_health_marks_stale_sources_as_repair_items() -> None:
-    data_health = macro_toolkit_route._analysis_data_health(
+    data_health = macro_toolkit_analysis._analysis_data_health(
         indicators=[
             {
                 "key": "hs300",
@@ -2014,10 +2697,109 @@ def test_macro_toolkit_strategy_summaries_endpoint_returns_deferred_strategy_pay
     assert response.status_code == 200
     payload = response.json()
     strategies = {item["key"]: item for item in payload["result"]["strategy_summaries"]}
-    assert strategies["moving_average"]["status"] == "complete"
+    assert strategies["moving_average"]["status"] == "unavailable"
+    assert strategies["moving_average"]["result"]["unavailable_reason"] == "return_basis_unverified"
+    assert strategies["moving_average"]["primary_metric"] is None
     assert strategies["moving_average"]["result"]["price_source"] == "choice_stock_daily_observation"
     assert payload["result"]["choice_stock_refresh"]["daily_observation"]["latest_trade_date"] == "2026-04-30"
-    assert "choice_stock_daily_observation" in payload["result_meta"]["tables_used"]
+    result_meta = payload["result_meta"]
+    assert result_meta["basis"] == "analytical"
+    assert result_meta["formal_use_allowed"] is False
+    assert result_meta["quality_flag"] == "warning"
+    assert result_meta["as_of_date"] == "2026-04-30"
+    assert "choice_stock_daily_observation" in result_meta["tables_used"]
+
+
+def test_equity_strategy_invalid_price_context_preserves_unavailable_reason(monkeypatch) -> None:
+    monkeypatch.setattr(macro_toolkit_support, "_load_equity_strategy_price_context", lambda _path: {})
+
+    strategies, price_context = macro_toolkit_support._equity_strategy_summaries_with_context(None)
+
+    assert price_context == {}
+    assert strategies[0]["status"] == "unavailable"
+    assert strategies[0]["warnings"] == ["KeyError: 'prices'"]
+    assert strategies[0]["result"]["data_status"] == "unavailable"
+
+
+def test_equity_strategy_unexpected_reader_failure_propagates(monkeypatch) -> None:
+    def unexpected_reader_failure(_path):
+        raise RuntimeError("synthetic unexpected reader failure")
+
+    monkeypatch.setattr(macro_toolkit_support, "_load_equity_strategy_price_context", unexpected_reader_failure)
+
+    with pytest.raises(RuntimeError, match="synthetic unexpected reader failure"):
+        macro_toolkit_support._equity_strategy_summaries_with_context(None)
+
+
+def test_equity_strategy_missing_price_context_returns_empty_with_unavailable_payload(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb.connect(str(duckdb_path), read_only=False).close()
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    context_loads = 0
+    shadow_calls: list[pd.DataFrame | None] = []
+
+    def fake_load_price_context(duckdb_path_arg: object) -> None:
+        nonlocal context_loads
+        assert Path(duckdb_path_arg) == duckdb_path
+        context_loads += 1
+        return None
+
+    def fake_shadow_report(
+        duckdb_path_arg: object,
+        *,
+        latest_factor_snapshot: pd.DataFrame | None = None,
+    ) -> dict[str, object]:
+        assert Path(duckdb_path_arg) == duckdb_path
+        shadow_calls.append(latest_factor_snapshot)
+        return {"status": "unavailable", "tables_used": []}
+
+    monkeypatch.setattr(macro_toolkit_support, "_load_equity_strategy_price_context", fake_load_price_context)
+    monkeypatch.setattr(macro_toolkit_support, "compute_equity_shadow_portfolio_report", fake_shadow_report)
+    monkeypatch.setattr(
+        macro_toolkit_support,
+        "_macro_etf_strategy_snapshot_for_toolkit",
+        lambda **_kwargs: {
+            "boundary": "observation_only",
+            "execution_enabled": False,
+            "data_status": {"status": "ready", "dual_frequency_status": "ready"},
+        },
+    )
+    monkeypatch.setattr(
+        macro_toolkit_support,
+        "_choice_stock_refresh_overview",
+        lambda *_args, **_kwargs: {"daily_observation": {"latest_trade_date": None}},
+    )
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_choice_stock_refresh_overview",
+        lambda *_args, **_kwargs: {"daily_observation": {"latest_trade_date": None}},
+    )
+
+    try:
+        assert macro_toolkit_support._equity_strategy_summaries(duckdb_path, price_context=None) == []
+        payload = macro_toolkit_read_service.build_macro_toolkit_strategy_summaries()
+    finally:
+        get_settings.cache_clear()
+
+    assert context_loads == 1
+    assert shadow_calls == [None]
+    result = payload["result"]
+    assert result["strategy_summaries"] == []
+    assert result["strategy_data_status"] == {
+        "status": "unavailable",
+        "reason": "price_context_unavailable",
+        "summary_count": 0,
+    }
+    assert result["warnings"] == [
+        "A股策略摘要不可用：未找到真实 choice_stock_daily_observation 价格上下文，已停止合成样本回退。"
+    ]
+    assert payload["result_meta"]["quality_flag"] == "warning"
+    assert payload["result_meta"]["vendor_status"] == "ok"
+    assert payload["result_meta"]["tables_used"] == []
 
 
 def test_macro_toolkit_strategy_summaries_reuses_loaded_factor_snapshot_for_shadow(
@@ -2036,7 +2818,7 @@ def test_macro_toolkit_strategy_summaries_reuses_loaded_factor_snapshot_for_shad
         },
         index=dates,
     )
-    observations = macro_toolkit_route._sample_strategy_observations(prices)
+    observations = macro_toolkit_support._sample_strategy_observations(prices)
     financials = pd.DataFrame(
         {
             "stock_code": ["000001.SZ", "000002.SZ"],
@@ -2080,8 +2862,13 @@ def test_macro_toolkit_strategy_summaries_reuses_loaded_factor_snapshot_for_shad
         shadow_calls.append(latest_factor_snapshot)
         return {"status": "complete", "tables_used": ["choice_stock_factor_snapshot"]}
 
-    monkeypatch.setattr(macro_toolkit_route, "_load_equity_strategy_price_context", fake_load_price_context)
-    monkeypatch.setattr(macro_toolkit_route, "compute_equity_shadow_portfolio_report", fake_shadow_report)
+    monkeypatch.setattr(macro_toolkit_support, "_load_equity_strategy_price_context", fake_load_price_context)
+    monkeypatch.setattr(macro_toolkit_support, "compute_equity_shadow_portfolio_report", fake_shadow_report)
+    monkeypatch.setattr(
+        macro_toolkit_support,
+        "_choice_stock_refresh_overview",
+        lambda *_args, **_kwargs: {"daily_observation": {"latest_trade_date": "2026-04-30"}},
+    )
     monkeypatch.setattr(
         macro_toolkit_route,
         "_choice_stock_refresh_overview",
@@ -2089,15 +2876,402 @@ def test_macro_toolkit_strategy_summaries_reuses_loaded_factor_snapshot_for_shad
     )
 
     try:
-        payload = macro_toolkit_route._build_macro_toolkit_strategy_summaries()
+        payload = macro_toolkit_read_service.build_macro_toolkit_strategy_summaries()
     finally:
         get_settings.cache_clear()
 
     assert context_loads == 1
     assert len(shadow_calls) == 1
     assert shadow_calls[0] is financials
-    assert payload["result"]["strategy_summaries"][0]["status"] == "complete"
+    summaries = {item["key"]: item for item in payload["result"]["strategy_summaries"]}
+    assert summaries["moving_average"]["status"] == "unavailable"
+    assert summaries["moving_average"]["result"]["unavailable_reason"] == "return_basis_unverified"
+    assert summaries["moving_average"]["primary_metric"] is None
+    assert summaries["multi_factor_selection"]["status"] == "complete"
+    assert payload["result"]["strategy_data_status"] == {"status": "degraded", "summary_count": 4}
+    assert payload["result"]["warnings"] == []
     assert payload["result"]["shadow_portfolio_report"]["status"] == "complete"
+    macro_etf_strategy = payload["result"]["macro_etf_strategy"]
+    assert macro_etf_strategy["boundary"] == "observation_only"
+    assert macro_etf_strategy["execution_enabled"] is False
+    assert macro_etf_strategy["dual_frequency"]["boundary"] == "observation_only"
+    assert macro_etf_strategy["dual_frequency"]["execution_enabled"] is False
+    assert macro_etf_strategy["data_status"]["dual_frequency_status"] != "ready"
+    assert payload["result_meta"]["quality_flag"] == "warning"
+    assert payload["result_meta"]["vendor_status"] == "ok"
+    assert payload["result_meta"]["tables_used"] == [
+        "choice_stock_daily_observation",
+        "choice_stock_factor_snapshot",
+    ]
+
+
+def test_macro_toolkit_strategy_summaries_preserves_explicit_vendor_stale_status(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb.connect(str(duckdb_path), read_only=False).close()
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    strategies = [
+        {
+            "key": "moving_average",
+            "status": "complete",
+            "result": {
+                "data_status": "complete",
+                "price_source": "choice_stock_daily_observation",
+                "as_of_date": "2026-04-30",
+                "tables_used": ["choice_stock_daily_observation"],
+            },
+        }
+    ]
+    price_context = {
+        "prices": pd.DataFrame({"000001.SZ": [10.0]}, index=pd.to_datetime(["2026-04-30"])),
+        "financials": pd.DataFrame(),
+    }
+
+    monkeypatch.setattr(
+        macro_toolkit_support,
+        "_equity_strategy_summaries_with_context",
+        lambda _duckdb_path=None: (strategies, price_context),
+    )
+    monkeypatch.setattr(
+        macro_toolkit_support,
+        "compute_equity_shadow_portfolio_report",
+        lambda *_args, **_kwargs: {"status": "complete", "tables_used": []},
+    )
+    monkeypatch.setattr(
+        macro_toolkit_support,
+        "_macro_etf_strategy_snapshot_for_toolkit",
+        lambda **_kwargs: {
+            "boundary": "observation_only",
+            "execution_enabled": False,
+            "vendor_status": "vendor_stale",
+            "data_status": {"status": "degraded", "dual_frequency_status": "degraded"},
+            "provenance": {"tables_used": []},
+        },
+    )
+    monkeypatch.setattr(
+        macro_toolkit_support,
+        "_choice_stock_refresh_overview",
+        lambda *_args, **_kwargs: {"daily_observation": {"latest_trade_date": "2026-04-30"}},
+    )
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_choice_stock_refresh_overview",
+        lambda *_args, **_kwargs: {"daily_observation": {"latest_trade_date": "2026-04-30"}},
+    )
+
+    try:
+        payload = macro_toolkit_read_service.build_macro_toolkit_strategy_summaries()
+    finally:
+        get_settings.cache_clear()
+
+    assert payload["result_meta"]["quality_flag"] == "warning"
+    assert payload["result_meta"]["vendor_status"] == "vendor_stale"
+    assert payload["result_meta"]["tables_used"] == ["choice_stock_daily_observation"]
+
+
+def test_macro_toolkit_strategy_summaries_only_reports_real_aggregated_tables(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb.connect(str(duckdb_path), read_only=False).close()
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    strategies = [
+        {
+            "key": "moving_average",
+            "status": "complete",
+            "result": {
+                "data_status": "complete",
+                "price_source": "choice_stock_daily_observation",
+                "as_of_date": "2026-04-30",
+                "tables_used": ["choice_stock_daily_observation"],
+            },
+        }
+    ]
+    price_context = {
+        "prices": pd.DataFrame({"000001.SZ": [10.0]}, index=pd.to_datetime(["2026-04-30"])),
+        "financials": pd.DataFrame(),
+    }
+
+    monkeypatch.setattr(
+        macro_toolkit_support,
+        "_equity_strategy_summaries_with_context",
+        lambda _duckdb_path=None: (strategies, price_context),
+    )
+    monkeypatch.setattr(
+        macro_toolkit_support,
+        "compute_equity_shadow_portfolio_report",
+        lambda *_args, **_kwargs: {"status": "unavailable", "tables_used": []},
+    )
+    monkeypatch.setattr(
+        macro_toolkit_support,
+        "_macro_etf_strategy_snapshot_for_toolkit",
+        lambda **_kwargs: {
+            "boundary": "observation_only",
+            "execution_enabled": False,
+            "data_status": {"status": "degraded", "dual_frequency_status": "degraded"},
+            "provenance": {"tables_used": []},
+        },
+    )
+    monkeypatch.setattr(
+        macro_toolkit_support,
+        "_choice_stock_refresh_overview",
+        lambda *_args, **_kwargs: {"daily_observation": {"latest_trade_date": "2026-04-30"}},
+    )
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_choice_stock_refresh_overview",
+        lambda *_args, **_kwargs: {"daily_observation": {"latest_trade_date": "2026-04-30"}},
+    )
+
+    try:
+        payload = macro_toolkit_read_service.build_macro_toolkit_strategy_summaries()
+    finally:
+        get_settings.cache_clear()
+
+    assert payload["result_meta"]["quality_flag"] == "warning"
+    assert payload["result_meta"]["vendor_status"] == "ok"
+    assert payload["result_meta"]["tables_used"] == ["choice_stock_daily_observation"]
+
+
+def test_macro_toolkit_analysis_core_result_meta_only_reports_real_tables(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb.connect(str(duckdb_path), read_only=False).close()
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    monkeypatch.setattr(macro_toolkit_support, "_analysis_indicators", lambda _path: [])
+    monkeypatch.setattr(macro_toolkit_support, "_output_files", lambda: [])
+    monkeypatch.setattr(macro_toolkit_route, "_output_files", lambda: [])
+    monkeypatch.setattr(
+        macro_toolkit_route.macro_report_asset_service,
+        "load_report_bundle",
+        lambda _path: {"artifacts": []},
+    )
+    monkeypatch.setattr(
+        macro_toolkit_route.macro_toolkit_service,
+        "macro_model_readiness",
+        lambda **_kwargs: {"model_readiness": [], "readiness_summary": {}},
+    )
+    monkeypatch.setattr(
+        macro_toolkit_support,
+        "_cffex_member_rank_status",
+        lambda *_args, **_kwargs: {"status": "missing_table"},
+    )
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_cffex_member_rank_status",
+        lambda *_args, **_kwargs: {"status": "missing_table"},
+    )
+    monkeypatch.setattr(
+        macro_toolkit_support,
+        "_choice_stock_refresh_overview",
+        lambda *_args, **_kwargs: {"daily_observation": {"latest_trade_date": None}},
+    )
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_choice_stock_refresh_overview",
+        lambda *_args, **_kwargs: {"daily_observation": {"latest_trade_date": None}},
+    )
+
+    try:
+        payload = macro_toolkit_read_service.build_macro_toolkit_analysis("core")
+    finally:
+        get_settings.cache_clear()
+
+    assert payload["result_meta"]["quality_flag"] == "warning"
+    assert payload["result_meta"]["tables_used"] == []
+
+
+@pytest.mark.parametrize(
+    ("receipt_status", "reason_code"),
+    [
+        ("missing", "refresh_receipt_missing"),
+        ("invalid", "refresh_receipt_invalid"),
+        ("blocked", "refresh_receipt_blocked"),
+    ],
+)
+def test_macro_toolkit_analysis_fail_closes_primary_signal_when_refresh_receipt_not_ready(
+    tmp_path: Path,
+    monkeypatch,
+    receipt_status: str,
+    reason_code: str,
+) -> None:
+    _stub_minimal_macro_toolkit_analysis(monkeypatch, tmp_path)
+
+    try:
+        payload = macro_toolkit_read_service.build_macro_toolkit_analysis(
+            "full",
+            refresh_receipt_health=_macro_toolkit_refresh_health(
+                status=receipt_status,
+                ready=False,
+            ),
+        )
+    finally:
+        get_settings.cache_clear()
+
+    primary_signal = payload["result"]["primary_signal"]
+    assert primary_signal["key"] is None
+    assert primary_signal["selection_status"] == "blocked"
+    assert primary_signal["reason_code"] == reason_code
+    assert primary_signal["refresh_receipt_status"] == receipt_status
+    assert payload["result"]["conclusion"]["tone"] == "missing"
+
+
+def test_macro_toolkit_analysis_keeps_primary_signal_when_refresh_receipt_ready(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _stub_minimal_macro_toolkit_analysis(monkeypatch, tmp_path)
+
+    try:
+        payload = macro_toolkit_read_service.build_macro_toolkit_analysis(
+            "full",
+            refresh_receipt_health=_macro_toolkit_refresh_health(
+                status="ready",
+                ready=True,
+            ),
+        )
+    finally:
+        get_settings.cache_clear()
+
+    primary_signal = payload["result"]["primary_signal"]
+    assert primary_signal["key"] == "liquidity"
+    assert primary_signal["selection_status"] == "selected"
+    assert primary_signal["reason_code"] == "strongest_direction_signal"
+
+
+def test_macro_toolkit_result_meta_quality_marks_problematic_freshness_warning() -> None:
+    meta = macro_toolkit_support._aggregate_macro_result_meta_overrides(
+        {
+            "runtime_outputs": [
+                {"name": "lagging.csv", "freshness_status": "lagging"},
+                {"name": "future.csv", "freshness_status": "future"},
+                {"name": "invalid.csv", "freshness_status": "invalid_date"},
+            ]
+        }
+    )
+
+    assert meta["quality_flag"] == "warning"
+    assert meta["vendor_status"] == "ok"
+
+
+def test_macro_toolkit_result_meta_quality_marks_missing_table_warning() -> None:
+    meta = macro_toolkit_support._aggregate_macro_result_meta_overrides(
+        {
+            "cffex_member_rank": {"status": "missing_table"},
+            "runtime_status": {"analysis_scope": "core"},
+        }
+    )
+
+    assert meta["quality_flag"] == "warning"
+    assert meta["vendor_status"] == "ok"
+
+
+def test_macro_toolkit_result_meta_tables_only_use_explicit_runtime_provenance() -> None:
+    without_runtime_provenance = macro_toolkit_support._aggregate_macro_result_meta_overrides(
+        {
+            "capability_results": [
+                {
+                    "key": "monetary_policy_stance",
+                    "status": "complete",
+                    "result": {},
+                }
+            ]
+        }
+    )
+    with_runtime_provenance = macro_toolkit_support._aggregate_macro_result_meta_overrides(
+        {
+            "capability_results": [
+                {
+                    "key": "monetary_policy_stance",
+                    "status": "complete",
+                    "result": {
+                        "provenance": {
+                            "tables_used": ["fact_choice_macro_daily"],
+                        }
+                    },
+                }
+            ]
+        }
+    )
+
+    assert without_runtime_provenance["tables_used"] == []
+    assert with_runtime_provenance["tables_used"] == ["fact_choice_macro_daily"]
+
+
+def test_macro_toolkit_dual_frequency_failure_is_isolated(monkeypatch, tmp_path) -> None:
+    def fail_candidate(**_kwargs: object) -> dict[str, object]:
+        raise RuntimeError("candidate unavailable")
+
+    monkeypatch.setattr(
+        macro_toolkit_support.macro_etf_strategy_service,
+        "macro_etf_strategy_envelope",
+        fail_candidate,
+    )
+
+    payload = macro_toolkit_support._macro_etf_strategy_snapshot_for_toolkit(
+        duckdb_path=tmp_path / "missing.duckdb",
+        as_of_date="2026-07-03",
+    )
+
+    assert payload["boundary"] == "observation_only"
+    assert payload["execution_enabled"] is False
+    assert payload["data_status"]["status"] == "degraded"
+    assert payload["data_status"]["dual_frequency_status"] == "degraded"
+    assert payload["dual_frequency"]["data_status"]["status"] == "degraded"
+    assert payload["dual_frequency"]["fast"]["status"] == "not_evaluated"
+    assert "RuntimeError" in payload["warnings"][0]
+
+
+class _TrackedMacroToolkitConnection:
+    def __init__(self, connection: object, *, fail_query_contains: str | None = None) -> None:
+        self._connection = connection
+        self._fail_query_contains = fail_query_contains
+        self.queries: list[str] = []
+        self.close_count = 0
+        self.thread_id = get_ident()
+        self.use_thread_ids: set[int] = set()
+
+    def execute(self, query: str, parameters: object | None = None):
+        current_thread_id = get_ident()
+        self.use_thread_ids.add(current_thread_id)
+        assert current_thread_id == self.thread_id, "DuckDB connection crossed worker threads"
+        normalized = " ".join(query.casefold().split())
+        self.queries.append(normalized)
+        if self._fail_query_contains and self._fail_query_contains in normalized:
+            raise duckdb.IOException("forced factor snapshot read failure")
+        if parameters is None:
+            return self._connection.execute(query)
+        return self._connection.execute(query, parameters)
+
+    def close(self) -> None:
+        assert get_ident() == self.thread_id, "DuckDB connection closed from a different worker thread"
+        self.close_count += 1
+        self._connection.close()
+
+
+def _track_macro_toolkit_connections(
+    monkeypatch,
+    *,
+    fail_query_contains: str | None = None,
+) -> list[_TrackedMacroToolkitConnection]:
+    real_connect = macro_toolkit_service.duckdb.connect
+    connections: list[_TrackedMacroToolkitConnection] = []
+
+    def tracked_connect(*args, **kwargs) -> _TrackedMacroToolkitConnection:
+        tracked = _TrackedMacroToolkitConnection(
+            real_connect(*args, **kwargs),
+            fail_query_contains=fail_query_contains,
+        )
+        connections.append(tracked)
+        return tracked
+
+    monkeypatch.setattr(macro_toolkit_service.duckdb, "connect", tracked_connect)
+    return connections
 
 
 def test_equity_strategy_price_context_loads_price_rows_as_dataframe(tmp_path, monkeypatch) -> None:
@@ -2151,9 +3325,17 @@ def test_equity_strategy_price_context_loads_price_rows_as_dataframe(tmp_path, m
             normalized = " ".join(query.casefold().split())
             if normalized == "show tables":
                 return FakeResult(rows=[("choice_stock_daily_observation",)])
-            if "max(try_cast(trade_date as date))" in normalized:
+            if "max(trade_date)" in normalized:
+                assert "max(try_cast(trade_date as date))" not in normalized
+                assert "try_cast(max(trade_date) as date)" in normalized
                 return FakeResult(row=(dates[-1].date(),))
             if "latest_sample" in normalized and "choice_stock_daily_observation" in normalized:
+                assert "where trade_date = ?" in normalized
+                assert "where daily.trade_date > ? and daily.trade_date <= ?" in normalized
+                assert "order by daily.trade_date asc, daily.stock_code asc" in normalized
+                assert "try_cast(daily.trade_date as date) as trade_date" in normalized
+                assert "where try_cast" not in normalized
+                assert parameters == ["2026-03-31", "2025-07-14", "2026-03-31"]
                 return FakeResult(frame=price_rows)
             raise AssertionError(f"unexpected query: {query}")
 
@@ -2161,6 +3343,12 @@ def test_equity_strategy_price_context_loads_price_rows_as_dataframe(tmp_path, m
             pass
 
     monkeypatch.setattr(macro_toolkit_service.duckdb, "connect", lambda *_args, **_kwargs: FakeConnection())
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "_duckdb_date_column_is_canonical_iso",
+        lambda *_args, **_kwargs: True,
+        raising=False,
+    )
     monkeypatch.setattr(macro_toolkit_service, "load_equity_strategy_factor_snapshot", lambda *_args, **_kwargs: None)
 
     context = macro_toolkit_service.load_equity_strategy_price_context(duckdb_path)
@@ -2169,6 +3357,43 @@ def test_equity_strategy_price_context_loads_price_rows_as_dataframe(tmp_path, m
     assert price_query_used_df is True
     assert context["prices"].shape == (90, 2)
     assert len(context["observations"]) == len(price_rows)
+
+
+def test_equity_strategy_price_and_factor_share_one_connection(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_stock_strategy_db(duckdb_path)
+    _seed_choice_stock_factor_snapshot(duckdb_path)
+    connections = _track_macro_toolkit_connections(monkeypatch)
+
+    context = macro_toolkit_service.load_equity_strategy_price_context(duckdb_path)
+
+    assert context is not None
+    assert isinstance(context["financials"], pd.DataFrame)
+    assert len(connections) == 1
+    assert connections[0].close_count == 1
+    assert any("from choice_stock_daily_observation" in query for query in connections[0].queries)
+    assert any("from choice_stock_factor_snapshot" in query for query in connections[0].queries)
+
+
+def test_equity_strategy_factor_failure_keeps_price_context_and_closes_once(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_stock_strategy_db(duckdb_path)
+    _seed_choice_stock_factor_snapshot(duckdb_path)
+    connections = _track_macro_toolkit_connections(
+        monkeypatch,
+        fail_query_contains="from choice_stock_factor_snapshot",
+    )
+
+    context = macro_toolkit_service.load_equity_strategy_price_context(duckdb_path)
+
+    assert context is not None
+    assert context["financials"] is None
+    assert context["tables_used"] == ["choice_stock_daily_observation"]
+    assert len(connections) == 1
+    assert connections[0].close_count == 1
 
 
 def test_equity_strategy_price_context_delegates_to_service(tmp_path, monkeypatch) -> None:
@@ -2195,9 +3420,637 @@ def test_equity_strategy_price_context_delegates_to_service(tmp_path, monkeypatc
 
     duckdb_path = tmp_path / "moss.duckdb"
 
-    assert macro_toolkit_route._load_equity_strategy_price_context(duckdb_path) is expected_context
+    assert macro_toolkit_support._load_equity_strategy_price_context(duckdb_path) is expected_context
     assert calls == [duckdb_path]
-    assert "duckdb.connect" not in inspect.getsource(macro_toolkit_route._load_equity_strategy_price_context)
+    assert "duckdb.connect" not in inspect.getsource(macro_toolkit_support._load_equity_strategy_price_context)
+
+
+def test_a_share_stampede_risk_context_loads_observations_as_dataframe(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb_path.write_bytes(b"placeholder")
+    dates = pd.date_range("2026-04-01", periods=40, freq="D")
+    observation_rows = pd.DataFrame(
+        [
+            {
+                "trade_date": trade_date.date(),
+                "stock_code": stock_code,
+                "open_value": 10.0 + stock_no,
+                "high_value": 10.5 + stock_no,
+                "low_value": 9.5 + stock_no,
+                "close_value": 10.2 + stock_no,
+                "amount": 1000.0 + stock_no,
+                "pctchange": 0.1,
+                "turn": 1.0,
+                "amplitude": 2.0,
+                "tradestatus": "Trading",
+                "highlimit": 20.0,
+                "lowlimit": 5.0,
+                "source_version": "sv_stock",
+                "vendor_version": "vv_stock",
+            }
+            for trade_date in dates
+            for stock_no, stock_code in enumerate(("000001.SZ", "000002.SZ"), start=1)
+        ]
+    )
+    observation_query_used_df = False
+
+    class FakeResult:
+        def __init__(
+            self,
+            *,
+            row: tuple[object, ...] | None = None,
+            frame: pd.DataFrame | None = None,
+        ) -> None:
+            self._row = row
+            self._frame = frame
+
+        def fetchone(self) -> tuple[object, ...] | None:
+            return self._row
+
+        def fetchall(self) -> list[tuple[object, ...]]:
+            if self._frame is not None:
+                raise AssertionError("A-share observations should be loaded through DuckDB .df(), not fetchall()")
+            return []
+
+        def df(self) -> pd.DataFrame:
+            nonlocal observation_query_used_df
+            observation_query_used_df = True
+            if self._frame is None:
+                raise AssertionError("unexpected df() call")
+            return self._frame.copy()
+
+    class FakeConnection:
+        def execute(self, query: str, parameters: object | None = None) -> FakeResult:
+            normalized = " ".join(query.casefold().split())
+            if "max(trade_date)" in normalized:
+                assert "max(try_cast(trade_date as date))" not in normalized
+                assert "try_cast(max(trade_date) as date)" in normalized
+                return FakeResult(row=(dates[-1].date(),))
+            if "latest_sample" in normalized and "choice_stock_daily_observation" in normalized:
+                assert "where trade_date = ?" in normalized
+                assert "where daily.trade_date > ? and daily.trade_date <= ?" in normalized
+                assert "order by daily.trade_date asc, daily.stock_code asc" in normalized
+                assert "try_cast(daily.trade_date as date) as trade_date" in normalized
+                assert "where try_cast" not in normalized
+                assert parameters == ["2026-05-10", "2026-03-26", "2026-05-10"]
+                return FakeResult(frame=observation_rows)
+            raise AssertionError(f"unexpected query: {query}")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(macro_toolkit_service.duckdb, "connect", lambda *_args, **_kwargs: FakeConnection())
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "_duckdb_date_column_is_canonical_iso",
+        lambda *_args, **_kwargs: True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "_duckdb_table_exists",
+        lambda _conn, table_name: table_name == "choice_stock_daily_observation",
+    )
+
+    context = macro_toolkit_service.load_a_share_stampede_risk_context(duckdb_path)
+
+    assert context is not None
+    assert observation_query_used_df is True
+    assert context["observations"].shape == (len(observation_rows), len(observation_rows.columns))
+    assert context["tables_used"] == ["choice_stock_daily_observation"]
+
+
+def test_macro_toolkit_hotpath_iso_dates_keep_boundary_and_date_output_types(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    daily_dates = pd.date_range("2026-02-09", "2026-04-30", freq="D")
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table choice_stock_daily_observation (
+              trade_date varchar, stock_code varchar, open_value double, high_value double,
+              low_value double, close_value double, amount double, pctchange double,
+              turn double, amplitude double, tradestatus varchar, highlimit varchar,
+              lowlimit varchar, source_version varchar, vendor_version varchar
+            )
+            """
+        )
+        daily_rows = [
+            (
+                trade_date.date().isoformat(),
+                stock_code,
+                10.0 + stock_number,
+                10.5 + stock_number,
+                9.5 + stock_number,
+                10.2 + stock_number + row_number * 0.01,
+                1000.0 + stock_number,
+                0.1,
+                1.0,
+                2.0,
+                "Trading",
+                "20.0",
+                "5.0",
+                "sv_stock",
+                "vv_stock",
+            )
+            for row_number, trade_date in enumerate(daily_dates)
+            for stock_number, stock_code in enumerate(
+                ("000001.SZ", "000002.SZ"),
+                start=1,
+            )
+        ]
+        conn.executemany(
+            "insert into choice_stock_daily_observation values "
+            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                *reversed(daily_rows),
+                (
+                    "2026-2-01",
+                    "999999.SZ",
+                    1.0,
+                    1.0,
+                    1.0,
+                    1.0,
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    "Trading",
+                    "2.0",
+                    "0.5",
+                    "sv_dirty",
+                    "vv_dirty",
+                ),
+                (
+                    "not-a-date",
+                    "888888.SZ",
+                    1.0,
+                    1.0,
+                    1.0,
+                    1.0,
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    "Trading",
+                    "2.0",
+                    "0.5",
+                    "sv_dirty",
+                    "vv_dirty",
+                ),
+            ],
+        )
+        conn.execute(
+            """
+            create table fact_formal_risk_tensor_daily (
+              report_date varchar, total_market_value double, issuer_top5_weight double,
+              portfolio_dv01 double, bond_count integer, asset_cashflow_30d double,
+              asset_cashflow_90d double, liability_cashflow_30d double,
+              liability_cashflow_90d double, liquidity_gap_30d double,
+              liquidity_gap_90d double, liquidity_gap_30d_ratio double, ignored_payload varchar
+            )
+            """
+        )
+        conn.executemany(
+            "insert into fact_formal_risk_tensor_daily values "
+            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                ("2026-05-01", 300.0, 0.3, 3.0, 3, 30.0, 90.0, 15.0, 45.0, 15.0, 45.0, 0.05, "future"),
+                ("2026-04-29", 100.0, 0.1, 1.0, 1, 10.0, 30.0, 5.0, 15.0, 5.0, 15.0, 0.05, "prior"),
+                ("2026-04-30", 200.0, 0.2, 2.0, 2, 20.0, 60.0, 10.0, 30.0, 10.0, 30.0, 0.05, "boundary"),
+            ],
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "load_equity_strategy_factor_snapshot",
+        lambda *_args, **_kwargs: None,
+    )
+
+    price_context = macro_toolkit_service.load_equity_strategy_price_context(duckdb_path)
+    risk_row = macro_toolkit_service.load_latest_risk_tensor_row(
+        duckdb_path,
+        date(2026, 4, 30),
+    )
+
+    assert price_context is not None
+    assert price_context["as_of_date"] == "2026-04-30"
+    assert price_context["observations"]["trade_date"].iloc[0] == pd.Timestamp("2026-02-09")
+    assert isinstance(price_context["observations"]["trade_date"].iloc[0], pd.Timestamp)
+    assert price_context["observations"]["trade_date"].iloc[-1] == pd.Timestamp("2026-04-30")
+    assert risk_row is not None
+    assert risk_row["total_market_value"] == 200.0
+    assert "ignored_payload" not in risk_row
+
+
+def test_latest_risk_tensor_row_falls_back_for_noncanonical_date_storage(
+    tmp_path,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_risk_tensor_daily (
+              report_date varchar, total_market_value double, issuer_top5_weight double,
+              portfolio_dv01 double, bond_count integer, asset_cashflow_30d double,
+              asset_cashflow_90d double, liability_cashflow_30d double,
+              liability_cashflow_90d double, liquidity_gap_30d double,
+              liquidity_gap_90d double, liquidity_gap_30d_ratio double
+            )
+            """
+        )
+        conn.executemany(
+            "insert into fact_formal_risk_tensor_daily values "
+            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                ("2026-01-31", 100.0, 0.1, 1.0, 1, 10.0, 30.0, 5.0, 15.0, 5.0, 15.0, 0.05),
+                ("2026-2-01", 200.0, 0.2, 2.0, 2, 20.0, 60.0, 10.0, 30.0, 10.0, 30.0, 0.05),
+            ],
+        )
+    finally:
+        conn.close()
+
+    row = macro_toolkit_service.load_latest_risk_tensor_row(
+        duckdb_path,
+        date(2026, 4, 30),
+    )
+
+    assert row is not None
+    assert row["total_market_value"] == 200.0
+
+
+def test_canonical_date_probe_is_cached_by_duckdb_file_version(tmp_path) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    writer = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        writer.execute(
+            "create table choice_stock_daily_observation (trade_date varchar)"
+        )
+        writer.execute(
+            "insert into choice_stock_daily_observation values ('2026-04-30')"
+        )
+    finally:
+        writer.close()
+
+    def probe_with_new_connection() -> tuple[bool, int]:
+        raw = duckdb.connect(str(duckdb_path), read_only=True)
+        probe_queries = 0
+
+        class CountingConnection:
+            def execute(
+                self,
+                query: str,
+                parameters: object | None = None,
+            ) -> object:
+                nonlocal probe_queries
+                normalized = " ".join(query.casefold().split())
+                if "parsed_date is null" in normalized:
+                    probe_queries += 1
+                if parameters is None:
+                    return raw.execute(query)
+                return raw.execute(query, parameters)
+
+        try:
+            result = macro_toolkit_service._duckdb_date_column_is_canonical_iso(
+                CountingConnection(),  # type: ignore[arg-type]
+                "choice_stock_daily_observation",
+                "trade_date",
+                database_path=duckdb_path,
+            )
+        finally:
+            raw.close()
+        return result, probe_queries
+
+    assert probe_with_new_connection() == (True, 1)
+    assert probe_with_new_connection() == (True, 0)
+
+    writer = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        writer.execute(
+            "insert into choice_stock_daily_observation values ('2026-4-30')"
+        )
+    finally:
+        writer.close()
+
+    assert probe_with_new_connection() == (False, 1)
+
+
+def test_latest_risk_tensor_row_uses_pushdown_safe_projected_query(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb_path.write_bytes(b"placeholder")
+    expected_columns = {
+        "total_market_value",
+        "issuer_top5_weight",
+        "portfolio_dv01",
+        "bond_count",
+        "asset_cashflow_30d",
+        "asset_cashflow_90d",
+        "liability_cashflow_30d",
+        "liability_cashflow_90d",
+        "liquidity_gap_30d",
+        "liquidity_gap_90d",
+        "liquidity_gap_30d_ratio",
+    }
+
+    class FakeResult:
+        def fetchdf(self) -> pd.DataFrame:
+            return pd.DataFrame(
+                [
+                    {
+                        column: row_number
+                        for row_number, column in enumerate(sorted(expected_columns), start=1)
+                    }
+                ]
+            )
+
+    class FakeConnection:
+        def execute(self, query: str, parameters: object | None = None) -> FakeResult:
+            normalized = " ".join(query.casefold().split())
+            assert "select *" not in normalized
+            assert "try_cast(report_date as date)" not in normalized
+            assert "where report_date <= ?" in normalized
+            assert "order by report_date desc" in normalized
+            assert parameters == ["2026-04-30"]
+            selected_columns = {
+                column.strip()
+                for column in normalized.partition("from")[0].removeprefix("select").split(",")
+            }
+            assert selected_columns == expected_columns
+            return FakeResult()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        macro_toolkit_service.duckdb,
+        "connect",
+        lambda *_args, **_kwargs: FakeConnection(),
+    )
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "_duckdb_date_column_is_canonical_iso",
+        lambda *_args, **_kwargs: True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "_duckdb_table_exists",
+        lambda *_args, **_kwargs: True,
+    )
+
+    row = macro_toolkit_service.load_latest_risk_tensor_row(
+        duckdb_path,
+        date(2026, 4, 30),
+    )
+
+    assert row is not None
+    assert set(row) == expected_columns
+
+
+def test_macro_curve_rows_use_type_aligned_trade_date_predicate(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb_path.write_bytes(b"placeholder")
+    captured: dict[str, object] = {}
+
+    class FakeResult:
+        def fetchall(self) -> list[tuple[object, ...]]:
+            return [("2026-04-30", "treasury", "10Y", 2.35)]
+
+    class FakeConnection:
+        def execute(self, query: str, parameters: object | None = None) -> FakeResult:
+            normalized = " ".join(query.casefold().split())
+            if "from fact_formal_yield_curve_daily" in normalized:
+                captured["query"] = normalized
+                captured["parameters"] = parameters
+                assert "try_cast(trade_date as date)" not in normalized
+                assert "where trade_date <= ?" in normalized
+                assert parameters == ["2026-04-30"]
+                return FakeResult()
+            raise AssertionError(f"unexpected query: {query}")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        macro_toolkit_service.duckdb,
+        "connect",
+        lambda *_args, **_kwargs: FakeConnection(),
+    )
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "_duckdb_date_column_is_canonical_iso",
+        lambda *_args, **_kwargs: True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "_duckdb_table_exists",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "load_series_by_aliases",
+        lambda *_args, **_kwargs: {
+            alias: pd.DataFrame()
+            for alias, _, _ in macro_toolkit_service._CURVE_ALIAS_POINTS
+        },
+    )
+
+    rows = macro_toolkit_service.load_macro_curve_rows(duckdb_path, date(2026, 4, 30))
+
+    assert captured["query"]
+    assert rows == [
+        {
+            "biz_date": "2026-04-30",
+            "curve_id": "CN_GOVT",
+            "tenor": "10Y",
+            "rate_value": 2.35,
+        }
+    ]
+
+
+def test_latest_bond_positions_use_type_aligned_report_date_predicate(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb_path.write_bytes(b"placeholder")
+    captured: dict[str, object] = {}
+
+    class FakeResult:
+        def fetchdf(self) -> pd.DataFrame:
+            return pd.DataFrame(
+                [
+                    {
+                        "market_value": 100.0,
+                        "maturity_date": date(2027, 4, 30),
+                        "coupon_rate": 2.5,
+                    }
+                ]
+            )
+
+    class FakeConnection:
+        def execute(self, query: str, parameters: object | None = None) -> FakeResult:
+            normalized = " ".join(query.casefold().split())
+            captured["query"] = normalized
+            captured["parameters"] = parameters
+            assert "try_cast(report_date as date)" not in normalized
+            assert "where report_date <= ?" in normalized
+            assert (
+                "fact_formal_bond_analytics_daily.report_date = latest.report_date"
+                in normalized
+            )
+            assert parameters == ["2026-04-30"]
+            return FakeResult()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        macro_toolkit_service.duckdb,
+        "connect",
+        lambda *_args, **_kwargs: FakeConnection(),
+    )
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "_duckdb_date_column_is_canonical_iso",
+        lambda *_args, **_kwargs: True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "_duckdb_table_exists",
+        lambda *_args, **_kwargs: True,
+    )
+
+    positions = macro_toolkit_service.load_latest_bond_positions(
+        duckdb_path,
+        date(2026, 4, 30),
+    )
+
+    assert captured["query"]
+    assert positions == [
+        {
+            "market_value": 100.0,
+            "maturity_date": date(2027, 4, 30),
+            "coupon_rate": 2.5,
+        }
+    ]
+
+
+def test_macro_curve_and_bond_date_predicates_keep_canonical_semantics(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_yield_curve_daily (
+              trade_date varchar,
+              curve_type varchar,
+              tenor varchar,
+              rate_pct double
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_yield_curve_daily values
+              ('2026-04-29', 'treasury', '10Y', 2.30),
+              ('2026-04-30', 'treasury', '10Y', 2.35),
+              ('2026-05-01', 'treasury', '10Y', 2.40)
+            """
+        )
+        conn.execute(
+            """
+            create table fact_formal_bond_analytics_daily (
+              report_date varchar,
+              market_value double,
+              maturity_date date,
+              coupon_rate double
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_bond_analytics_daily values
+              ('2026-04-29', 50.0, date '2027-01-01', 2.0),
+              ('2026-04-30', 100.0, date '2027-04-30', 2.5),
+              ('2026-05-01', 200.0, date '2028-01-01', 3.0)
+            """
+        )
+        curve_plan = conn.execute(
+            """
+            explain analyze
+            select trade_date
+            from fact_formal_yield_curve_daily
+            where trade_date <= '2026-04-30'
+            """
+        ).fetchall()
+        bond_plan = conn.execute(
+            """
+            explain analyze
+            select report_date
+            from fact_formal_bond_analytics_daily
+            where report_date <= '2026-04-30'
+            """
+        ).fetchall()
+
+        monkeypatch.setattr(
+            macro_toolkit_service,
+            "load_series_by_aliases",
+            lambda *_args, **_kwargs: {
+                alias: pd.DataFrame()
+                for alias, _, _ in macro_toolkit_service._CURVE_ALIAS_POINTS
+            },
+        )
+        rows = macro_toolkit_service._load_macro_curve_rows_from_conn(
+            conn,
+            duckdb_path,
+            date(2026, 4, 30),
+        )
+        positions = macro_toolkit_service._load_latest_bond_positions_from_conn(
+            conn,
+            date(2026, 4, 30),
+            duckdb_path,
+        )
+    finally:
+        conn.close()
+
+    plan_text = "\n".join(
+        str(row[1] if len(row) > 1 else row[0]) for row in curve_plan + bond_plan
+    ).upper()
+    assert "FILTER" in plan_text or "SEQ_SCAN" in plan_text or "SCAN" in plan_text
+
+    assert rows == [
+        {
+            "biz_date": "2026-04-29",
+            "curve_id": "CN_GOVT",
+            "tenor": "10Y",
+            "rate_value": 2.3,
+        },
+        {
+            "biz_date": "2026-04-30",
+            "curve_id": "CN_GOVT",
+            "tenor": "10Y",
+            "rate_value": 2.35,
+        },
+    ]
+    assert positions == [
+        {
+            "market_value": 100.0,
+            "maturity_date": date(2027, 4, 30),
+            "coupon_rate": 2.5,
+        }
+    ]
 
 
 def test_a_share_stampede_risk_context_delegates_to_service(tmp_path, monkeypatch) -> None:
@@ -2222,9 +4075,9 @@ def test_a_share_stampede_risk_context_delegates_to_service(tmp_path, monkeypatc
 
     duckdb_path = tmp_path / "moss.duckdb"
 
-    assert macro_toolkit_route._load_a_share_stampede_risk_context(duckdb_path) is expected_context
+    assert macro_toolkit_support._load_a_share_stampede_risk_context(duckdb_path) is expected_context
     assert calls == [duckdb_path]
-    assert "duckdb.connect" not in inspect.getsource(macro_toolkit_route._load_a_share_stampede_risk_context)
+    assert "duckdb.connect" not in inspect.getsource(macro_toolkit_support._load_a_share_stampede_risk_context)
 
 
 def test_macro_curve_rows_delegate_to_service(tmp_path, monkeypatch) -> None:
@@ -2284,6 +4137,139 @@ def test_macro_curve_rows_include_reverse_repo_legacy_alias(tmp_path, monkeypatc
     ]
 
 
+def test_choice_curve_aliases_feed_credit_spread_risk(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_tushare_macro_db(duckdb_path)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into fact_choice_macro_daily values
+              ('EMM00166460', 'China treasury yield 3Y', '2026-04-10', 1.8,
+               'daily', 'pct', 'sv_choice_curve', 'vv_choice_curve',
+               'rv_choice_macro', 'ok', 'choice-curve-run'),
+              ('EMM00166657', 'China AAA credit yield 3Y', '2026-04-10', 2.3,
+               'daily', 'pct', 'sv_choice_curve', 'vv_choice_curve',
+               'rv_choice_macro', 'ok', 'choice-curve-run'),
+              ('EMM00166681', 'China AA credit yield 3Y', '2026-04-10', 2.6,
+               'daily', 'pct', 'sv_choice_curve', 'vv_choice_curve',
+               'rv_choice_macro', 'ok', 'choice-curve-run')
+            """
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    system_sources.clear_system_macro_source_cache()
+    try:
+        report_date = date(2026, 4, 10)
+        rows = macro_toolkit_service.load_macro_curve_rows(duckdb_path, report_date)
+        payload = macro_toolkit_support.compute_credit_spread_risk(rows, report_date=report_date)
+    finally:
+        system_sources.clear_system_macro_source_cache()
+        get_settings.cache_clear()
+
+    assert payload["as_of_date"] == "2026-04-10"
+    assert payload["credit_spread_tenor"] == "3Y"
+    assert payload["aaa_spread_bp"] == pytest.approx(50.0)
+    assert payload["aa_minus_aaa_bp"] == pytest.approx(30.0)
+
+
+def test_crisis_score_capability_batches_formula_and_commodity_aliases(tmp_path, monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+    empty_frame = pd.DataFrame(columns=["date", "value", "series_id", "vendor_name"])
+
+    def fake_load_series_by_aliases(
+        aliases: tuple[str, ...],
+        *,
+        start: str | None = None,
+        end: str | None = None,
+        duckdb_path: object | None = None,
+    ) -> dict[str, pd.DataFrame]:
+        requested_aliases = tuple(dict.fromkeys(str(alias) for alias in aliases))
+        calls.append(
+            {
+                "aliases": requested_aliases,
+                "start": start,
+                "end": end,
+                "duckdb_path": duckdb_path,
+            }
+        )
+        return {alias: empty_frame.copy() for alias in requested_aliases}
+
+    monkeypatch.setattr(macro_toolkit_support, "load_series_by_aliases", fake_load_series_by_aliases)
+    monkeypatch.setattr(
+        macro_toolkit_support,
+        "compute_crisis_score_payload",
+        lambda _series_data, *, report_date: {
+            "data_status": "unavailable",
+            "warnings": [],
+            "crisis_score": None,
+        },
+    )
+    monkeypatch.setattr(
+        macro_toolkit_support,
+        "_crisis_score_history",
+        lambda _series_data, _report_date: pd.DataFrame(columns=["crisis_score"]),
+    )
+
+    report_date = date(2026, 4, 10)
+    payload = macro_toolkit_support._compute_crisis_score_capability(
+        tmp_path / "moss.duckdb",
+        report_date,
+        history_limit=5,
+    )
+
+    assert len(calls) == 1
+    batched_aliases = set(calls[0]["aliases"])
+    assert {str(config["alias"]) for config in macro_toolkit_support._CRISIS_SCORE_INPUTS}.issubset(batched_aliases)
+    assert {
+        str(alias)
+        for config in macro_toolkit_support._CRISIS_COMMODITY_COVERAGE_INPUTS
+        for alias in config["aliases"]
+    }.issubset(batched_aliases)
+    assert calls[0]["end"] == report_date.isoformat()
+    assert payload["commodity_coverage"]["tracked_count"] == len(macro_toolkit_support._CRISIS_COMMODITY_COVERAGE_INPUTS)
+
+
+def test_source_checks_for_aliases_reuses_supplied_frames(tmp_path, monkeypatch) -> None:
+    def fail_load_series_by_aliases(*_args: object, **_kwargs: object) -> dict[str, pd.DataFrame]:
+        raise AssertionError("source checks should reuse supplied alias frames")
+
+    monkeypatch.setattr(macro_toolkit_support, "load_series_by_aliases", fail_load_series_by_aliases)
+    frame = pd.DataFrame(
+        [
+            {
+                "date": pd.Timestamp("2026-04-10"),
+                "value": 2.5,
+                "series_id": "M001",
+                "vendor_name": "choice",
+            }
+        ]
+    )
+
+    checks = macro_toolkit_support._source_checks_for_aliases(
+        ("M001",),
+        tmp_path / "moss.duckdb",
+        end="2026-04-10",
+        frames_by_alias={"M001": frame},
+    )
+
+    assert checks == [
+        {
+            "alias": "M001",
+            "row_count": 1,
+            "latest": {
+                "date": "2026-04-10",
+                "series_id": "M001",
+                "vendor_name": "choice",
+                "value": 2.5,
+            },
+        }
+    ]
+
+
 def test_latest_risk_tensor_row_delegates_to_service(tmp_path, monkeypatch) -> None:
     report_date = date(2026, 4, 30)
     expected_row = {"report_date": "2026-04-30", "total_market_value": 100.0}
@@ -2330,6 +4316,78 @@ def test_latest_bond_positions_delegate_to_service(tmp_path, monkeypatch) -> Non
     assert "duckdb.connect" not in inspect.getsource(macro_toolkit_route._load_latest_bond_positions)
 
 
+def test_macro_capability_context_reuses_one_connection_for_curve_risk_and_bonds(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb_path.write_bytes(b"placeholder")
+    connection_ids: dict[str, int] = {}
+
+    class FakeConnection:
+        def __init__(self) -> None:
+            self.close_count = 0
+
+        def close(self) -> None:
+            self.close_count += 1
+
+    connections: list[FakeConnection] = []
+
+    def fake_connect(*_args, **_kwargs) -> FakeConnection:
+        connection = FakeConnection()
+        connections.append(connection)
+        return connection
+
+    def fake_curve(conn: object, path: object, report_date: date) -> list[dict[str, object]]:
+        connection_ids["curve"] = id(conn)
+        assert path == duckdb_path
+        return [{"biz_date": report_date.isoformat(), "curve_id": "CN_GOVT", "tenor": "10Y", "rate_value": 2.2}]
+
+    def fake_risk(
+        conn: object,
+        report_date: date,
+        duckdb_path_arg: object,
+    ) -> dict[str, object]:
+        connection_ids["risk"] = id(conn)
+        assert duckdb_path_arg == duckdb_path
+        return {"report_date": report_date.isoformat(), "total_market_value": 100.0}
+
+    def fake_bonds(
+        conn: object,
+        report_date: date,
+        duckdb_path_arg: object,
+    ) -> list[dict[str, object]]:
+        connection_ids["bond"] = id(conn)
+        assert duckdb_path_arg == duckdb_path
+        return [{"market_value": 50.0, "maturity_date": report_date, "coupon_rate": 2.4}]
+
+    monkeypatch.setattr(macro_toolkit_service.duckdb, "connect", fake_connect)
+    monkeypatch.setattr(macro_toolkit_service, "_load_macro_curve_rows_from_conn", fake_curve, raising=False)
+    monkeypatch.setattr(macro_toolkit_service, "_load_latest_risk_tensor_row_from_conn", fake_risk, raising=False)
+    monkeypatch.setattr(macro_toolkit_service, "_load_latest_bond_positions_from_conn", fake_bonds, raising=False)
+
+    curve_rows, risk_tensor, positions = macro_toolkit_service.load_macro_capability_context(
+        duckdb_path,
+        date(2026, 4, 30),
+    )
+
+    assert curve_rows[0]["curve_id"] == "CN_GOVT"
+    assert risk_tensor is not None and risk_tensor["total_market_value"] == 100.0
+    assert positions[0]["market_value"] == 50.0
+    assert len(connections) == 1
+    assert connections[0].close_count == 1
+    assert set(connection_ids.values()) == {id(connections[0])}
+
+
+def test_macro_capability_results_uses_page_local_aggregate_loader() -> None:
+    source = inspect.getsource(macro_toolkit_support._macro_capability_results)
+
+    assert "_load_macro_capability_context(" in source
+    assert "_load_macro_curve_rows(" not in source
+    assert "_load_latest_risk_tensor_row(" not in source
+    assert "_load_latest_bond_positions(" not in source
+
+
 def test_macro_toolkit_analysis_surfaces_m2_and_ppi_missing_inputs(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)
@@ -2353,8 +4411,9 @@ def test_macro_toolkit_analysis_surfaces_m2_and_ppi_missing_inputs(tmp_path, mon
 
     leading_missing = set(leading["input_evidence"]["missing_inputs"])
     cycle_missing = set(cycle["input_evidence"]["missing_inputs"])
-    assert leading["status"] == "degraded"
-    assert cycle["status"] == "degraded"
+    assert leading["status"] == "unavailable"
+    # PMI 核心输入缺失 → economic_cycle fail-closed（unavailable，不再 degraded 输出象限）
+    assert cycle["status"] == "unavailable"
     assert "M2_YOY_MISSING" in leading_missing
     assert "M2_YOY_MISSING" in cycle_missing
     assert "PPI_YOY_MISSING" in cycle_missing
@@ -2378,14 +4437,18 @@ def test_macro_toolkit_analysis_uses_landed_choice_stock_for_strategy_summaries(
     assert response.status_code == 200
     payload = response.json()
     strategies = {item["key"]: item for item in payload["result"]["strategy_summaries"]}
-    assert strategies["moving_average"]["status"] == "complete"
-    assert strategies["moving_average"]["warnings"] == []
-    assert strategies["moving_average"]["primary_metric"]["label"] == "真实累计净值"
-    assert strategies["moving_average"]["result"]["data_status"] == "complete"
+    assert strategies["moving_average"]["status"] == "unavailable"
+    assert strategies["moving_average"]["warnings"]
+    assert strategies["moving_average"]["primary_metric"] is None
+    assert strategies["moving_average"]["result"]["data_status"] == "unavailable"
+    assert strategies["moving_average"]["result"]["return_basis_status"] == "unverified"
+    assert strategies["moving_average"]["result"]["unavailable_reason"] == "return_basis_unverified"
+    assert strategies["moving_average"]["result"]["final_value"] is None
     assert strategies["moving_average"]["result"]["price_source"] == "choice_stock_daily_observation"
     assert strategies["moving_average"]["result"]["as_of_date"] == "2026-04-30"
     assert strategies["moving_average"]["result"]["stock_count"] == 3
-    assert strategies["mean_reversion_momentum"]["status"] == "complete"
+    assert strategies["mean_reversion_momentum"]["status"] == "unavailable"
+    assert strategies["mean_reversion_momentum"]["result"]["unavailable_reason"] == "return_basis_unverified"
     assert strategies["multi_factor_selection"]["status"] == "degraded"
     assert "FUNDAMENTAL_FACTORS_NOT_MATERIALIZED" in strategies["multi_factor_selection"]["warnings"]
     assert strategies["multi_factor_selection"]["result"]["price_source"] == "choice_stock_daily_observation"
@@ -2416,10 +4479,129 @@ def test_macro_toolkit_analysis_uses_landed_choice_stock_for_strategy_summaries(
     assert "choice_stock_limit_quality" in payload["result_meta"]["tables_used"]
 
 
+def test_macro_toolkit_full_analysis_blocks_run_heavy_sections_concurrently(monkeypatch) -> None:
+    duckdb_path = Path("macro-analysis.duckdb")
+    report_date = date(2026, 7, 7)
+    started: list[str] = []
+    started_lock = Lock()
+    all_started = Event()
+
+    def wait_for_peer_blocks(name: str, value: object) -> object:
+        with started_lock:
+            started.append(name)
+            if len(started) == 3:
+                all_started.set()
+        assert all_started.wait(1.0), f"{name} ran before the other heavy analysis blocks started"
+        return value
+
+    def fake_a_share_risk(path: object) -> dict[str, object]:
+        assert path == duckdb_path
+        return wait_for_peer_blocks("a_share_risk", {"status": "complete"})  # type: ignore[return-value]
+
+    def fake_capability_results(
+        path: object,
+        *,
+        report_date: date,
+        history_limit: int,
+    ) -> list[dict[str, object]]:
+        assert path == duckdb_path
+        assert report_date == date(2026, 7, 7)
+        assert history_limit == 19
+        return wait_for_peer_blocks("capability_results", [{"key": "capability"}])  # type: ignore[return-value]
+
+    def fake_strategy_summaries(path: object) -> list[dict[str, object]]:
+        assert path == duckdb_path
+        return wait_for_peer_blocks("strategy_summaries", [{"key": "strategy"}])  # type: ignore[return-value]
+
+    monkeypatch.setattr(macro_toolkit_support, "_a_share_stampede_risk", fake_a_share_risk)
+    monkeypatch.setattr(macro_toolkit_support, "_macro_capability_results", fake_capability_results)
+    monkeypatch.setattr(macro_toolkit_support, "_equity_strategy_summaries", fake_strategy_summaries)
+
+    a_share_risk, capability_results, strategy_summaries = (
+        macro_toolkit_read_service._build_macro_toolkit_full_analysis_blocks(
+            duckdb_path,
+            report_date,
+            history_limit=19,
+        )
+    )
+
+    assert set(started) == {"a_share_risk", "capability_results", "strategy_summaries"}
+    assert a_share_risk == {"status": "complete"}
+    assert capability_results == [{"key": "capability"}]
+    assert strategy_summaries == [{"key": "strategy"}]
+
+
+def test_macro_toolkit_full_analysis_uses_three_worker_local_connections(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb.connect(str(duckdb_path), read_only=False).close()
+    connections = _track_macro_toolkit_connections(monkeypatch)
+    started: list[str] = []
+    started_lock = Lock()
+    all_started = Event()
+    empty_frame = pd.DataFrame(columns=["date", "value", "series_id", "vendor_name"])
+
+    def synchronize(name: str) -> None:
+        with started_lock:
+            started.append(name)
+            if len(started) == 3:
+                all_started.set()
+        assert all_started.wait(1.0), f"{name} did not overlap the other full-analysis workers"
+
+    def load_a_share(path: object) -> dict[str, object]:
+        synchronize("a_share")
+        return macro_toolkit_service.load_a_share_stampede_risk_context(path) or {}
+
+    def load_capabilities(
+        path: object,
+        *,
+        report_date: date,
+        history_limit: int,
+    ) -> list[dict[str, object]]:
+        assert history_limit == 19
+        synchronize("capabilities")
+        macro_toolkit_service.load_macro_capability_context(path, report_date)
+        return []
+
+    def load_strategies(path: object) -> list[dict[str, object]]:
+        synchronize("strategies")
+        macro_toolkit_service.load_equity_strategy_price_context(path)
+        return []
+
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "load_series_by_aliases",
+        lambda aliases, **_kwargs: {alias: empty_frame.copy() for alias in aliases},
+    )
+    monkeypatch.setattr(macro_toolkit_support, "_a_share_stampede_risk", load_a_share)
+    monkeypatch.setattr(macro_toolkit_support, "_macro_capability_results", load_capabilities)
+    monkeypatch.setattr(macro_toolkit_support, "_equity_strategy_summaries", load_strategies)
+
+    result = macro_toolkit_read_service._build_macro_toolkit_full_analysis_blocks(
+        duckdb_path,
+        date(2026, 4, 30),
+        history_limit=19,
+    )
+
+    assert result == ({}, [], [])
+    assert set(started) == {"a_share", "capabilities", "strategies"}
+    assert len(connections) == 3
+    assert len({connection.thread_id for connection in connections}) == 3
+    assert all(connection.close_count == 1 for connection in connections)
+    assert all(connection.use_thread_ids == {connection.thread_id} for connection in connections)
+
+
 def test_macro_toolkit_analysis_surfaces_crisis_score_from_system_sources(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)
     _seed_crisis_score_history(duckdb_path)
+    monkeypatch.setattr(
+        macro_toolkit_route.macro_toolkit_refresh_receipt_service,
+        "load_macro_toolkit_refresh_receipt_health",
+        lambda: _macro_toolkit_refresh_health(status="ready", ready=True),
+    )
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     get_settings.cache_clear()
     app = FastAPI()
@@ -2438,6 +4620,14 @@ def test_macro_toolkit_analysis_surfaces_crisis_score_from_system_sources(tmp_pa
     assert crisis["primary_metric"]["label"] == "Crisis Score"
     assert crisis["result"]["available_component_count"] == 5
     assert crisis["result"]["crisis_score"] >= 1
+    assert crisis["result"]["score_trend"]["requested_window_points"] == 20
+    assert crisis["result"]["score_trend"]["window_points"] == 20
+    assert crisis["result"]["score_trend"]["start_date"] < crisis["result"]["score_trend"]["end_date"]
+    assert crisis["result"]["risk_gate"]["eligible"] is True
+    assert crisis["result"]["risk_gate"]["threshold"] == 2.0
+    assert crisis["result"]["risk_gate"]["triggered"] is (
+        crisis["result"]["crisis_score"] >= crisis["result"]["risk_gate"]["threshold"]
+    )
     assert crisis["input_evidence"] == crisis["result"]["input_evidence"]
     crisis_inputs = {item["field"]: item for item in crisis["input_evidence"]["inputs"]}
     nanhua_input = crisis_inputs["nanhua"]
@@ -2449,8 +4639,7 @@ def test_macro_toolkit_analysis_surfaces_crisis_score_from_system_sources(tmp_pa
     assert nanhua_input["series_id"] == "NH0100.NHF"
     assert nanhua_input["source"] == "choice"
     assert nanhua_input["value"] is not None
-    assert "fact_choice_macro_daily" in response.json()["result_meta"]["tables_used"]
-    assert "fact_commodity_futures_daily" in response.json()["result_meta"]["tables_used"]
+    assert response.json()["result_meta"]["tables_used"] == []
 
     signal = next(item for item in payload["signal_cards"] if item["key"] == "crisis_score_cn")
     assert signal["tone"] == "negative"
@@ -2534,7 +4723,7 @@ def test_macro_toolkit_analysis_surfaces_multi_commodity_coverage_without_changi
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)
     _seed_crisis_score_history(duckdb_path)
-    baseline_crisis = macro_toolkit_route._compute_crisis_score_capability(duckdb_path, date(2026, 4, 10))
+    baseline_crisis = macro_toolkit_support._compute_crisis_score_capability(duckdb_path, date(2026, 4, 10))
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
         conn.execute(
@@ -2605,7 +4794,7 @@ def test_macro_toolkit_analysis_surfaces_multi_commodity_coverage_without_changi
         )
     finally:
         conn.close()
-    enriched_crisis = macro_toolkit_route._compute_crisis_score_capability(duckdb_path, date(2026, 4, 10))
+    enriched_crisis = macro_toolkit_support._compute_crisis_score_capability(duckdb_path, date(2026, 4, 10))
     assert baseline_crisis["crisis_score"] == enriched_crisis["crisis_score"]
     assert baseline_crisis["commodity_coverage"]["available_count"] < enriched_crisis["commodity_coverage"]["available_count"]
     assert enriched_crisis["commodity_coverage"]["available_count"] == 6
@@ -2724,6 +4913,10 @@ def test_macro_toolkit_analysis_surfaces_multi_commodity_coverage_without_changi
         "watch": 6,
         "do_not_include": 0,
     }
+    # Global thresholds live on the envelope itself (module constants), not just
+    # copied onto items[0]; every item's per-item value must agree with it.
+    assert admission["minimum_crisis_sample_count"] == 5
+    assert admission["correlation_threshold"] == pytest.approx(0.2)
     assert admission["warnings"] == ["CANDIDATE_ADMISSION_READ_ONLY", "APPROVAL_REQUIRED_BEFORE_FORMULA_USE"]
     assert admission["next_step"] == "6 个商品候选继续观察；先复核相关性、危机期命中率和异常点，再提交 v2 权重审批。"
     admission_items = {item["field"]: item for item in admission["items"]}
@@ -2874,7 +5067,7 @@ def test_macro_toolkit_analysis_surfaces_actionable_commodity_shadow_shortfalls(
     finally:
         conn.close()
 
-    crisis = macro_toolkit_route._compute_crisis_score_capability(duckdb_path, date(2026, 4, 10))
+    crisis = macro_toolkit_support._compute_crisis_score_capability(duckdb_path, date(2026, 4, 10))
 
     coverage = crisis["commodity_coverage"]
     items = {item["field"]: item for item in coverage["items"]}
@@ -3028,6 +5221,8 @@ def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapsho
         calls.append(("history", dict(kwargs)))
         return {
             "status": "completed",
+            "run_id": "choice_stock_materialize:2026-04-30:fixture",
+            "as_of_date": "2026-04-30",
             "row_count": 111,
             "stock_code_count": 5,
             "source_version": "sv_history",
@@ -3049,6 +5244,16 @@ def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapsho
         macro_toolkit_service,
         "materialize_choice_stock_factor_snapshot",
         fake_materialize_choice_stock_factor_snapshot,
+    )
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "verify_choice_stock_daily_observation_landing",
+        lambda **_kwargs: 5,
+    )
+    monkeypatch.setattr(
+        macro_toolkit_service.run_choice_stock_refresh_task,
+        "send",
+        lambda **kwargs: macro_toolkit_service._run_choice_stock_refresh_job(**kwargs),
     )
     app = FastAPI()
     app.include_router(macro_toolkit_router)
@@ -3075,12 +5280,17 @@ def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapsho
     finally:
         get_settings.cache_clear()
 
-    assert response.status_code == 200
+    assert response.status_code == 202
+    assert payload["result_meta"]["quality_flag"] == "warning"
     refresh = payload["result"]["refresh"]
     assert refresh["status"] == "queued"
     assert refresh["trigger_mode"] == "async"
     assert refresh["permission"]["mode"] == "scoped_refresh"
-    assert refresh["permission"]["user_id"] == "stock-refresh-user"
+    assert refresh["permission"]["resource"] == "macro_toolkit.choice_stock"
+    assert refresh["permission"]["actions"] == ["history", "factor_snapshot", "theme_overlay"]
+    assert "user_id" not in refresh["permission"]
+    assert "role" not in refresh["permission"]
+    assert "identity_source" not in refresh["permission"]
     assert calls == [
         (
             "history",
@@ -3088,6 +5298,8 @@ def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapsho
                 "as_of_date": "2026-04-30",
                 "duckdb_path": str(duckdb_path),
                 "catalog_path": str(get_settings().choice_stock_catalog_file),
+                "history_start_date": None,
+                "allow_cross_era_backfill": False,
             },
         ),
         (
@@ -3101,6 +5313,7 @@ def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapsho
     ]
     assert status_response.status_code == 200
     status_payload = status_response.json()
+    assert status_payload["result_meta"]["quality_flag"] == "ok"
     assert status_payload["result"]["refresh"]["status"] == "completed"
     assert status_payload["result"]["refresh"]["history_row_count"] == 111
     assert status_payload["result"]["refresh"]["factor_row_count"] == 222
@@ -3109,6 +5322,16 @@ def test_macro_toolkit_choice_stock_refresh_runs_history_and_full_factor_snapsho
     assert status_payload["result"]["refresh"]["vendor_version"] == "vv_factor"
     assert status_payload["result"]["refresh"]["rule_version"] == "rv_choice_stock_materialization_front_layer_v1"
     assert status_payload["result"]["refresh"]["cache_version"] == "choice_stock_refresh_v1"
+    observation_manifest = GovernanceRepository(base_dir=governance_path).read_latest_manifest(
+        macro_toolkit_service.CHOICE_STOCK_REFRESH_CACHE_KEY
+    )
+    assert observation_manifest is not None
+    assert observation_manifest["report_date"] == "2026-04-30"
+    assert observation_manifest["source_version"] == "sv_history"
+    assert observation_manifest["vendor_version"] == "vv_history"
+    assert observation_manifest["lineage"]["materialization_run_id"] == (
+        "choice_stock_materialize:2026-04-30:fixture"
+    )
 
 
 def test_macro_toolkit_choice_stock_refresh_reuses_run_for_same_idempotency_key(tmp_path, monkeypatch) -> None:
@@ -3139,13 +5362,31 @@ def test_macro_toolkit_choice_stock_refresh_reuses_run_for_same_idempotency_key(
         macro_toolkit_service,
         "materialize_choice_stock_inputs",
         lambda **kwargs: calls.append(("history", dict(kwargs)))
-        or {"status": "completed", "row_count": 111, "source_version": "sv_history"},
+        or {
+            "status": "completed",
+            "run_id": "choice_stock_materialize:2026-04-30:idempotency-fixture",
+            "as_of_date": "2026-04-30",
+            "row_count": 111,
+            "stock_code_count": 5,
+            "source_version": "sv_history",
+            "vendor_version": "vv_history",
+        },
     )
     monkeypatch.setattr(
         macro_toolkit_service,
         "materialize_choice_stock_factor_snapshot",
         lambda **kwargs: calls.append(("factor", dict(kwargs)))
         or {"status": "completed", "row_count": 222, "source_version": "sv_factor"},
+    )
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "verify_choice_stock_daily_observation_landing",
+        lambda **_kwargs: 5,
+    )
+    monkeypatch.setattr(
+        macro_toolkit_service.run_choice_stock_refresh_task,
+        "send",
+        lambda **kwargs: macro_toolkit_service._run_choice_stock_refresh_job(**kwargs),
     )
 
     app = FastAPI()
@@ -3177,12 +5418,12 @@ def test_macro_toolkit_choice_stock_refresh_reuses_run_for_same_idempotency_key(
     finally:
         get_settings.cache_clear()
 
-    assert first_response.status_code == 200
-    assert second_response.status_code == 200
+    assert first_response.status_code == 202
+    assert second_response.status_code == 202
     first_refresh = first_response.json()["result"]["refresh"]
     second_refresh = second_response.json()["result"]["refresh"]
     assert second_refresh["run_id"] == first_refresh["run_id"]
-    assert second_refresh["idempotency_key"] == "choice-stock-refresh-2026-04-30"
+    assert "idempotency_key" not in second_refresh
     assert second_refresh["idempotency_replay"] is True
     assert [name for name, _kwargs in calls] == ["history", "factor"]
 
@@ -3196,6 +5437,87 @@ def test_macro_toolkit_choice_stock_refresh_reuses_run_for_same_idempotency_key(
         and record.get("status") == "queued"
     ]
     assert len(records) == 1
+
+
+def test_macro_toolkit_choice_stock_refresh_idempotency_key_does_not_replay_across_owners(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_path = tmp_path / "governance"
+    sqlite_path = tmp_path / "auth-scope.db"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv("MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST", "1")
+    get_settings.cache_clear()
+    scope_repo = UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}")
+    for user_id in ("stock-refresh-user-one", "stock-refresh-user-two"):
+        scope_repo.grant_scope(user_id=user_id, role=None, resource="macro_toolkit", action="read")
+        scope_repo.grant_scope(
+            user_id=user_id,
+            role=None,
+            resource="macro_toolkit.choice_stock",
+            action="refresh",
+        )
+    monkeypatch.setattr(
+        macro_toolkit_service.run_choice_stock_refresh_task,
+        "send",
+        lambda **kwargs: None,
+    )
+
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+    body = {
+        "as_of_date": "2026-04-30",
+        "refresh_history": True,
+        "refresh_factors": True,
+        "factor_max_stock_count": None,
+    }
+    headers_one = {
+        "X-User-Id": "stock-refresh-user-one",
+        "X-User-Role": "viewer",
+        "Idempotency-Key": "choice-stock-refresh-2026-04-30",
+    }
+    headers_two = {
+        "X-User-Id": "stock-refresh-user-two",
+        "X-User-Role": "viewer",
+        "Idempotency-Key": "choice-stock-refresh-2026-04-30",
+    }
+
+    try:
+        first_response = client.post(
+            "/ui/macro/toolkit/choice-stock/refresh",
+            json=body,
+            headers=headers_one,
+        )
+        first_refresh = first_response.json()["result"]["refresh"]
+        repo = GovernanceRepository(base_dir=governance_path)
+        queued = repo.read_all(macro_toolkit_service.CACHE_BUILD_RUN_STREAM)[-1]
+        repo.append(
+            macro_toolkit_service.CACHE_BUILD_RUN_STREAM,
+            {
+                **queued,
+                "status": "completed",
+                "trigger_mode": "terminal",
+                "finished_at": datetime.now(UTC).isoformat(),
+            },
+        )
+        second_response = client.post(
+            "/ui/macro/toolkit/choice-stock/refresh",
+            json=body,
+            headers=headers_two,
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert first_response.status_code == 202, first_response.text
+    assert second_response.status_code == 202, second_response.text
+    first_refresh = first_response.json()["result"]["refresh"]
+    second_refresh = second_response.json()["result"]["refresh"]
+    assert first_refresh["run_id"] != second_refresh["run_id"]
+    assert second_refresh.get("idempotency_replay") is not True
 
 
 def test_macro_toolkit_choice_stock_refresh_requires_explicit_refresh_scope_grant(tmp_path, monkeypatch) -> None:
@@ -3252,12 +5574,38 @@ def test_macro_toolkit_choice_stock_refresh_requires_explicit_refresh_scope_gran
         json=payload,
         headers={"X-User-Id": "choice-stock-refresh-user", "X-User-Role": "viewer"},
     )
-    assert allowed.status_code == 200, allowed.text
+    assert allowed.status_code == 202, allowed.text
     assert allowed.json()["result"]["refresh"]["run_id"] == "choice-stock-refresh-auth-test"
     assert len(calls) == 1
     assert calls[0]["permission"]["resource"] == "macro_toolkit.choice_stock"
     get_settings.cache_clear()
 
+
+def test_source_backfill_preserves_crisis_no_rows_status(monkeypatch) -> None:
+    from backend.app.tasks import macro_toolkit_write_refresh as task
+
+    monkeypatch.setattr(
+        task,
+        "_backfill_crisis_score_inputs",
+        lambda **_kwargs: {
+            "results": {"M0041653": {"status": "no_rows", "written_rows": 0}},
+            "errors": {},
+        },
+    )
+
+    payload = task._execute_macro_source_backfill(
+        duckdb_path="unused.duckdb",
+        alias="M0041653",
+        series_name="7D reverse repo",
+        backfill_mode="crisis_score_inputs",
+        start_date="2026-07-01",
+        end_date="2026-07-20",
+        sources=("choice_edb",),
+    )
+
+    assert payload["status"] == "no_rows"
+    assert payload["processed_count"] == 0
+    assert payload["total_added"] == 0
 
 def test_macro_toolkit_source_backfill_refresh_maps_alias_and_requires_scope(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
@@ -3269,19 +5617,26 @@ def test_macro_toolkit_source_backfill_refresh_maps_alias_and_requires_scope(tmp
     calls: list[dict[str, object]] = []
     source_cache_clears: list[str] = []
 
-    def fake_backfill_macro_series(**kwargs: object) -> dict[str, object]:
+    def fake_queue_macro_source_backfill(**kwargs: object) -> macro_toolkit_service.MacroToolkitActionResult:
         calls.append(dict(kwargs))
-        return {
-            "dry_run": False,
-            "processed_count": 1,
-            "total_added": 42,
-            "results": {"SHIBOR:3M": 42},
-            "errors": {},
-        }
+        return macro_toolkit_service.MacroToolkitActionResult(
+            payload={
+                "status": "queued",
+                "alias": "M0041813",
+                "series_ids": ["NCD.SHIBOR.3M"],
+                "series_names": ["SHIBOR:3M"],
+                "start_date": "2026-04-01",
+                "end_date": "2026-04-30",
+                "run_id": "macro_source_backfill_refresh:2026-04-30:test",
+                "idempotency_replay": False,
+            },
+            quality_flag="warning",
+            as_of_date="2026-04-30",
+        )
 
-    monkeypatch.setattr(macro_toolkit_route, "backfill_macro_series", fake_backfill_macro_series)
+    monkeypatch.setattr(macro_toolkit_service, "queue_macro_source_backfill", fake_queue_macro_source_backfill)
     monkeypatch.setattr(
-        macro_toolkit_route,
+        macro_toolkit_support,
         "clear_system_macro_source_cache",
         lambda: source_cache_clears.append("cleared"),
         raising=False,
@@ -3319,39 +5674,190 @@ def test_macro_toolkit_source_backfill_refresh_maps_alias_and_requires_scope(tmp
     assert unsupported.status_code == 400, unsupported.text
     assert "Unsupported macro source backfill alias" in unsupported.text
     assert calls == []
-    assert source_cache_clears == []
 
     allowed = client.post(
         "/ui/macro/toolkit/source-backfill/refresh",
         json=request,
-        headers={"X-User-Id": "macro-source-user", "X-User-Role": "viewer"},
+        headers={
+            "X-User-Id": "macro-source-user",
+            "X-User-Role": "viewer",
+            "Idempotency-Key": "source-http-key",
+        },
     )
 
-    assert allowed.status_code == 200, allowed.text
-    payload = allowed.json()
-    refresh = payload["result"]["refresh"]
-    assert refresh["status"] == "completed"
-    assert refresh["alias"] == "M0041813"
+    assert allowed.status_code == 202, allowed.text
+    refresh = allowed.json()["result"]["refresh"]
+    assert refresh["status"] == "queued"
     assert refresh["series_ids"] == ["NCD.SHIBOR.3M"]
-    assert refresh["total_added"] == 42
+    assert refresh["run_id"] == "macro_source_backfill_refresh:2026-04-30:test"
     assert calls == [
         {
             "duckdb_path": str(duckdb_path),
-            "series_names": ["SHIBOR:3M"],
+            "governance_path": str(get_settings().governance_path),
+            "alias": "M0041813",
+            "series_id": "NCD.SHIBOR.3M",
+            "series_name": "SHIBOR:3M",
+            "backfill_mode": "macro_series",
             "start_date": "2026-04-01",
             "end_date": "2026-04-30",
-            "dry_run": False,
-            "sources_filter": ["tushare_macro"],
+            "sources": ("tushare_macro",),
+            "requested_by_user_id": "macro-source-user",
+            "idempotency_key": "source-http-key",
         }
     ]
-    assert source_cache_clears == ["cleared"]
+    assert source_cache_clears == []
     get_settings.cache_clear()
 
 
+def test_macro_toolkit_source_backfill_refresh_status_is_owner_scoped(tmp_path, monkeypatch) -> None:
+    governance_path = tmp_path / "governance"
+    sqlite_path = tmp_path / "auth-scope.db"
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    _seed_macro_toolkit_read_scope(tmp_path, monkeypatch)
+
+    record_base = {
+        "job_name": macro_toolkit_service.MACRO_SOURCE_BACKFILL_JOB_NAME,
+        "cache_key": macro_toolkit_service.MACRO_SOURCE_BACKFILL_CACHE_KEY,
+        "cache_version": macro_toolkit_service.MACRO_SOURCE_BACKFILL_CACHE_VERSION,
+        "rule_version": macro_toolkit_service.MACRO_SOURCE_BACKFILL_RULE_VERSION,
+        "status": "completed",
+        "trigger_mode": "terminal",
+        "report_date": "2026-04-30",
+        "alias": "M0041813",
+        "series_ids": ["NCD.SHIBOR.3M"],
+        "series_names": ["SHIBOR:3M"],
+        "backfill_mode": "macro_series",
+        "start_date": "2026-04-01",
+        "end_date": "2026-04-30",
+        "sources": ["tushare_macro"],
+        "total_added": 3,
+        "total_fetched": 3,
+        "processed_count": 3,
+    }
+    repo = GovernanceRepository(base_dir=governance_path)
+    repo.append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            **record_base,
+            "run_id": "source-owned-run",
+            "requested_by_user_id": "macro-source-owner",
+        },
+    )
+    repo.append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            **record_base,
+            "run_id": "source-owner-missing-run",
+        },
+    )
+
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+    owner_headers = {"X-User-Id": "macro-source-owner", "X-User-Role": "viewer"}
+    other_headers = {"X-User-Id": "macro-source-other", "X-User-Role": "viewer"}
+
+    owned = client.get(
+        "/ui/macro/toolkit/source-backfill/refresh-status",
+        params={"run_id": "source-owned-run"},
+        headers=owner_headers,
+    )
+    cross_user = client.get(
+        "/ui/macro/toolkit/source-backfill/refresh-status",
+        params={"run_id": "source-owned-run"},
+        headers=other_headers,
+    )
+    owner_missing = client.get(
+        "/ui/macro/toolkit/source-backfill/refresh-status",
+        params={"run_id": "source-owner-missing-run"},
+        headers=owner_headers,
+    )
+    get_settings.cache_clear()
+
+    assert owned.status_code == 200, owned.text
+    public_refresh = owned.json()["result"]["refresh"]
+    assert public_refresh["status"] == "completed"
+    assert public_refresh["total_added"] == 3
+    assert "requested_by_user_id" not in public_refresh
+    assert cross_user.status_code == 404
+    assert cross_user.json()["detail"] == "Macro source backfill refresh run not found."
+    assert "source-owned-run" not in cross_user.text
+    assert owner_missing.status_code == 404
+    assert owner_missing.json()["detail"] == "Macro source backfill refresh run not found."
+
+def test_macro_toolkit_source_backfill_preserves_blocked_status_without_cache_clear(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    sqlite_path = tmp_path / "auth-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    source_cache_clears: list[str] = []
+    response_cache_invalidations: list[str] = []
+
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "queue_macro_source_backfill",
+        lambda **_kwargs: macro_toolkit_service.MacroToolkitActionResult(
+            payload={
+                "status": "blocked",
+                "run_id": "macro-source-blocked-replay",
+                "total_added": 0,
+                "errors": {"PMI": "no rows fetched"},
+                "idempotency_replay": True,
+            },
+            quality_flag="warning",
+            as_of_date="2026-04-30",
+        ),
+    )
+    monkeypatch.setattr(
+        macro_toolkit_support,
+        "clear_system_macro_source_cache",
+        lambda: source_cache_clears.append("cleared"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        macro_toolkit_route.market_home_response_cache,
+        "invalidate",
+        lambda: response_cache_invalidations.append("invalidated"),
+    )
+    UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="macro-source-user",
+        role=None,
+        resource="macro_toolkit.source_backfill",
+        action="refresh",
+    )
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    response = TestClient(app, raise_server_exceptions=False).post(
+        "/ui/macro/toolkit/source-backfill/refresh",
+        json={
+            "alias": "M0017126",
+            "start_date": "2026-04-01",
+            "end_date": "2026-04-30",
+            "sources": ["tushare_macro"],
+        },
+        headers={"X-User-Id": "macro-source-user", "X-User-Role": "viewer"},
+    )
+
+    assert response.status_code == 202, response.text
+    refresh = response.json()["result"]["refresh"]
+    assert refresh["status"] == "blocked"
+    assert refresh["idempotency_replay"] is True
+    assert source_cache_clears == []
+    assert response_cache_invalidations == []
+    get_settings.cache_clear()
+
 def test_macro_toolkit_commodity_futures_refresh_requires_scope_and_queues_ingest(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
+    governance_path = tmp_path / "governance"
     sqlite_path = tmp_path / "auth-scope.db"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
     monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
     monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
     get_settings.cache_clear()
@@ -3364,7 +5870,7 @@ def test_macro_toolkit_commodity_futures_refresh_requires_scope_and_queues_inges
 
     queued_messages: list[dict[str, object]] = []
 
-    class FakeCommodityIngestActor:
+    class FakeCommodityRefreshActor:
         @staticmethod
         def send(**kwargs: object) -> None:
             queued_messages.append(dict(kwargs))
@@ -3377,12 +5883,12 @@ def test_macro_toolkit_commodity_futures_refresh_requires_scope_and_queues_inges
     )
     monkeypatch.setattr(
         macro_toolkit_service,
-        "run_commodity_daily_ingest_task",
-        FakeCommodityIngestActor,
+        "run_commodity_futures_refresh_task",
+        FakeCommodityRefreshActor,
         raising=False,
     )
     monkeypatch.setattr(
-        macro_toolkit_route,
+        macro_toolkit_support,
         "clear_system_macro_source_cache",
         lambda: source_cache_clears.append("cleared"),
         raising=False,
@@ -3426,41 +5932,58 @@ def test_macro_toolkit_commodity_futures_refresh_requires_scope_and_queues_inges
     assert refresh["product_count"] == 3
     assert refresh["products"] == ["RB", "CU", "SC"]
     assert refresh["table"] == "fact_commodity_futures_daily"
+    assert refresh["permission"] == {
+        "mode": "scoped_refresh",
+        "allowed": True,
+        "resource": "macro_toolkit.commodity_futures",
+        "actions": ["dry_run", "refresh"],
+    }
     assert refresh["permission"]["resource"] == "macro_toolkit.commodity_futures"
     assert refresh["permission"]["actions"] == ["dry_run", "refresh"]
+    assert refresh["before_status"]["table"] == "fact_commodity_futures_daily"
+    assert "after_status" not in refresh
+    assert "summary" not in refresh
     assert payload["result"]["commodity_futures_refresh"]["permission"] == refresh["permission"]
     assert payload["result_meta"]["result_kind"] == "macro_toolkit.commodity_futures_refresh"
+    assert "duckdb_path" not in refresh
+    assert "request_fingerprint" not in refresh
     assert calls == []
-    assert queued_messages == [
-        {
-            "start_date": "2026-05-01",
-            "end_date": "2026-06-01",
-            "duckdb_path": str(duckdb_path),
-            "products": ("RB", "CU", "SC"),
-            "dry_run": False,
-        }
-    ]
+    assert len(queued_messages) == 1
+    queued_message = queued_messages[0]
+    assert queued_message["start_date"] == "2026-05-01"
+    assert queued_message["end_date"] == "2026-06-01"
+    assert queued_message["duckdb_path"] == str(duckdb_path)
+    assert queued_message["governance_dir"] == str(governance_path)
+    assert queued_message["products"] == ("RB", "CU", "SC")
+    assert queued_message["requested_by_user_id"] == "commodity-refresh-user"
+    assert str(queued_message["run_id"]).startswith("commodity_futures_daily_ingest:2026-06-01:")
+    raw_queued = GovernanceRepository(base_dir=governance_path).read_all(CACHE_BUILD_RUN_STREAM)[-1]
+    assert raw_queued["requested_by_user_id"] == "commodity-refresh-user"
+    assert "requested_by_user_id" not in refresh
+    assert "user_id" not in refresh["permission"]
     assert source_cache_clears == []
     get_settings.cache_clear()
 
 
 def test_macro_toolkit_commodity_futures_refresh_reports_queue_failure(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
+    governance_path = tmp_path / "governance"
     sqlite_path = tmp_path / "auth-scope.db"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
     monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
     monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
     get_settings.cache_clear()
 
-    class BrokenCommodityIngestActor:
+    class BrokenCommodityRefreshActor:
         @staticmethod
         def send(**_kwargs: object) -> None:
             raise RuntimeError("queue broker unavailable")
 
     monkeypatch.setattr(
         macro_toolkit_service,
-        "run_commodity_daily_ingest_task",
-        BrokenCommodityIngestActor,
+        "run_commodity_futures_refresh_task",
+        BrokenCommodityRefreshActor,
         raising=False,
     )
     UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
@@ -3480,14 +6003,22 @@ def test_macro_toolkit_commodity_futures_refresh_reports_queue_failure(tmp_path,
     )
 
     assert response.status_code == 503, response.text
-    assert "queue broker unavailable" in response.text
+    assert "Commodity futures refresh queue dispatch failed." in response.text
+    raw_failure = GovernanceRepository(base_dir=governance_path).read_all(CACHE_BUILD_RUN_STREAM)[-1]
+    assert raw_failure["status"] == "failed"
+    assert raw_failure["requested_by_user_id"] == "commodity-refresh-user"
+    assert raw_failure["after_status"] == raw_failure["before_status"]
+    assert raw_failure["summary"]["dry_run"] is False
+    assert raw_failure["terminal_snapshot_status"] == "captured"
     get_settings.cache_clear()
 
 
 def test_macro_toolkit_commodity_futures_refresh_returns_queued_baseline_health_summary(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
+    governance_path = tmp_path / "governance"
     sqlite_path = tmp_path / "auth-scope.db"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
     monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
     monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
     get_settings.cache_clear()
@@ -3522,16 +6053,17 @@ def test_macro_toolkit_commodity_futures_refresh_returns_queued_baseline_health_
     def fake_commodity_status(_duckdb_path: object) -> dict[str, object]:
         return baseline_status
 
-    class FakeCommodityIngestActor:
+    class FakeCommodityRefreshActor:
         @staticmethod
         def send(**kwargs: object) -> None:
             queued_messages.append(dict(kwargs))
 
+    monkeypatch.setattr(macro_toolkit_support, "_commodity_futures_status", fake_commodity_status)
     monkeypatch.setattr(macro_toolkit_route, "_commodity_futures_status", fake_commodity_status)
     monkeypatch.setattr(
         macro_toolkit_service,
-        "run_commodity_daily_ingest_task",
-        FakeCommodityIngestActor,
+        "run_commodity_futures_refresh_task",
+        FakeCommodityRefreshActor,
         raising=False,
     )
     app = FastAPI()
@@ -3556,38 +6088,100 @@ def test_macro_toolkit_commodity_futures_refresh_returns_queued_baseline_health_
     assert refresh["status"] == "queued"
     assert refresh["row_count"] is None
     assert refresh["before_status"]["latest_trade_date"] == "2026-05-20"
-    assert refresh["after_status"]["latest_trade_date"] == "2026-05-20"
-    assert refresh["summary"] == {
-        "table": "fact_commodity_futures_daily",
-        "row_count_before": 120,
-        "row_count_after": 120,
-        "row_count_delta": 0,
-        "latest_trade_date_before": "2026-05-20",
-        "latest_trade_date_after": "2026-05-20",
-        "available_product_count_before": 5,
-        "available_product_count_after": 5,
-        "target_product_count": 7,
-        "newly_available_products": [],
-        "missing_products_after": ["RB", "I"],
-        "nanhua_status_before": "hit",
-        "nanhua_status_after": "hit",
-        "nanhua_latest_date_before": "2026-05-20",
-        "nanhua_latest_date_after": "2026-05-20",
-        "nanhua_latest_value_after": 3007.05,
-        "source_vendors_after": ["tushare"],
+    assert "after_status" not in refresh
+    assert "summary" not in refresh
+    assert payload["commodity_futures_refresh"]["status"]["latest_trade_date"] == "2026-05-20"
+    assert len(queued_messages) == 1
+    assert queued_messages[0]["governance_dir"] == str(governance_path)
+    get_settings.cache_clear()
+
+
+def test_macro_toolkit_commodity_futures_refresh_canonicalizes_product_order_for_payload_and_fingerprint(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_path = tmp_path / "governance"
+    sqlite_path = tmp_path / "auth-scope.db"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    queued_messages: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        macro_toolkit_support,
+        "_commodity_futures_status",
+        lambda _duckdb_path: _commodity_refresh_task_status(
+            row_count=10,
+            latest_trade_date="2026-05-20",
+        ),
+    )
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_commodity_futures_status",
+        lambda _duckdb_path: _commodity_refresh_task_status(
+            row_count=10,
+            latest_trade_date="2026-05-20",
+        ),
+    )
+
+    class FakeCommodityRefreshActor:
+        @staticmethod
+        def send(**kwargs: object) -> None:
+            queued_messages.append(dict(kwargs))
+
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "run_commodity_futures_refresh_task",
+        FakeCommodityRefreshActor,
+        raising=False,
+    )
+
+    scope_repo = UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}")
+    scope_repo.grant_scope(
+        user_id="commodity-refresh-user",
+        role=None,
+        resource="macro_toolkit.commodity_futures",
+        action="refresh",
+    )
+
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+    headers = {"X-User-Id": "commodity-refresh-user", "X-User-Role": "viewer"}
+    reversed_request = {
+        "start_date": "2026-05-01",
+        "end_date": "2026-06-01",
+        "products": ["SC", "RB", "CU", "RB"],
         "dry_run": False,
     }
-    assert payload["commodity_futures_refresh"]["status"]["latest_trade_date"] == "2026-05-20"
-    assert payload["commodity_futures_refresh"]["refresh"]["summary"]["row_count_delta"] == 0
-    assert queued_messages == [
-        {
-            "start_date": "2026-05-01",
-            "end_date": "2026-06-01",
-            "duckdb_path": str(duckdb_path),
-            "products": ("RB", "I", "CU", "AL", "SC", "AU", "NHCI"),
-            "dry_run": False,
-        }
-    ]
+
+    first = client.post(
+        "/ui/macro/toolkit/commodity-futures/refresh",
+        json=reversed_request,
+        headers=headers,
+    )
+    second = client.post(
+        "/ui/macro/toolkit/commodity-futures/refresh",
+        json={
+            **reversed_request,
+            "products": ["CU", "SC", "RB"],
+        },
+        headers=headers,
+    )
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 409, second.text
+    refresh = first.json()["result"]["refresh"]
+    assert refresh["products"] == ["RB", "CU", "SC"]
+    assert refresh["product_count"] == 3
+    assert len(queued_messages) == 1
+    assert queued_messages[0]["products"] == ("RB", "CU", "SC")
+    raw_records = GovernanceRepository(base_dir=governance_path).read_all(CACHE_BUILD_RUN_STREAM)
+    assert raw_records[-1]["products"] == ["RB", "CU", "SC"]
+    assert raw_records[-1]["request_fingerprint"]
     get_settings.cache_clear()
 
 
@@ -3648,6 +6242,7 @@ def test_macro_toolkit_commodity_futures_dry_run_returns_baseline_health_summary
             "table": "fact_commodity_futures_daily",
         }
 
+    monkeypatch.setattr(macro_toolkit_support, "_commodity_futures_status", fake_commodity_status)
     monkeypatch.setattr(macro_toolkit_route, "_commodity_futures_status", fake_commodity_status)
     monkeypatch.setattr(macro_toolkit_service, "run_commodity_daily_ingest", fake_run_commodity_daily_ingest)
     app = FastAPI()
@@ -3690,6 +6285,685 @@ def test_macro_toolkit_commodity_futures_dry_run_returns_baseline_health_summary
     get_settings.cache_clear()
 
 
+def _wait_for_commodity_futures_refresh_status(
+    client: TestClient,
+    *,
+    run_id: str,
+    headers: dict[str, str] | None = None,
+    timeout_seconds: float = 5.0,
+):
+    deadline = time.monotonic() + timeout_seconds
+    last_response = None
+    while time.monotonic() < deadline:
+        last_response = client.get(
+            "/ui/macro/toolkit/commodity-futures/refresh-status",
+            params={"run_id": run_id},
+            headers=headers,
+        )
+        if last_response.status_code == 200:
+            status = last_response.json()["result"]["refresh"]["status"]
+            if status in {"completed", "partial", "failed", "no_rows", "blocked"}:
+                return last_response
+        time.sleep(0.05)
+    assert last_response is not None
+    return last_response
+
+
+def test_macro_toolkit_commodity_futures_refresh_status_surfaces_terminal_completed_summary(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from backend.app.tasks import macro_toolkit_write_refresh as task
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_path = tmp_path / "governance"
+    sqlite_path = tmp_path / "auth-scope.db"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv("MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST", "1")
+    get_settings.cache_clear()
+    scope_repo = UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}")
+    scope_repo.grant_scope(user_id="commodity-refresh-user", role=None, resource="macro_toolkit", action="read")
+    scope_repo.grant_scope(
+        user_id="commodity-refresh-user",
+        role=None,
+        resource="macro_toolkit.commodity_futures",
+        action="refresh",
+    )
+    before_status = {
+        "materialized": True,
+        "status": "ok",
+        "table": "fact_commodity_futures_daily",
+        "row_count": 120,
+        "latest_trade_date": "2026-05-20",
+        "source_vendors": ["tushare"],
+        "coverage": {
+            "target_product_count": 7,
+            "available_product_count": 5,
+            "available_products": ["CU", "AL", "SC", "AU", "NHCI"],
+            "missing_products": ["RB", "I"],
+        },
+        "nanhua_input": {"status": "hit", "latest_trade_date": "2026-05-20", "latest_value": 3007.05},
+    }
+    after_status = {
+        **before_status,
+        "row_count": 166,
+        "latest_trade_date": "2026-06-01",
+        "coverage": {
+            "target_product_count": 7,
+            "available_product_count": 7,
+            "available_products": ["RB", "I", "CU", "AL", "SC", "AU", "NHCI"],
+            "missing_products": [],
+        },
+        "nanhua_input": {"status": "hit", "latest_trade_date": "2026-06-01", "latest_value": 3010.25},
+    }
+    route_status_calls = 0
+    current_terminal_status = after_status
+
+    def fake_route_commodity_status(_duckdb_path: object) -> dict[str, object]:
+        nonlocal route_status_calls
+        route_status_calls += 1
+        return before_status
+
+    def fake_terminal_commodity_status(_duckdb_path: object) -> dict[str, object]:
+        return current_terminal_status
+
+    monkeypatch.setattr(macro_toolkit_support, "_commodity_futures_status", fake_route_commodity_status)
+    monkeypatch.setattr(macro_toolkit_route, "_commodity_futures_status", fake_route_commodity_status)
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "commodity_futures_status",
+        fake_terminal_commodity_status,
+    )
+    monkeypatch.setattr(
+        task,
+        "_run_commodity_daily_ingest",
+        lambda **_kwargs: {
+            "status": "completed",
+            "dry_run": False,
+            "start_date": "2026-05-01",
+            "end_date": "2026-06-01",
+            "product_count": 2,
+            "requested_product_count": 2,
+            "successful_product_count": 2,
+            "product_completion_rate": 1.0,
+            "successful_products": ["RB", "CU"],
+            "missing_required_products": [],
+            "row_count": 46,
+            "vendors": ["tushare"],
+            "products": [],
+            "rule_version": "rv_commodity_daily_v1",
+            "table": "fact_commodity_futures_daily",
+        },
+    )
+    monkeypatch.setattr(task, "_invalidate_commodity_futures_caches", lambda: None)
+    monkeypatch.setattr(
+        macro_toolkit_service.run_commodity_futures_refresh_task,
+        "send",
+        lambda **kwargs: task.run_commodity_futures_refresh(**kwargs),
+    )
+
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+    headers = {"X-User-Id": "commodity-refresh-user", "X-User-Role": "viewer"}
+
+    try:
+        response = client.post(
+            "/ui/macro/toolkit/commodity-futures/refresh",
+            json={"start_date": "2026-05-01", "end_date": "2026-06-01", "products": ["RB", "CU"], "dry_run": False},
+            headers=headers,
+        )
+        payload = response.json()
+        current_terminal_status = {
+            **after_status,
+            "row_count": 999,
+            "latest_trade_date": "2026-06-30",
+        }
+        status_response = _wait_for_commodity_futures_refresh_status(
+            client,
+            run_id=payload["result"]["refresh"]["run_id"],
+            headers=headers,
+        )
+        repeated_status_response = client.get(
+            "/ui/macro/toolkit/commodity-futures/refresh-status",
+            params={"run_id": payload["result"]["refresh"]["run_id"]},
+            headers=headers,
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert response.status_code == 200
+    refresh = payload["result"]["refresh"]
+    assert refresh["status"] == "queued"
+    assert "after_status" not in refresh
+    assert status_response.status_code == 200
+    status_payload = status_response.json()
+    terminal_refresh = status_payload["result"]["refresh"]
+    assert terminal_refresh["status"] == "completed"
+    assert terminal_refresh["trigger_mode"] == "terminal"
+    assert terminal_refresh["before_status"]["latest_trade_date"] == "2026-05-20"
+    assert terminal_refresh["after_status"]["latest_trade_date"] == "2026-06-01"
+    assert terminal_refresh["summary"]["row_count_delta"] == 46
+    assert terminal_refresh["summary"]["newly_available_products"] == ["RB", "I"]
+    assert terminal_refresh["summary"]["dry_run"] is False
+    assert terminal_refresh["permission"] == {
+        "mode": "scoped_refresh",
+        "allowed": True,
+        "resource": "macro_toolkit.commodity_futures",
+        "actions": ["dry_run", "refresh"],
+    }
+    assert "duckdb_path" not in terminal_refresh
+    assert "request_fingerprint" not in terminal_refresh
+    assert status_payload["result"]["commodity_futures_refresh"]["status"]["latest_trade_date"] == "2026-06-01"
+    assert repeated_status_response.status_code == 200
+    repeated_refresh = repeated_status_response.json()["result"]["refresh"]
+    assert repeated_refresh["after_status"]["row_count"] == 166
+    assert repeated_refresh["after_status"]["latest_trade_date"] == "2026-06-01"
+    assert repeated_refresh["summary"] == terminal_refresh["summary"]
+    assert route_status_calls == 1
+
+
+def test_macro_toolkit_commodity_futures_refresh_status_surfaces_terminal_failed_summary(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from backend.app.tasks import macro_toolkit_write_refresh as task
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_path = tmp_path / "governance"
+    sqlite_path = tmp_path / "auth-scope.db"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv("MOSS_AUTH_TRUST_X_USER_ROLE_FOR_DEV_TEST", "1")
+    get_settings.cache_clear()
+    scope_repo = UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}")
+    scope_repo.grant_scope(user_id="commodity-refresh-user", role=None, resource="macro_toolkit", action="read")
+    scope_repo.grant_scope(
+        user_id="commodity-refresh-user",
+        role=None,
+        resource="macro_toolkit.commodity_futures",
+        action="refresh",
+    )
+    before_status = {
+        "materialized": False,
+        "status": "missing_table",
+        "table": "fact_commodity_futures_daily",
+        "row_count": 0,
+        "latest_trade_date": None,
+        "source_vendors": [],
+        "coverage": {
+            "target_product_count": 7,
+            "available_product_count": 0,
+            "available_products": [],
+            "missing_products": ["RB", "I", "CU", "AL", "SC", "AU", "NHCI"],
+        },
+        "nanhua_input": {"status": "missing_table", "latest_trade_date": None, "latest_value": None},
+    }
+    monkeypatch.setattr(macro_toolkit_support, "_commodity_futures_status", lambda _path: before_status)
+    monkeypatch.setattr(macro_toolkit_route, "_commodity_futures_status", lambda _path: before_status)
+    monkeypatch.setattr(macro_toolkit_service, "commodity_futures_status", lambda _path: before_status)
+    monkeypatch.setattr(
+        task,
+        "_run_commodity_daily_ingest",
+        lambda **_kwargs: {
+            "status": "failed",
+            "dry_run": False,
+            "start_date": "2026-05-01",
+            "end_date": "2026-06-01",
+            "product_count": 1,
+            "requested_product_count": 1,
+            "successful_product_count": 0,
+            "product_completion_rate": 0.0,
+            "successful_products": [],
+            "missing_required_products": ["NHCI"],
+            "row_count": 0,
+            "vendors": ["tushare"],
+            "products": [],
+            "rule_version": "rv_commodity_daily_v1",
+            "table": "fact_commodity_futures_daily",
+        },
+    )
+    monkeypatch.setattr(task, "_invalidate_commodity_futures_caches", lambda: None)
+    monkeypatch.setattr(
+        macro_toolkit_service.run_commodity_futures_refresh_task,
+        "send",
+        lambda **kwargs: task.run_commodity_futures_refresh(**kwargs),
+    )
+
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+    headers = {"X-User-Id": "commodity-refresh-user", "X-User-Role": "viewer"}
+
+    try:
+        response = client.post(
+            "/ui/macro/toolkit/commodity-futures/refresh",
+            json={"start_date": "2026-05-01", "end_date": "2026-06-01", "products": ["NHCI"], "dry_run": False},
+            headers=headers,
+        )
+        status_response = _wait_for_commodity_futures_refresh_status(
+            client,
+            run_id=response.json()["result"]["refresh"]["run_id"],
+            headers=headers,
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert response.status_code == 200
+    assert status_response.status_code == 200
+    payload = status_response.json()
+    refresh = payload["result"]["refresh"]
+    assert refresh["status"] == "failed"
+    assert refresh["trigger_mode"] == "terminal"
+    assert refresh["after_status"]["status"] == "missing_table"
+    assert refresh["summary"]["row_count_delta"] == 0
+    assert payload["result_meta"]["quality_flag"] == "warning"
+
+
+def _commodity_refresh_task_status(*, row_count: int, latest_trade_date: str | None) -> dict[str, object]:
+    return {
+        "materialized": row_count > 0,
+        "status": "ok" if row_count > 0 else "missing_table",
+        "table": "fact_commodity_futures_daily",
+        "row_count": row_count,
+        "latest_trade_date": latest_trade_date,
+        "source_vendors": ["tushare"] if row_count > 0 else [],
+        "coverage": {
+            "target_product_count": 7,
+            "available_product_count": 1 if row_count > 0 else 0,
+            "available_products": ["RB"] if row_count > 0 else [],
+            "missing_products": ["I", "CU", "AL", "SC", "AU", "NHCI"],
+        },
+        "nanhua_input": {
+            "status": "missing_series",
+            "latest_trade_date": None,
+            "latest_value": None,
+        },
+    }
+
+
+def _run_commodity_refresh_task_for_test(
+    task: object,
+    *,
+    duckdb_path: Path,
+    governance_path: Path,
+    run_id: str,
+) -> dict[str, object]:
+    return task.run_commodity_futures_refresh(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_path),
+        run_id=run_id,
+        start_date="2026-05-01",
+        end_date="2026-06-01",
+        products=("RB",),
+        before_status=_commodity_refresh_task_status(row_count=10, latest_trade_date="2026-05-20"),
+        permission={"mode": "scoped_refresh", "allowed": True},
+        request_fingerprint="commodity-test-fingerprint",
+        requested_by_user_id="commodity-refresh-user",
+    )
+
+
+@pytest.mark.parametrize("terminal_status", ["partial", "no_rows", "blocked"])
+def test_commodity_futures_refresh_task_persists_terminal_snapshot_for_all_terminal_results(
+    terminal_status,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from backend.app.tasks import macro_toolkit_write_refresh as task
+
+    after_status = _commodity_refresh_task_status(row_count=12, latest_trade_date="2026-06-01")
+    monkeypatch.setattr(
+        task,
+        "_run_commodity_daily_ingest",
+        lambda **_kwargs: {
+            "status": terminal_status,
+            "row_count": 2,
+            "table": "fact_commodity_futures_daily",
+        },
+    )
+    monkeypatch.setattr(task, "_invalidate_commodity_futures_caches", lambda: None)
+    monkeypatch.setattr(macro_toolkit_service, "commodity_futures_status", lambda _path: after_status)
+
+    result = _run_commodity_refresh_task_for_test(
+        task,
+        duckdb_path=tmp_path / "moss.duckdb",
+        governance_path=tmp_path / "governance",
+        run_id=f"commodity-terminal-{terminal_status}",
+    )
+
+    assert result["status"] == terminal_status
+    assert result["after_status"] == after_status
+    assert result["summary"]["row_count_delta"] == 2
+    assert result["terminal_snapshot_status"] == "captured"
+    stored = macro_toolkit_service.commodity_futures_refresh_status(
+        tmp_path / "governance",
+        run_id=f"commodity-terminal-{terminal_status}",
+        expected_user_id="commodity-refresh-user",
+    )
+    assert stored["after_status"] == after_status
+    assert stored["summary"] == result["summary"]
+
+
+def test_commodity_futures_refresh_task_non_retryable_failure_closes_without_raise(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from backend.app.tasks import macro_toolkit_write_refresh as task
+
+    after_status = _commodity_refresh_task_status(row_count=10, latest_trade_date="2026-05-20")
+
+    def fail_ingest(**_kwargs: object) -> dict[str, object]:
+        raise ValueError("invalid vendor response")
+
+    monkeypatch.setattr(task, "_run_commodity_daily_ingest", fail_ingest)
+    monkeypatch.setattr(macro_toolkit_service, "commodity_futures_status", lambda _path: after_status)
+
+    result = _run_commodity_refresh_task_for_test(
+        task,
+        duckdb_path=tmp_path / "moss.duckdb",
+        governance_path=tmp_path / "governance",
+        run_id="commodity-non-retryable",
+    )
+
+    assert result["status"] == "failed"
+    assert result["retryable"] is False
+    assert result["after_status"] == after_status
+    assert result["summary"]["row_count_delta"] == 0
+    assert result["terminal_snapshot_status"] == "captured"
+
+
+def test_commodity_futures_refresh_task_retryable_failure_rethrows_while_retry_pending(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from backend.app.tasks import macro_toolkit_write_refresh as task
+
+    def fail_ingest(**_kwargs: object) -> dict[str, object]:
+        raise TimeoutError("vendor timed out")
+
+    monkeypatch.setattr(task, "_run_commodity_daily_ingest", fail_ingest)
+
+    with pytest.raises(TimeoutError, match="vendor timed out"):
+        _run_commodity_refresh_task_for_test(
+            task,
+            duckdb_path=tmp_path / "moss.duckdb",
+            governance_path=tmp_path / "governance",
+            run_id="commodity-retry-pending",
+        )
+
+    stored = macro_toolkit_service.commodity_futures_refresh_status(
+        tmp_path / "governance",
+        run_id="commodity-retry-pending",
+        expected_user_id="commodity-refresh-user",
+    )
+    assert stored["status"] == "retrying"
+    assert stored["retryable"] is True
+    assert stored.get("after_status") is None
+    assert stored.get("summary") is None
+
+
+def test_commodity_futures_refresh_task_retryable_failure_exhaustion_closes_failed_snapshot(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from backend.app.tasks import macro_toolkit_write_refresh as task
+
+    governance_path = tmp_path / "governance"
+    run_id = "commodity-retry-exhausted"
+    repo = GovernanceRepository(base_dir=governance_path)
+    for attempt_count in range(1, 4):
+        repo.append(
+            task.CACHE_BUILD_RUN_STREAM,
+            {
+                "run_id": run_id,
+                "job_name": task.COMMODITY_FUTURES_REFRESH_JOB_NAME,
+                "cache_key": task.COMMODITY_FUTURES_REFRESH_CACHE_KEY,
+                "status": "running",
+                "attempt_count": attempt_count,
+            },
+        )
+
+    def fail_ingest(**_kwargs: object) -> dict[str, object]:
+        raise TimeoutError("vendor timed out")
+
+    after_status = _commodity_refresh_task_status(row_count=10, latest_trade_date="2026-05-20")
+    monkeypatch.setattr(task, "_run_commodity_daily_ingest", fail_ingest)
+    monkeypatch.setattr(macro_toolkit_service, "commodity_futures_status", lambda _path: after_status)
+
+    result = _run_commodity_refresh_task_for_test(
+        task,
+        duckdb_path=tmp_path / "moss.duckdb",
+        governance_path=governance_path,
+        run_id=run_id,
+    )
+
+    assert result["status"] == "failed"
+    assert result["attempt_count"] == 4
+    assert result["retryable"] is False
+    assert result["after_status"] == after_status
+    assert result["terminal_snapshot_status"] == "captured"
+
+
+def test_macro_toolkit_commodity_futures_refresh_status_not_found_and_requires_read_scope(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    governance_path = tmp_path / "governance"
+    sqlite_path = tmp_path / "auth-scope.db"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app, raise_server_exceptions=False)
+
+    denied = client.get(
+        "/ui/macro/toolkit/commodity-futures/refresh-status",
+        params={"run_id": "commodity_futures_daily_ingest:2026-06-01:missing"},
+        headers={"X-User-Id": "commodity-refresh-user", "X-User-Role": "viewer"},
+    )
+    assert denied.status_code == 403, denied.text
+
+    UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}").grant_scope(
+        user_id="commodity-refresh-user",
+        role=None,
+        resource="macro_toolkit",
+        action="read",
+    )
+    not_found = client.get(
+        "/ui/macro/toolkit/commodity-futures/refresh-status",
+        params={"run_id": "commodity_futures_daily_ingest:2026-06-01:missing"},
+        headers={"X-User-Id": "commodity-refresh-user", "X-User-Role": "viewer"},
+    )
+    assert not_found.status_code == 404, not_found.text
+    assert "Commodity futures refresh run not found" in not_found.text
+    get_settings.cache_clear()
+
+
+def test_macro_toolkit_commodity_futures_refresh_status_is_owner_scoped_and_fail_honest(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    governance_path = tmp_path / "governance"
+    sqlite_path = tmp_path / "auth-scope.db"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    scope_repo = UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}")
+    for user_id in ("commodity-owner", "commodity-other"):
+        scope_repo.grant_scope(user_id=user_id, role=None, resource="macro_toolkit", action="read")
+        scope_repo.grant_scope(
+            user_id=user_id,
+            role=None,
+            resource="macro_toolkit.commodity_futures",
+            action="refresh",
+        )
+    before_status = _commodity_refresh_task_status(row_count=10, latest_trade_date="2026-05-20")
+    after_status = _commodity_refresh_task_status(row_count=12, latest_trade_date="2026-06-01")
+    summary = macro_toolkit_service.commodity_futures_refresh_summary(
+        before_status=before_status,
+        after_status=after_status,
+        dry_run=False,
+    )
+    record_base = {
+        "job_name": "commodity_futures_daily_ingest",
+        "cache_key": "commodity_futures.daily",
+        "status": "completed",
+        "report_date": "2026-06-01",
+        "start_date": "2026-05-01",
+        "end_date": "2026-06-01",
+        "products": ["RB"],
+        "product_count": 1,
+        "before_status": before_status,
+    }
+    repo = GovernanceRepository(base_dir=governance_path)
+    repo.append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            **record_base,
+            "run_id": "commodity-owned-run",
+            "requested_by_user_id": "commodity-owner",
+            "permission": {
+                "mode": "scoped_refresh",
+                "allowed": True,
+                "user_id": "commodity-owner",
+                "role": "viewer",
+                "resource": "macro_toolkit.commodity_futures",
+                "actions": ["dry_run", "refresh"],
+            },
+            "after_status": after_status,
+            "summary": summary,
+            "terminal_snapshot_status": "captured",
+        },
+    )
+    repo.append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            **record_base,
+            "run_id": "commodity-owner-missing-run",
+            "permission": {
+                "mode": "scoped_refresh",
+                "allowed": True,
+                "resource": "macro_toolkit.commodity_futures",
+                "actions": ["dry_run", "refresh"],
+            },
+        },
+    )
+
+    def unexpected_live_status(_path: object) -> dict[str, object]:
+        raise AssertionError("refresh-status must not read mutable commodity state")
+
+    monkeypatch.setattr(macro_toolkit_support, "_commodity_futures_status", unexpected_live_status)
+    monkeypatch.setattr(macro_toolkit_route, "_commodity_futures_status", unexpected_live_status)
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+    owner_headers = {"X-User-Id": "commodity-owner", "X-User-Role": "viewer"}
+    other_headers = {"X-User-Id": "commodity-other", "X-User-Role": "viewer"}
+
+    owned = client.get(
+        "/ui/macro/toolkit/commodity-futures/refresh-status",
+        params={"run_id": "commodity-owned-run"},
+        headers=owner_headers,
+    )
+    cross_user = client.get(
+        "/ui/macro/toolkit/commodity-futures/refresh-status",
+        params={"run_id": "commodity-owned-run"},
+        headers=other_headers,
+    )
+    owner_missing = client.get(
+        "/ui/macro/toolkit/commodity-futures/refresh-status",
+        params={"run_id": "commodity-owner-missing-run"},
+        headers=owner_headers,
+    )
+    get_settings.cache_clear()
+
+    assert owned.status_code == 200, owned.text
+    public_refresh = owned.json()["result"]["refresh"]
+    assert public_refresh["after_status"] == after_status
+    assert public_refresh["summary"] == summary
+    assert "requested_by_user_id" not in public_refresh
+    assert "user_id" not in public_refresh["permission"]
+    assert "role" not in public_refresh["permission"]
+    assert owned.json()["result_meta"]["quality_flag"] == "ok"
+    assert cross_user.status_code == 404
+    assert cross_user.json()["detail"] == "Commodity futures refresh run not found."
+    assert "commodity-owned-run" not in cross_user.text
+    assert owner_missing.status_code == 404
+    assert owner_missing.json()["detail"] == "Commodity futures refresh run not found."
+
+
+def test_macro_toolkit_commodity_futures_refresh_status_redacts_raw_failure_details(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    governance_path = tmp_path / "governance"
+    sqlite_path = tmp_path / "auth-scope.db"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    scope_repo = UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}")
+    scope_repo.grant_scope(user_id="commodity-owner", role=None, resource="macro_toolkit", action="read")
+    scope_repo.grant_scope(
+        user_id="commodity-owner",
+        role=None,
+        resource="macro_toolkit.commodity_futures",
+        action="refresh",
+    )
+    before_status = _commodity_refresh_task_status(row_count=10, latest_trade_date="2026-05-20")
+    repo = GovernanceRepository(base_dir=governance_path)
+    repo.append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": "commodity-failed-run",
+            "job_name": "commodity_futures_daily_ingest",
+            "cache_key": "commodity_futures.daily",
+            "status": "failed",
+            "report_date": "2026-06-01",
+            "start_date": "2026-05-01",
+            "end_date": "2026-06-01",
+            "products": ["RB"],
+            "product_count": 1,
+            "before_status": before_status,
+            "requested_by_user_id": "commodity-owner",
+            "failure_category": "queue_dispatch_failure",
+            "failure_reason": "queue_dispatch_failed",
+            "error_message": "token=secret queue broke at C:\\private\\vendor.json",
+        },
+    )
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+
+    response = client.get(
+        "/ui/macro/toolkit/commodity-futures/refresh-status",
+        params={"run_id": "commodity-failed-run"},
+        headers={"X-User-Id": "commodity-owner", "X-User-Role": "viewer"},
+    )
+    get_settings.cache_clear()
+
+    assert response.status_code == 200, response.text
+    refresh = response.json()["result"]["refresh"]
+    assert refresh["failure_category"] == "queue_dispatch_failure"
+    assert refresh["failure_message"] == "Commodity futures refresh queue dispatch failed."
+    assert "failure_reason" not in refresh
+    assert "error_message" not in refresh
+    assert "secret" not in response.text
+    assert "C:\\private\\vendor.json" not in response.text
+    raw_record = GovernanceRepository(base_dir=governance_path).read_all(CACHE_BUILD_RUN_STREAM)[-1]
+    assert raw_record["failure_reason"] == "queue_dispatch_failed"
+    assert raw_record["error_message"] == "token=secret queue broke at C:\\private\\vendor.json"
+
+
 def test_macro_toolkit_commodity_futures_status_delegates_to_service(tmp_path, monkeypatch) -> None:
     expected_status = {
         "materialized": True,
@@ -3712,9 +6986,9 @@ def test_macro_toolkit_commodity_futures_status_delegates_to_service(tmp_path, m
 
     duckdb_path = tmp_path / "moss.duckdb"
 
-    assert macro_toolkit_route._commodity_futures_status(duckdb_path) == expected_status
+    assert macro_toolkit_support._commodity_futures_status(duckdb_path) == expected_status
     assert calls == [duckdb_path]
-    assert "duckdb.connect" not in inspect.getsource(macro_toolkit_route._commodity_futures_status)
+    assert "duckdb.connect" not in inspect.getsource(macro_toolkit_support._commodity_futures_status)
 
 
 def test_macro_toolkit_commodity_futures_refresh_rejects_unknown_products(tmp_path, monkeypatch) -> None:
@@ -3873,6 +7147,11 @@ def test_macro_toolkit_cffex_refresh_uses_service_meta_overrides(monkeypatch) ->
 
     monkeypatch.setattr(macro_toolkit_service, "refresh_cffex_member_rank", fake_refresh_cffex_member_rank)
     monkeypatch.setattr(
+        macro_toolkit_support,
+        "_cffex_member_rank_status",
+        lambda *_args, **_kwargs: {"status": "stale", "latest_trade_date": "2026-04-10"},
+    )
+    monkeypatch.setattr(
         macro_toolkit_route,
         "_cffex_member_rank_status",
         lambda *_args, **_kwargs: {"status": "stale", "latest_trade_date": "2026-04-10"},
@@ -3887,11 +7166,395 @@ def test_macro_toolkit_cffex_refresh_uses_service_meta_overrides(monkeypatch) ->
         headers={"X-User-Id": "macro-refresh-user"},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 202
     payload = response.json()
     assert payload["result_meta"]["quality_flag"] == "warning"
     assert payload["result_meta"]["fallback_mode"] == "latest_snapshot"
     assert payload["result_meta"]["as_of_date"] == "2026-04-10"
+
+
+def test_macro_toolkit_choice_stock_refresh_status_is_owner_scoped(tmp_path, monkeypatch) -> None:
+    governance_path = tmp_path / "governance"
+    sqlite_path = tmp_path / "auth-scope.db"
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    _seed_macro_toolkit_read_scope(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        macro_toolkit_support,
+        "_choice_stock_refresh_overview",
+        lambda *_args, **_kwargs: {"daily_observation": {"latest_trade_date": None}},
+    )
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_choice_stock_refresh_overview",
+        lambda *_args, **_kwargs: {"daily_observation": {"latest_trade_date": None}},
+    )
+
+    repo = GovernanceRepository(base_dir=governance_path)
+    repo.append(
+        CACHE_BUILD_RUN_STREAM,
+        macro_toolkit_service.build_choice_stock_refresh_run_payload(
+            run_id="choice-owned-run",
+            status="completed",
+            as_of_date="2026-05-01",
+            permission={
+                "mode": "scoped_refresh",
+                "allowed": True,
+                "user_id": "choice-owner",
+                "role": "viewer",
+                "resource": "macro_toolkit.choice_stock",
+                "actions": ["history", "factor_snapshot", "theme_overlay"],
+            },
+        ),
+    )
+    repo.append(
+        CACHE_BUILD_RUN_STREAM,
+        macro_toolkit_service.build_choice_stock_refresh_run_payload(
+            run_id="choice-owner-missing-run",
+            status="completed",
+            as_of_date="2026-05-02",
+        ),
+    )
+
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+    owner_headers = {"X-User-Id": "choice-owner", "X-User-Role": "viewer"}
+    other_headers = {"X-User-Id": "choice-other", "X-User-Role": "viewer"}
+
+    owned = client.get(
+        "/ui/macro/toolkit/choice-stock/refresh-status",
+        params={"run_id": "choice-owned-run"},
+        headers=owner_headers,
+    )
+    latest = client.get(
+        "/ui/macro/toolkit/choice-stock/refresh-status",
+        headers=owner_headers,
+    )
+    idle = client.get(
+        "/ui/macro/toolkit/choice-stock/refresh-status",
+        headers={"X-User-Id": "choice-idle", "X-User-Role": "viewer"},
+    )
+    cross_user = client.get(
+        "/ui/macro/toolkit/choice-stock/refresh-status",
+        params={"run_id": "choice-owned-run"},
+        headers=other_headers,
+    )
+    owner_missing = client.get(
+        "/ui/macro/toolkit/choice-stock/refresh-status",
+        params={"run_id": "choice-owner-missing-run"},
+        headers=owner_headers,
+    )
+    get_settings.cache_clear()
+
+    assert owned.status_code == 200, owned.text
+    assert latest.status_code == 200, latest.text
+    assert idle.status_code == 200, idle.text
+    owned_refresh = owned.json()["result"]["refresh"]
+    latest_refresh = latest.json()["result"]["refresh"]
+    idle_refresh = idle.json()["result"]["refresh"]
+    assert owned_refresh["run_id"] == "choice-owned-run"
+    assert latest_refresh["run_id"] == "choice-owned-run"
+    assert idle_refresh["status"] == "idle"
+    assert idle_refresh["run_id"] is None
+    assert "user_id" not in owned_refresh["permission"]
+    assert "role" not in owned_refresh["permission"]
+    assert "choice-owner-missing-run" not in latest.text
+    assert cross_user.status_code == 404
+    assert cross_user.json()["detail"] == "Choice stock refresh run not found."
+    assert "choice-owned-run" not in cross_user.text
+    assert owner_missing.status_code == 404
+    assert owner_missing.json()["detail"] == "Choice stock refresh run not found."
+
+
+def _append_choice_stock_refresh_owner_run(
+    repo: GovernanceRepository,
+    *,
+    run_id: str,
+    user_id: str,
+    as_of_date: str = "2026-05-01",
+) -> None:
+    repo.append(
+        CACHE_BUILD_RUN_STREAM,
+        macro_toolkit_service.build_choice_stock_refresh_run_payload(
+            run_id=run_id,
+            status="completed",
+            as_of_date=as_of_date,
+            permission={
+                "mode": "scoped_refresh",
+                "allowed": True,
+                "user_id": user_id,
+                "role": "viewer",
+                "resource": "macro_toolkit.choice_stock",
+                "actions": ["history", "factor_snapshot", "theme_overlay"],
+            },
+        ),
+    )
+
+
+def test_macro_toolkit_analysis_rebuilds_choice_stock_refresh_for_each_reader(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    governance_path = tmp_path / "governance"
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb.connect(str(duckdb_path), read_only=False).close()
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    _seed_macro_toolkit_read_scope(tmp_path, monkeypatch)
+    repo = GovernanceRepository(base_dir=governance_path)
+    _append_choice_stock_refresh_owner_run(repo, run_id="choice-analysis-owner", user_id="choice-owner")
+    monkeypatch.setattr(
+        macro_toolkit_route.macro_toolkit_refresh_receipt_service,
+        "load_macro_toolkit_refresh_receipt_health",
+        lambda: _macro_toolkit_refresh_health(status="success", ready=True),
+    )
+    build_calls: list[str] = []
+
+    def fake_build_macro_toolkit_analysis(
+        detail: str,
+        *,
+        history_limit: int = macro_toolkit_support.DEFAULT_CRISIS_SCORE_HISTORY_LIMIT,
+        refresh_receipt_health=None,
+    ) -> dict[str, object]:
+        build_calls.append(detail)
+        return macro_toolkit_support._envelope(
+            "macro_toolkit.analysis",
+            {
+                "default_data_sources": [],
+                "as_of_date": "2026-05-01",
+                "conclusion": {},
+                "coverage": {
+                    "indicator_count": 0,
+                    "hit_count": 0,
+                    "hit_rate": 0,
+                    "script_count": 0,
+                    "output_file_count": 0,
+                },
+                "indicators": [],
+                "signal_cards": [],
+                "primary_signal": {},
+                "hason_strategy": {},
+                "a_share_risk": None,
+                "capability_results": [],
+                "strategy_summaries": [],
+                "strategy_data_status": {},
+                "output_files": [],
+                "report_bundle": {},
+                "source_checks": [],
+                "capabilities": [],
+                "cffex_member_rank": {},
+                "choice_stock_refresh": macro_toolkit_support._choice_stock_refresh_overview(
+                    duckdb_path,
+                    governance_path,
+                    reference_date="2026-05-01",
+                ),
+                "runtime_status": {},
+                "data_health": {},
+                "model_readiness": [],
+                "readiness_summary": {},
+                "warnings": [],
+            },
+            as_of_date="2026-05-01",
+        )
+
+    monkeypatch.setattr(
+        macro_toolkit_read_service,
+        "build_macro_toolkit_analysis",
+        fake_build_macro_toolkit_analysis,
+    )
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+    owner_headers = {"X-User-Id": "choice-owner", "X-User-Role": "viewer"}
+    other_headers = {"X-User-Id": "choice-other", "X-User-Role": "viewer"}
+
+    macro_toolkit_route.market_home_response_cache.invalidate()
+    try:
+        owner_response = client.get("/ui/macro/toolkit/analysis", headers=owner_headers)
+        other_response = client.get("/ui/macro/toolkit/analysis", headers=other_headers)
+    finally:
+        macro_toolkit_route.market_home_response_cache.invalidate()
+        get_settings.cache_clear()
+
+    assert owner_response.status_code == 200, owner_response.text
+    assert other_response.status_code == 200, other_response.text
+    assert build_calls == ["full"]
+    owner_refresh = owner_response.json()["result"]["choice_stock_refresh"]["refresh"]
+    other_choice_refresh = other_response.json()["result"]["choice_stock_refresh"]
+    assert owner_refresh["run_id"] == "choice-analysis-owner"
+    assert other_choice_refresh["refresh"]["status"] == "idle"
+    assert other_choice_refresh["refresh"]["run_id"] is None
+    assert other_choice_refresh["permission"]["user_id"] == "choice-other"
+    assert "choice-analysis-owner" not in other_response.text
+
+
+def test_macro_toolkit_strategy_summaries_rebuilds_choice_stock_refresh_for_each_reader(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    governance_path = tmp_path / "governance"
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb.connect(str(duckdb_path), read_only=False).close()
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    _seed_macro_toolkit_read_scope(tmp_path, monkeypatch)
+    repo = GovernanceRepository(base_dir=governance_path)
+    _append_choice_stock_refresh_owner_run(repo, run_id="choice-strategy-owner", user_id="choice-owner")
+    build_calls = 0
+
+    def fake_build_macro_toolkit_strategy_summaries() -> dict[str, object]:
+        nonlocal build_calls
+        build_calls += 1
+        return macro_toolkit_support._envelope(
+            "macro_toolkit.analysis.strategy_summaries",
+            {
+                "strategy_summaries": [],
+                "strategy_data_status": {},
+                "shadow_portfolio_report": {},
+                "macro_etf_strategy": {},
+                "warnings": [],
+                "choice_stock_refresh": macro_toolkit_support._choice_stock_refresh_overview(
+                    duckdb_path,
+                    governance_path,
+                    reference_date="2026-05-01",
+                ),
+            },
+            as_of_date="2026-05-01",
+        )
+
+    monkeypatch.setattr(
+        macro_toolkit_read_service,
+        "build_macro_toolkit_strategy_summaries",
+        fake_build_macro_toolkit_strategy_summaries,
+    )
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+    owner_headers = {"X-User-Id": "choice-owner", "X-User-Role": "viewer"}
+    other_headers = {"X-User-Id": "choice-other", "X-User-Role": "viewer"}
+
+    macro_toolkit_route.market_home_response_cache.invalidate()
+    try:
+        owner_response = client.get("/ui/macro/toolkit/analysis/strategy-summaries", headers=owner_headers)
+        other_response = client.get("/ui/macro/toolkit/analysis/strategy-summaries", headers=other_headers)
+    finally:
+        macro_toolkit_route.market_home_response_cache.invalidate()
+        get_settings.cache_clear()
+
+    assert owner_response.status_code == 200, owner_response.text
+    assert other_response.status_code == 200, other_response.text
+    assert build_calls == 1
+    owner_refresh = owner_response.json()["result"]["choice_stock_refresh"]["refresh"]
+    other_choice_refresh = other_response.json()["result"]["choice_stock_refresh"]
+    assert owner_refresh["run_id"] == "choice-strategy-owner"
+    assert other_choice_refresh["refresh"]["status"] == "idle"
+    assert other_choice_refresh["refresh"]["run_id"] is None
+    assert other_choice_refresh["permission"]["user_id"] == "choice-other"
+    assert "choice-strategy-owner" not in other_response.text
+
+
+def test_macro_toolkit_scripts_scopes_choice_stock_refresh_to_current_reader(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    governance_path = tmp_path / "governance"
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb.connect(str(duckdb_path), read_only=False).close()
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv(ROLE_HEADER_TRUST_ENV, "1")
+    get_settings.cache_clear()
+    _seed_macro_toolkit_read_scope(tmp_path, monkeypatch)
+    repo = GovernanceRepository(base_dir=governance_path)
+    _append_choice_stock_refresh_owner_run(repo, run_id="choice-scripts-owner", user_id="choice-owner")
+    monkeypatch.setattr(macro_toolkit_support, "iter_toolkit_scripts", lambda: [])
+    monkeypatch.setattr(macro_toolkit_route, "iter_toolkit_scripts", lambda: [])
+    monkeypatch.setattr(macro_toolkit_support, "_source_checks", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(macro_toolkit_route, "_source_checks", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(macro_toolkit_support, "_output_files", lambda: [])
+    monkeypatch.setattr(macro_toolkit_route, "_output_files", lambda: [])
+    monkeypatch.setattr(macro_toolkit_support, "_capability_plan", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(macro_toolkit_route, "_capability_plan", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(macro_toolkit_support, "_cffex_member_rank_status", lambda *_args, **_kwargs: {"status": "ok"})
+    monkeypatch.setattr(macro_toolkit_route, "_cffex_member_rank_status", lambda *_args, **_kwargs: {"status": "ok"})
+    monkeypatch.setattr(macro_toolkit_support, "_commodity_futures_status", lambda *_args, **_kwargs: {"status": "ok"})
+    monkeypatch.setattr(macro_toolkit_route, "_commodity_futures_status", lambda *_args, **_kwargs: {"status": "ok"})
+    monkeypatch.setattr(macro_toolkit_support, "_script_warnings", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(macro_toolkit_route, "_script_warnings", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        macro_toolkit_route.macro_toolkit_service,
+        "macro_model_readiness",
+        lambda **_kwargs: {"model_readiness": [], "readiness_summary": {}},
+    )
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app)
+    owner_headers = {"X-User-Id": "choice-owner", "X-User-Role": "viewer"}
+    other_headers = {"X-User-Id": "choice-other", "X-User-Role": "viewer"}
+
+    try:
+        owner_response = client.get("/ui/macro/toolkit/scripts", headers=owner_headers)
+        other_response = client.get("/ui/macro/toolkit/scripts", headers=other_headers)
+    finally:
+        get_settings.cache_clear()
+
+    assert owner_response.status_code == 200, owner_response.text
+    assert other_response.status_code == 200, other_response.text
+    owner_refresh = owner_response.json()["result"]["choice_stock_refresh"]["refresh"]
+    other_choice_refresh = other_response.json()["result"]["choice_stock_refresh"]
+    assert owner_refresh["run_id"] == "choice-scripts-owner"
+    assert other_choice_refresh["refresh"]["status"] == "idle"
+    assert other_choice_refresh["refresh"]["run_id"] is None
+    assert other_choice_refresh["permission"]["user_id"] == "choice-other"
+    assert "choice-scripts-owner" not in other_response.text
+
+
+def test_macro_source_backfill_refresh_task_preserves_requested_owner_on_terminal_record(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from backend.app.tasks import macro_toolkit_write_refresh as task
+
+    monkeypatch.setattr(
+        task,
+        "_execute_macro_source_backfill",
+        lambda **_kwargs: {
+            "status": "completed",
+            "total_added": 0,
+            "total_fetched": 2,
+            "processed_count": 2,
+        },
+    )
+
+    result = task.run_macro_source_backfill_refresh(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_dir=str(tmp_path / "governance"),
+        run_id="source-owner-terminal",
+        alias="M0041813",
+        series_id="NCD.SHIBOR.3M",
+        series_name="SHIBOR:3M",
+        backfill_mode="macro_series",
+        start_date="2026-04-01",
+        end_date="2026-04-30",
+        sources=("tushare_macro",),
+        request_fingerprint="source-owner-terminal-fingerprint",
+        requested_by_user_id="macro-source-owner",
+    )
+
+    assert result["status"] == "completed"
+    assert result["requested_by_user_id"] == "macro-source-owner"
+    records = GovernanceRepository(base_dir=tmp_path / "governance").read_all(
+        CACHE_BUILD_RUN_STREAM
+    )
+    assert records[-1]["run_id"] == "source-owner-terminal"
+    assert records[-1]["requested_by_user_id"] == "macro-source-owner"
 
 
 def _wait_for_choice_stock_refresh_status(
@@ -3939,6 +7602,7 @@ def test_macro_toolkit_api_surfaces_capability_plan_and_stale_cffex_status(tmp_p
         conn.close()
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setattr(macro_toolkit_route, "OUTPUT_DIR", output_dir)
+    monkeypatch.setattr(macro_toolkit_support, "OUTPUT_DIR", output_dir)
     get_settings.cache_clear()
     app = FastAPI()
     app.include_router(macro_toolkit_router)
@@ -3986,9 +7650,9 @@ def test_macro_toolkit_capability_plan_reuses_source_check_cache(monkeypatch) ->
         calls.append(alias)
         return source_check_payload(alias)
 
-    monkeypatch.setattr(macro_toolkit_route, "_source_check", fake_source_check)
+    monkeypatch.setattr(macro_toolkit_support, "_source_check", fake_source_check)
 
-    macro_toolkit_route._capability_plan(
+    macro_toolkit_support._capability_plan(
         "dummy.duckdb",
         source_check_cache={
             "DR007.IB": source_check_payload("DR007.IB"),
@@ -4001,11 +7665,111 @@ def test_macro_toolkit_capability_plan_reuses_source_check_cache(monkeypatch) ->
     assert len(calls) == len(set(calls))
 
 
+def test_capability_definitions_declare_actual_curve_inputs_via_data_tables() -> None:
+    definitions = {item["key"]: item for item in macro_toolkit_support._CAPABILITY_DEFINITIONS}
+
+    # M8/M9/M13/M15 的实际计算经 load_macro_capability_context 走正式曲线表。
+    for key in ("yield_curve_shape", "credit_spread_risk", "rate_turning_point", "macro_portfolio_impact"):
+        assert "fact_formal_yield_curve_daily" in definitions[key]["data_tables"], key
+    # M9 同时消费 alias 回退点；回补后的 Choice 信用/国债历史必须进入血缘声明。
+    assert "fact_choice_macro_daily" in definitions["credit_spread_risk"]["data_tables"]
+
+    # M15 组合概况来自正式债券持仓表。
+    assert "fact_formal_bond_analytics_daily" in definitions["macro_portfolio_impact"]["data_tables"]
+
+    # M7/M10/M14 声明实际落库表，且保持 wired/visible（observation）。
+    assert definitions["monetary_policy_stance"]["route_status"] == "wired"
+    assert definitions["monetary_policy_stance"]["frontend_status"] == "visible"
+    assert "std_external_macro_daily" in definitions["monetary_policy_stance"]["data_tables"]
+    assert "fact_choice_macro_daily" in definitions["monetary_policy_stance"]["data_tables"]
+    assert definitions["leading_indicator"]["route_status"] == "wired"
+    assert definitions["leading_indicator"]["frontend_status"] == "visible"
+    assert "fact_choice_macro_daily" in definitions["leading_indicator"]["data_tables"]
+    assert definitions["economic_cycle"]["route_status"] == "wired"
+    assert definitions["economic_cycle"]["frontend_status"] == "visible"
+    assert "fact_choice_macro_daily" in definitions["economic_cycle"]["data_tables"]
+
+    # 未被 compute 函数消费的别名不得再声明。
+    assert "S0059670" not in definitions["credit_spread_risk"]["data_aliases"]
+    assert set(definitions["rate_turning_point"]["data_aliases"]) == {"S0059743", "S0059749"}
+    assert "S0059760" not in definitions["macro_portfolio_impact"]["data_aliases"]
+    assert "M0067855" not in definitions["macro_portfolio_impact"]["data_aliases"]
+    # 仍作为曲线回退点真实消费的别名保持声明。
+    assert set(definitions["yield_curve_shape"]["data_aliases"]) == {"S0059743", "S0059747", "S0059749"}
+    assert set(definitions["macro_portfolio_impact"]["data_aliases"]) == {
+        "S0059743",
+        "S0059746",
+        "S0059747",
+        "S0059748",
+        "S0059749",
+    }
+
+
+def test_capability_payload_passes_through_data_tables() -> None:
+    definitions = {item["key"]: item for item in macro_toolkit_support._CAPABILITY_DEFINITIONS}
+    definition = definitions["macro_portfolio_impact"]
+    cache = {
+        str(alias): {
+            "alias": str(alias),
+            "row_count": 1,
+            "latest": {
+                "date": "2026-04-30",
+                "series_id": str(alias),
+                "vendor_name": "choice",
+                "value": 1.0,
+            },
+        }
+        for alias in definition["data_aliases"]
+    }
+
+    payload = macro_toolkit_support._capability_payload(
+        definition,
+        "dummy.duckdb",
+        source_check_cache=cache,
+    )
+
+    assert payload["data_tables"] == [
+        "fact_formal_yield_curve_daily",
+        "fact_formal_bond_analytics_daily",
+    ]
+    assert payload["data_status"] == "ready"
+
+    # M7 声明实际落库表；别名全空时 data_status 仍为 missing。
+    monetary = definitions["monetary_policy_stance"]
+    monetary_cache = {
+        str(alias): {"alias": str(alias), "row_count": 0, "latest": None}
+        for alias in monetary["data_aliases"]
+    }
+    monetary_payload = macro_toolkit_support._capability_payload(
+        monetary,
+        "dummy.duckdb",
+        source_check_cache=monetary_cache,
+    )
+    assert monetary_payload["data_tables"] == [
+        "fact_formal_yield_curve_daily",
+        "fact_choice_macro_daily",
+        "std_external_macro_daily",
+    ]
+    assert monetary_payload["data_status"] == "missing"
+
+
 def test_macro_toolkit_api_runs_scripts_with_project_import_path(tmp_path, monkeypatch) -> None:
     duckdb_path = tmp_path / "moss.duckdb"
     _seed_choice_tushare_macro_db(duckdb_path)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setattr(macro_toolkit_route, "_ensure_macro_toolkit_script_execute_allowed", lambda *_args, **_kwargs: None)
+    calls = []
+
+    def fake_run(command, *, cwd, env, **kwargs):
+        calls.append(command)
+        assert command == [sys.executable, str(get_toolkit_script("debug_wind").path)]
+        assert Path(cwd) == TOOLKIT_ROOT
+        python_path = env["PYTHONPATH"].split(os.pathsep)
+        assert python_path[:2] == [str(TOOLKIT_ROOT), str(macro_toolkit_service.PROJECT_ROOT)]
+        assert env["MOSS_DUCKDB_PATH"] == str(duckdb_path)
+        return SimpleNamespace(returncode=0, stdout="ErrorCode: 0", stderr="")
+
+    monkeypatch.setattr(macro_toolkit_service.subprocess, "run", fake_run)
     get_settings.cache_clear()
     app = FastAPI()
     app.include_router(macro_toolkit_router)
@@ -4025,6 +7789,7 @@ def test_macro_toolkit_api_runs_scripts_with_project_import_path(tmp_path, monke
     assert payload["status"] == "completed"
     assert payload["exit_code"] == 0
     assert "ErrorCode" in payload["stdout"]
+    assert len(calls) == 1
 
 
 def test_macro_toolkit_run_script_passes_configured_output_dir_to_subprocess(tmp_path, monkeypatch) -> None:
@@ -4088,7 +7853,9 @@ def test_macro_toolkit_run_script_passes_configured_output_dir_to_subprocess(tmp
     assert [item["name"] for item in result["output_files"]] == ["cta_results.csv"]
 
 
-def test_macro_toolkit_run_script_inline_fallback_uses_configured_output_dir(tmp_path, monkeypatch) -> None:
+def test_macro_toolkit_run_script_inline_fallback_uses_configured_output_dir(
+    tmp_path, monkeypatch, _isolate_macro_read_inputs
+) -> None:
     requested_output_dir = tmp_path / "requested_output"
     inherited_output_dir = tmp_path / "inherited_output"
     requested_output_dir.mkdir()
@@ -4116,6 +7883,7 @@ def test_macro_toolkit_run_script_inline_fallback_uses_configured_output_dir(tmp
     monkeypatch.setenv("MOSS_MACRO_TOOLKIT_OUTPUT_DIR", str(inherited_output_dir))
     monkeypatch.setattr(macro_toolkit_service, "get_toolkit_script", lambda _name: fake_script)
     monkeypatch.setattr(macro_toolkit_service, "run_toolkit_script", fake_run_toolkit_script)
+    monkeypatch.setattr(macro_toolkit_service, "_run_toolkit_script_inline", _isolate_macro_read_inputs)
     monkeypatch.setattr(
         macro_toolkit_service,
         "_script_payload",
@@ -4147,6 +7915,7 @@ def test_macro_toolkit_script_chain_dry_run_reports_manifest_without_executing(t
     output_dir.mkdir()
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setattr(macro_toolkit_route, "OUTPUT_DIR", output_dir)
+    monkeypatch.setattr(macro_toolkit_support, "OUTPUT_DIR", output_dir)
     monkeypatch.setattr(macro_toolkit_route, "_ensure_macro_toolkit_script_execute_allowed", lambda *_args, **_kwargs: None)
 
     def fail_if_executed(**_kwargs: object) -> dict[str, object]:
@@ -4200,6 +7969,7 @@ def test_macro_toolkit_script_chain_manual_run_requires_each_manifest_script_sco
     output_dir.mkdir()
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setattr(macro_toolkit_route, "OUTPUT_DIR", output_dir)
+    monkeypatch.setattr(macro_toolkit_support, "OUTPUT_DIR", output_dir)
     checked_scripts: list[str] = []
     executed_scripts: list[str] = []
 
@@ -4220,7 +7990,7 @@ def test_macro_toolkit_script_chain_manual_run_requires_each_manifest_script_sco
         }
 
     monkeypatch.setattr(macro_toolkit_route, "_ensure_macro_toolkit_script_execute_allowed", fake_ensure)
-    monkeypatch.setattr(macro_toolkit_service, "run_macro_toolkit_script", fake_run_macro_toolkit_script)
+    monkeypatch.setattr(macro_toolkit_service, "_run_macro_toolkit_script_unlocked", fake_run_macro_toolkit_script)
     get_settings.cache_clear()
     app = FastAPI()
     app.include_router(macro_toolkit_router)
@@ -4250,6 +8020,7 @@ def test_macro_toolkit_script_chain_manual_run_rejects_concurrent_run(tmp_path, 
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_path))
     monkeypatch.setattr(macro_toolkit_route, "OUTPUT_DIR", output_dir)
+    monkeypatch.setattr(macro_toolkit_support, "OUTPUT_DIR", output_dir)
     monkeypatch.setattr(macro_toolkit_route, "_ensure_macro_toolkit_script_execute_allowed", lambda *_args, **_kwargs: None)
     executed_scripts: list[str] = []
 
@@ -4264,7 +8035,7 @@ def test_macro_toolkit_script_chain_manual_run_rejects_concurrent_run(tmp_path, 
             "output_files": [],
         }
 
-    monkeypatch.setattr(macro_toolkit_service, "run_macro_toolkit_script", fake_run_macro_toolkit_script)
+    monkeypatch.setattr(macro_toolkit_service, "_run_macro_toolkit_script_unlocked", fake_run_macro_toolkit_script)
     get_settings.cache_clear()
     app = FastAPI()
     app.include_router(macro_toolkit_router)
@@ -4273,7 +8044,7 @@ def test_macro_toolkit_script_chain_manual_run_rejects_concurrent_run(tmp_path, 
     try:
         with macro_toolkit_service.acquire_lock(
             macro_toolkit_service.MACRO_TOOLKIT_CHAIN_LOCK,
-            base_dir=governance_path,
+            base_dir=output_dir,
             timeout_seconds=0.1,
         ):
             response = client.post(
@@ -4287,6 +8058,71 @@ def test_macro_toolkit_script_chain_manual_run_rejects_concurrent_run(tmp_path, 
     assert response.status_code == 409
     assert "macro toolkit script chain" in response.json()["detail"].lower()
     assert executed_scripts == []
+
+
+def test_macro_toolkit_single_script_returns_conflict_for_shared_output_lock(tmp_path, monkeypatch):
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    monkeypatch.setattr(macro_toolkit_route, "OUTPUT_DIR", output_dir)
+    monkeypatch.setattr(macro_toolkit_support, "OUTPUT_DIR", output_dir)
+    monkeypatch.setattr(macro_toolkit_route, "_ensure_macro_toolkit_script_execute_allowed", lambda *args, **kwargs: None)
+    monkeypatch.setattr(macro_toolkit_service.subprocess, "run", lambda *args, **kwargs: pytest.fail("conflicting entry must not execute a subprocess"))
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    with macro_toolkit_service.acquire_lock(macro_toolkit_service.MACRO_TOOLKIT_CHAIN_LOCK, base_dir=output_dir, timeout_seconds=0.1):
+        response = TestClient(app, raise_server_exceptions=False).post("/ui/macro/toolkit/scripts/risk_parity_cn/run", json={"timeout_seconds": 30})
+    assert response.status_code == 409
+
+
+def test_macro_toolkit_single_script_run_invalidates_response_cache_after_service_return(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    output_dir = tmp_path / "macro_toolkit_output"
+    output_dir.mkdir()
+    invalidations: list[str] = []
+
+    monkeypatch.setattr(macro_toolkit_route, "OUTPUT_DIR", output_dir)
+    monkeypatch.setattr(macro_toolkit_support, "OUTPUT_DIR", output_dir)
+    monkeypatch.setattr(
+        macro_toolkit_route,
+        "_ensure_macro_toolkit_script_execute_allowed",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "run_macro_toolkit_script",
+        lambda **kwargs: {
+            "status": "failed",
+            "script": {"name": str(kwargs["name"])},
+            "exit_code": 1,
+            "stdout": "",
+            "stderr": "partial artifact emitted",
+            "output_files": [],
+        },
+    )
+    monkeypatch.setattr(
+        macro_toolkit_route.market_home_response_cache,
+        "invalidate",
+        lambda: invalidations.append("invalidated"),
+    )
+    get_settings.cache_clear()
+    app = FastAPI()
+    app.include_router(macro_toolkit_router)
+    client = TestClient(app, raise_server_exceptions=False)
+
+    try:
+        response = client.post(
+            "/ui/macro/toolkit/scripts/performance_metrics_cn/run",
+            json={"timeout_seconds": 30},
+            headers={"X-User-Id": "macro-script-user"},
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "failed"
+    assert invalidations == ["invalidated"]
 
 
 def test_macro_toolkit_script_chain_manual_run_reconciles_expected_outputs(tmp_path, monkeypatch) -> None:
@@ -4309,7 +8145,7 @@ def test_macro_toolkit_script_chain_manual_run_reconciles_expected_outputs(tmp_p
             "output_files": macro_toolkit_service.output_files(output_dir),
         }
 
-    monkeypatch.setattr(macro_toolkit_service, "run_macro_toolkit_script", fake_run_macro_toolkit_script)
+    monkeypatch.setattr(macro_toolkit_service, "_run_macro_toolkit_script_unlocked", fake_run_macro_toolkit_script)
 
     payload = macro_toolkit_service.run_macro_toolkit_chain(
         dry_run=False,
@@ -4669,7 +8505,10 @@ def _seed_choice_tushare_macro_db(path) -> None:
               ('cn_cpi_yoy', 'CN CPI YoY', '2026-04-09', 0.7, 'monthly', 'pct',
                'sv_choice', 'vv_choice', 'rv_choice_macro_thin_slice_v1', 'ok', 'choice-run'),
               ('CA.CSI300', 'CSI 300 close', '2026-04-10', 4102.25, 'daily', 'index',
-               'sv_tushare_index', 'vv_tushare_index', 'rv_public_cross_asset_headline_v1', 'ok', 'tushare-run')
+               'sv_tushare_index', 'vv_tushare_index', 'rv_public_cross_asset_headline_v1', 'ok', 'tushare-run'),
+              ('CA.CSI500', 'CSI 500 close', '2026-04-10', 6155.8, 'daily', 'index',
+               'sv_tushare_csi500_index', 'vv_tushare_csi500_index', 'rv_public_cross_asset_headline_v1', 'ok',
+               'tushare-run')
             """
         )
         conn.execute(
@@ -4680,6 +8519,9 @@ def _seed_choice_tushare_macro_db(path) -> None:
                '{}', 'latest', 'single', 'stable', ''),
               ('CA.CSI300', 'CSI 300 close', 'tushare', 'vv_tushare_index', 'daily', 'index',
                'index_daily:000300.SH.close', 'supplemental', 'test.tushare', 'equity', true, '[]',
+               '{}', 'materialized', 'daily', 'supplemental', ''),
+              ('CA.CSI500', 'CSI 500 close', 'tushare', 'vv_tushare_csi500_index', 'daily', 'index',
+               'index_daily:000905.SH.close', 'supplemental', 'test.tushare', 'equity', true, '[]',
                '{}', 'materialized', 'daily', 'supplemental', '')
             """
         )
@@ -4693,6 +8535,9 @@ def _seed_choice_tushare_macro_db(path) -> None:
                'rv_choice_macro_thin_slice_v1', 'choice-run'),
               ('CA.CSI300', 'CSI 300 close', 'index_daily:000300.SH.close', 'tushare', '2026-04-10',
                4102.25, 'daily', 'index', 'sv_tushare_index', 'vv_tushare_index',
+               'rv_public_cross_asset_headline_v1', 'tushare-run'),
+              ('CA.CSI500', 'CSI 500 close', 'index_daily:000905.SH.close', 'tushare', '2026-04-10',
+               6155.8, 'daily', 'index', 'sv_tushare_csi500_index', 'vv_tushare_csi500_index',
                'rv_public_cross_asset_headline_v1', 'tushare-run'),
               ('CA.COPPER', 'Copper main futures close', 'fut_daily:CU.SHF.close', 'tushare', '2026-04-10',
                81234.5, 'daily', 'CNY/t', 'sv_tushare_fut', 'vv_tushare_fut',
@@ -5117,3 +8962,653 @@ def _seed_choice_stock_factor_snapshot(path) -> None:
         )
     finally:
         conn.close()
+
+
+def _empty_wide_frames() -> dict[str, pd.DataFrame]:
+    return {
+        alias: pd.DataFrame(columns=["date", "value", "series_id", "vendor_name"])
+        for _, alias in macro_toolkit_support._WIDE_SERIES_ALIASES
+    }
+
+
+def test_leading_indicator_curve_derived_spreads_attach_same_day_provenance() -> None:
+    """Term/credit 派生值与 source_date / transform / legs 必须同一观测日。"""
+    report_date = date(2026, 7, 20)
+    frames = _empty_wide_frames()
+    curve_rows = [
+        {"biz_date": "2026-07-20", "curve_id": "CN_GOVT", "tenor": "1Y", "rate_value": 1.5},
+        {"biz_date": "2026-07-20", "curve_id": "CN_GOVT", "tenor": "10Y", "rate_value": 2.1},
+        {"biz_date": "2026-07-20", "curve_id": "CN_GOVT", "tenor": "3Y", "rate_value": 1.8},
+        {"biz_date": "2026-07-20", "curve_id": "CN_CREDIT_AAA", "tenor": "3Y", "rate_value": 2.2},
+    ]
+
+    wide_rows = macro_toolkit_support._load_macro_wide_rows(
+        "unused.duckdb",
+        report_date,
+        curve_rows,
+        frames_by_alias=frames,
+    )
+    july = next(row for row in wide_rows if row["trade_date"] == report_date)
+
+    assert july["term_spread_10y_1y"] == pytest.approx(60.0)
+    assert july["term_spread_10y_1y_source_date"] == report_date
+    term_prov = july["_provenance"]["term_spread_10y_1y"]
+    assert term_prov["source_date"] == report_date
+    assert term_prov["unit"] == "bp"
+    assert term_prov["unit_status"] == "provisional"
+    assert "10Y" in term_prov["transform"] and "1Y" in term_prov["transform"]
+    assert term_prov["legs"]["gov_1y"]["source_date"] == report_date
+    assert term_prov["legs"]["gov_10y"]["source_date"] == report_date
+    assert term_prov["legs"]["gov_1y"]["value"] == pytest.approx(1.5)
+    assert term_prov["legs"]["gov_10y"]["value"] == pytest.approx(2.1)
+
+    assert july["credit_spread_aaa_3y"] == pytest.approx(40.0)
+    assert july["credit_spread_aaa_3y_source_date"] == report_date
+    credit_prov = july["_provenance"]["credit_spread_aaa_3y"]
+    assert credit_prov["source_date"] == report_date
+    assert credit_prov["unit"] == "bp"
+    assert credit_prov["unit_status"] in {"provisional", "unfrozen"}
+    assert "AAA" in credit_prov["transform"] or "3Y" in credit_prov["transform"]
+    assert credit_prov["legs"]["aaa_3y"]["source_date"] == report_date
+    assert credit_prov["legs"]["gov_3y"]["source_date"] == report_date
+    assert credit_prov["legs"]["aaa_3y"]["value"] == pytest.approx(2.2)
+    assert credit_prov["legs"]["gov_3y"]["value"] == pytest.approx(1.8)
+
+
+def test_leading_indicator_enrich_atomically_replaces_alias_credit_spread_provenance() -> None:
+    """ffill 的 alias 利差被曲线 enrich 覆盖时，value 与 source_date 必须原子替换。"""
+    report_date = date(2026, 4, 20)
+    frames = _empty_wide_frames()
+    frames["S0059670"] = pd.DataFrame(
+        [
+            {
+                "date": date(2026, 4, 15),
+                "value": 99.0,
+                "series_id": "legacy.yield.moss_derived.credit_spread_aaa.3Y",
+                "vendor_name": "moss_derived",
+            }
+        ]
+    )
+    curve_rows = [
+        {"biz_date": "2026-04-15"},
+        {"biz_date": "2026-04-20"},
+        {"biz_date": "2026-04-20", "curve_id": "CN_GOVT", "tenor": "1Y", "rate_value": 1.5},
+        {"biz_date": "2026-04-20", "curve_id": "CN_GOVT", "tenor": "10Y", "rate_value": 2.1},
+        {"biz_date": "2026-04-20", "curve_id": "CN_GOVT", "tenor": "3Y", "rate_value": 1.8},
+        {"biz_date": "2026-04-20", "curve_id": "CN_CREDIT_AAA", "tenor": "3Y", "rate_value": 2.2},
+    ]
+
+    wide_rows = macro_toolkit_support._load_macro_wide_rows(
+        "unused.duckdb",
+        report_date,
+        curve_rows,
+        frames_by_alias=frames,
+    )
+    april_15 = next(row for row in wide_rows if row["trade_date"] == date(2026, 4, 15))
+    april_20 = next(row for row in wide_rows if row["trade_date"] == date(2026, 4, 20))
+
+    assert april_15["credit_spread_aaa_3y"] == pytest.approx(99.0)
+    assert april_15["credit_spread_aaa_3y_source_date"] == date(2026, 4, 15)
+
+    assert april_20["credit_spread_aaa_3y"] == pytest.approx(40.0)
+    assert april_20["credit_spread_aaa_3y_source_date"] == date(2026, 4, 20)
+    assert april_20["_provenance"]["credit_spread_aaa_3y"]["source_date"] == date(2026, 4, 20)
+    assert "S0059670" not in str(april_20["_provenance"]["credit_spread_aaa_3y"].get("transform", ""))
+
+
+def test_capability_input_evidence_pairs_derived_value_with_matching_date() -> None:
+    """禁止 July 派生值 + April alias 日的错配；value/date/series/vendor 同源。"""
+    report_date = date(2026, 7, 20)
+    frames = _empty_wide_frames()
+    frames["S0059670"] = pd.DataFrame(
+        [
+            {
+                "date": date(2026, 4, 15),
+                "value": 99.0,
+                "series_id": "legacy.yield.moss_derived.credit_spread_aaa.3Y",
+                "vendor_name": "moss_derived",
+            }
+        ]
+    )
+    frames["S0059743"] = pd.DataFrame(
+        [
+            {
+                "date": date(2026, 4, 10),
+                "value": 1.4,
+                "series_id": "legacy.yield.choice.treasury.1Y",
+                "vendor_name": "choice",
+            }
+        ]
+    )
+    frames["S0059749"] = pd.DataFrame(
+        [
+            {
+                "date": date(2026, 4, 10),
+                "value": 2.0,
+                "series_id": "legacy.yield.choice.treasury.10Y",
+                "vendor_name": "choice",
+            }
+        ]
+    )
+    frames["S0059651"] = pd.DataFrame(
+        [
+            {
+                "date": date(2026, 4, 10),
+                "value": 2.3,
+                "series_id": "legacy.yield.choice.aaa.3Y",
+                "vendor_name": "choice",
+            }
+        ]
+    )
+    frames["S0059746"] = pd.DataFrame(
+        [
+            {
+                "date": date(2026, 4, 10),
+                "value": 1.9,
+                "series_id": "legacy.yield.choice.treasury.3Y",
+                "vendor_name": "choice",
+            }
+        ]
+    )
+    curve_rows = [
+        {"biz_date": "2026-07-20", "curve_id": "CN_GOVT", "tenor": "1Y", "rate_value": 1.5},
+        {"biz_date": "2026-07-20", "curve_id": "CN_GOVT", "tenor": "10Y", "rate_value": 2.1},
+        {"biz_date": "2026-07-20", "curve_id": "CN_GOVT", "tenor": "3Y", "rate_value": 1.8},
+        {"biz_date": "2026-07-20", "curve_id": "CN_CREDIT_AAA", "tenor": "3Y", "rate_value": 2.2},
+    ]
+    wide_rows = macro_toolkit_support._load_macro_wide_rows(
+        "unused.duckdb",
+        report_date,
+        curve_rows,
+        frames_by_alias=frames,
+    )
+
+    source_check_cache: dict[str, dict[str, object]] = {}
+    for alias, frame in frames.items():
+        source_check_cache[alias] = macro_toolkit_support._source_check_payload(alias, frame)
+
+    term_req = next(
+        item
+        for item in macro_toolkit_support._CAPABILITY_INPUT_REQUIREMENTS["leading_indicator"]
+        if item["field"] == "term_spread_10y_1y"
+    )
+    credit_req = next(
+        item
+        for item in macro_toolkit_support._CAPABILITY_INPUT_REQUIREMENTS["leading_indicator"]
+        if item["field"] == "credit_spread_aaa_3y"
+    )
+
+    term_item = macro_toolkit_support._capability_input_evidence_item(
+        term_req,
+        duckdb_path="unused.duckdb",
+        report_date=report_date,
+        wide_rows=wide_rows,
+        source_check_cache=source_check_cache,
+    )
+    credit_item = macro_toolkit_support._capability_input_evidence_item(
+        credit_req,
+        duckdb_path="unused.duckdb",
+        report_date=report_date,
+        wide_rows=wide_rows,
+        source_check_cache=source_check_cache,
+    )
+
+    # 有曲线 provenance 时：value/date 来自 July 曲线派生，series_id/source 不得回退 April alias 腿身份。
+    assert term_item["available"] is True
+    assert term_item["value"] == pytest.approx(60.0)
+    assert term_item["latest_date"] == "2026-07-20"
+    assert term_item["latest_date"] != "2026-04-10"
+    assert term_item.get("unit") == "bp"
+    assert term_item.get("transform")
+    assert set(term_item.get("legs", {})).issuperset({"gov_1y", "gov_10y"})
+    assert term_item.get("series_id") in {None, "curve_derived"}
+    assert term_item.get("source") in {None, "curve_derived"}
+    assert term_item.get("series_id") != "legacy.yield.choice.treasury.1Y"
+    assert term_item.get("source") != "choice"
+    assert term_item.get("unit_status") in {"provisional", "unfrozen"}
+    assert term_item.get("formal_use_allowed") is not True
+
+    assert credit_item["available"] is True
+    assert credit_item["value"] == pytest.approx(40.0)
+    assert credit_item["latest_date"] == "2026-07-20"
+    assert credit_item["latest_date"] != "2026-04-15"
+    assert credit_item.get("unit") == "bp"
+    assert credit_item.get("transform")
+    assert set(credit_item.get("legs", {})).issuperset({"aaa_3y", "gov_3y"})
+    assert credit_item.get("series_id") in {None, "curve_derived"}
+    assert credit_item.get("source") in {None, "curve_derived"}
+    assert credit_item.get("series_id") != "legacy.yield.choice.aaa.3Y"
+    assert credit_item.get("source") != "choice"
+    # 未冻结单位不得解除 formal
+    assert credit_item.get("unit_status") in {"provisional", "unfrozen"}
+    assert credit_item.get("formal_use_allowed") is not True
+
+
+def test_leading_indicator_merrill_cycle_cross_market_ignore_provenance_sidecar() -> None:
+    """Merrill / economic_cycle / cross_market 忽略 _provenance，数值行为不变。
+
+    样本给足 5 个月：economic_cycle 的 fail-closed 门槛要求月度样本 >= 4，
+    pearson 相关要求 >= 5 个对齐样本；样本不足时两侧都退化为 unknown/None，
+    等值断言会空洞化、失去保护力。
+    """
+    from backend.app.core_finance.macro.cross_market_linkage import analyze_cross_market_linkage
+    from backend.app.core_finance.macro.economic_cycle import compute_economic_cycle
+    from backend.app.core_finance.macro.merrill_clock import compute_merrill_clock_payload
+
+    report_date = date(2026, 4, 30)
+    base_rows = [
+        {
+            "trade_date": date(2026, 4, 30),
+            "biz_date": date(2026, 4, 30),
+            "pmi": 51.0,
+            "cpi_yoy": 0.5,
+            "ppi_yoy": -1.0,
+            "m2_yoy": 8.0,
+            "social_financing_yoy": 9.0,
+            "industrial_yoy": 6.0,
+            "term_spread_10y_1y": 60.0,
+            "treasury_10y": 2.2,
+            "hs300": 4000.0,
+            "usdcny": 7.2,
+            "brent_oil": 80.0,
+            "us_treasury_10y": 4.0,
+            "copper": 70000.0,
+        },
+        {
+            "trade_date": date(2026, 3, 31),
+            "biz_date": date(2026, 3, 31),
+            "pmi": 50.0,
+            "cpi_yoy": 0.4,
+            "ppi_yoy": -0.8,
+            "m2_yoy": 7.5,
+            "social_financing_yoy": 8.5,
+            "industrial_yoy": 5.5,
+            "term_spread_10y_1y": 55.0,
+            "treasury_10y": 2.1,
+            "hs300": 3900.0,
+            "usdcny": 7.1,
+            "brent_oil": 78.0,
+            "us_treasury_10y": 3.9,
+            "copper": 69000.0,
+        },
+        {
+            "trade_date": date(2026, 2, 28),
+            "biz_date": date(2026, 2, 28),
+            "pmi": 49.5,
+            "cpi_yoy": 0.3,
+            "ppi_yoy": -0.6,
+            "m2_yoy": 7.0,
+            "social_financing_yoy": 8.0,
+            "industrial_yoy": 5.0,
+            "term_spread_10y_1y": 50.0,
+            "treasury_10y": 2.0,
+            "hs300": 3800.0,
+            "usdcny": 7.0,
+            "brent_oil": 76.0,
+            "us_treasury_10y": 3.8,
+            "copper": 68000.0,
+        },
+        {
+            "trade_date": date(2026, 1, 31),
+            "biz_date": date(2026, 1, 31),
+            "pmi": 49.0,
+            "cpi_yoy": 0.2,
+            "ppi_yoy": -0.4,
+            "m2_yoy": 6.5,
+            "social_financing_yoy": 7.5,
+            "industrial_yoy": 4.5,
+            "term_spread_10y_1y": 45.0,
+            "treasury_10y": 1.9,
+            "hs300": 3700.0,
+            "usdcny": 6.9,
+            "brent_oil": 74.0,
+            "us_treasury_10y": 3.7,
+            "copper": 67000.0,
+        },
+        {
+            "trade_date": date(2025, 12, 31),
+            "biz_date": date(2025, 12, 31),
+            "pmi": 48.5,
+            "cpi_yoy": 0.1,
+            "ppi_yoy": -0.2,
+            "m2_yoy": 6.0,
+            "social_financing_yoy": 7.0,
+            "industrial_yoy": 4.0,
+            "term_spread_10y_1y": 40.0,
+            "treasury_10y": 1.8,
+            "hs300": 3600.0,
+            "usdcny": 6.8,
+            "brent_oil": 72.0,
+            "us_treasury_10y": 3.6,
+            "copper": 66000.0,
+        },
+    ]
+    sidecar_rows = [
+        {
+            **row,
+            "_provenance": {
+                "term_spread_10y_1y": {
+                    "source_date": row["trade_date"],
+                    "unit": "bp",
+                    "transform": "noise",
+                    "legs": {},
+                }
+            },
+        }
+        for row in base_rows
+    ]
+
+    merrill_base = compute_merrill_clock_payload(base_rows, report_date=report_date)
+    merrill_side = compute_merrill_clock_payload(sidecar_rows, report_date=report_date)
+    assert merrill_base.get("data_status") == merrill_side.get("data_status")
+    assert merrill_base.get("regime") == merrill_side.get("regime")
+    assert merrill_base.get("headline") == merrill_side.get("headline")
+
+    cycle_base = compute_economic_cycle(base_rows, report_date)
+    cycle_side = compute_economic_cycle(sidecar_rows, report_date)
+    # 防空洞化：样本必须先让 economic_cycle 真正算出象限，等值断言才有意义
+    assert cycle_base.get("cycle_phase") not in {None, "unknown"}
+    assert cycle_base.get("growth_score") is not None
+    assert cycle_base.get("cycle_phase") == cycle_side.get("cycle_phase")
+    assert cycle_base.get("growth_score") == cycle_side.get("growth_score")
+    assert cycle_base.get("inflation_score") == cycle_side.get("inflation_score")
+
+    cross_base = analyze_cross_market_linkage(base_rows, report_date)
+    cross_side = analyze_cross_market_linkage(sidecar_rows, report_date)
+    # 防空洞化：至少 fx/oil/us 相关腿可算（5 个对齐样本），不得全为 None
+    assert cross_base.get("bond_fx_corr") is not None
+    assert cross_base.get("data_status") == cross_side.get("data_status")
+    assert cross_base.get("overall_risk") == cross_side.get("overall_risk")
+    assert cross_base.get("bond_equity_corr") == cross_side.get("bond_equity_corr")
+
+
+def test_indicator_payload_recent_points_keep_ascending_tail() -> None:
+    config = {
+        "key": "dr007",
+        "alias": "DR007.IB",
+        "label": "DR007",
+        "group": "流动性",
+        "unit": "%",
+    }
+    frame = pd.DataFrame(
+        {
+            "date": [f"2026-03-{day:02d}" for day in range(1, 31)],
+            "value": [1.5 + day * 0.01 for day in range(1, 31)],
+            "vendor_name": ["choice"] * 30,
+            "series_id": ["DR007.IB"] * 30,
+        }
+    )
+
+    payload = macro_toolkit_support._indicator_payload(config, frame)
+
+    points = payload["recent_points"]
+    assert len(points) == 20
+    assert [point["date"] for point in points] == [f"2026-03-{day:02d}" for day in range(11, 31)]
+    assert points[-1]["value"] == payload["latest_value"]
+    assert points[-1]["date"] == payload["latest_date"]
+
+    empty_payload = macro_toolkit_support._indicator_payload(config, pd.DataFrame())
+    assert empty_payload["quality"] == "missing"
+    assert empty_payload["recent_points"] == []
+
+
+def test_commodity_futures_refresh_task_duplicate_delivery_same_run_id_skips_second_write(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from threading import Thread
+
+    from backend.app.tasks import macro_toolkit_write_refresh as task
+
+    governance_path = tmp_path / "governance"
+    results: list[dict[str, object]] = []
+    errors: list[BaseException] = []
+    result_lock = Lock()
+    start = Event()
+    ingest_calls: list[int] = []
+    after_status = _commodity_refresh_task_status(
+        row_count=12,
+        latest_trade_date="2026-06-01",
+    )
+
+    def fake_ingest(**_kwargs: object) -> dict[str, object]:
+        ingest_calls.append(1)
+        time.sleep(0.2)
+        return {
+            "status": "completed",
+            "row_count": 2,
+            "table": "fact_commodity_futures_daily",
+        }
+
+    monkeypatch.setattr(task, "_run_commodity_daily_ingest", fake_ingest)
+    monkeypatch.setattr(task, "_invalidate_commodity_futures_caches", lambda: None)
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "commodity_futures_status",
+        lambda _path: after_status,
+    )
+
+    def invoke() -> None:
+        start.wait()
+        try:
+            result = _run_commodity_refresh_task_for_test(
+                task,
+                duckdb_path=tmp_path / "moss.duckdb",
+                governance_path=governance_path,
+                run_id="commodity-duplicate-run",
+            )
+        except BaseException as exc:  # noqa: BLE001 - thread probe captures the exact failure
+            with result_lock:
+                errors.append(exc)
+            return
+        with result_lock:
+            results.append(result)
+
+    threads = [Thread(target=invoke, daemon=True) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    start.set()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    assert len(results) == 2
+    assert ingest_calls == [1]
+    assert {result["status"] for result in results} == {"completed"}
+    records = [
+        record
+        for record in GovernanceRepository(base_dir=governance_path).read_all(
+            CACHE_BUILD_RUN_STREAM
+        )
+        if record["run_id"] == "commodity-duplicate-run"
+    ]
+    assert [record["status"] for record in records] == ["running", "completed"]
+    assert [record["trigger_mode"] for record in records] == ["async", "terminal"]
+
+
+def test_commodity_futures_refresh_task_retrying_follow_up_attempt_still_runs_after_guard(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from backend.app.tasks import macro_toolkit_write_refresh as task
+
+    governance_path = tmp_path / "governance"
+    run_id = "commodity-retrying-follow-up"
+    after_status = _commodity_refresh_task_status(
+        row_count=12,
+        latest_trade_date="2026-06-01",
+    )
+    ingest_calls: list[str] = []
+
+    def flaky_then_success(**_kwargs: object) -> dict[str, object]:
+        ingest_calls.append("ingest")
+        if len(ingest_calls) == 1:
+            raise TimeoutError("vendor timed out")
+        return {
+            "status": "completed",
+            "row_count": 2,
+            "table": "fact_commodity_futures_daily",
+        }
+
+    monkeypatch.setattr(task, "_run_commodity_daily_ingest", flaky_then_success)
+    monkeypatch.setattr(task, "_invalidate_commodity_futures_caches", lambda: None)
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "commodity_futures_status",
+        lambda _path: after_status,
+    )
+
+    with pytest.raises(TimeoutError, match="vendor timed out"):
+        _run_commodity_refresh_task_for_test(
+            task,
+            duckdb_path=tmp_path / "moss.duckdb",
+            governance_path=governance_path,
+            run_id=run_id,
+        )
+
+    replay = _run_commodity_refresh_task_for_test(
+        task,
+        duckdb_path=tmp_path / "moss.duckdb",
+        governance_path=governance_path,
+        run_id=run_id,
+    )
+
+    assert ingest_calls == ["ingest", "ingest"]
+    assert replay["status"] == "completed"
+    assert replay["attempt_count"] == 2
+    records = [
+        record
+        for record in GovernanceRepository(base_dir=governance_path).read_all(
+            CACHE_BUILD_RUN_STREAM
+        )
+        if record["run_id"] == run_id
+    ]
+    assert [record["status"] for record in records] == [
+        "running",
+        "retrying",
+        "running",
+        "completed",
+    ]
+
+
+def test_commodity_futures_terminal_snapshot_retries_unreadable_database_until_captured(
+    monkeypatch,
+) -> None:
+    from backend.app.tasks import macro_toolkit_write_refresh as task
+
+    calls: list[str] = []
+    sleeps: list[float] = []
+    before_status = _commodity_refresh_task_status(
+        row_count=10,
+        latest_trade_date="2026-05-20",
+    )
+    recovered_status = _commodity_refresh_task_status(
+        row_count=12,
+        latest_trade_date="2026-06-01",
+    )
+
+    def fake_status(_duckdb_path: object) -> dict[str, object]:
+        calls.append("status")
+        if len(calls) < 3:
+            return {
+                "materialized": None,
+                "status": "unreadable_database",
+                "table": "fact_commodity_futures_daily",
+                "row_count": None,
+                "latest_trade_date": None,
+                "source_vendors": [],
+                "coverage": {},
+                "nanhua_input": {},
+            }
+        return recovered_status
+
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "commodity_futures_status",
+        fake_status,
+    )
+    monkeypatch.setattr(task.time, "sleep", sleeps.append)
+
+    snapshot = task._commodity_futures_terminal_snapshot(
+        duckdb_path="unused.duckdb",
+        before_status=before_status,
+    )
+
+    assert snapshot["terminal_snapshot_status"] == "captured"
+    assert snapshot["terminal_snapshot_error"] is None
+    assert snapshot["after_status"] == recovered_status
+    assert sleeps == [0.1, 0.1]
+    assert len(calls) == 3
+
+
+def test_commodity_futures_terminal_snapshot_exhausts_unreadable_database_budget(
+    monkeypatch,
+) -> None:
+    from backend.app.tasks import macro_toolkit_write_refresh as task
+
+    sleeps: list[float] = []
+    before_status = _commodity_refresh_task_status(
+        row_count=10,
+        latest_trade_date="2026-05-20",
+    )
+
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "commodity_futures_status",
+        lambda _duckdb_path: {
+            "materialized": None,
+            "status": "unreadable_database",
+            "table": "fact_commodity_futures_daily",
+            "row_count": None,
+            "latest_trade_date": None,
+            "source_vendors": [],
+            "coverage": {},
+            "nanhua_input": {},
+        },
+    )
+    monkeypatch.setattr(task.time, "sleep", sleeps.append)
+
+    snapshot = task._commodity_futures_terminal_snapshot(
+        duckdb_path="unused.duckdb",
+        before_status=before_status,
+    )
+
+    assert snapshot["terminal_snapshot_status"] == "unavailable"
+    assert snapshot["terminal_snapshot_error"] == "unreadable_database"
+    assert snapshot["after_status"]["status"] == "snapshot_unavailable"
+    assert sleeps == [0.1, 0.1, 0.1, 0.1]
+
+
+def test_commodity_futures_terminal_snapshot_does_not_retry_non_retryable_exception(
+    monkeypatch,
+) -> None:
+    from backend.app.tasks import macro_toolkit_write_refresh as task
+
+    before_status = _commodity_refresh_task_status(
+        row_count=10,
+        latest_trade_date="2026-05-20",
+    )
+    sleeps: list[float] = []
+    status_calls: list[str] = []
+
+    def explode(_duckdb_path: object) -> dict[str, object]:
+        status_calls.append("status")
+        raise RuntimeError("snapshot blew up")
+
+    monkeypatch.setattr(
+        macro_toolkit_service,
+        "commodity_futures_status",
+        explode,
+    )
+    monkeypatch.setattr(task.time, "sleep", sleeps.append)
+
+    snapshot = task._commodity_futures_terminal_snapshot(
+        duckdb_path="unused.duckdb",
+        before_status=before_status,
+    )
+
+    assert snapshot["terminal_snapshot_status"] == "unavailable"
+    assert snapshot["terminal_snapshot_error"] == "RuntimeError"
+    assert snapshot["after_status"]["status"] == "snapshot_unavailable"
+    assert status_calls == ["status"]
+    assert sleeps == []

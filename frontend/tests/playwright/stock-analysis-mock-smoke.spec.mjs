@@ -8,15 +8,33 @@ test.describe("stock analysis mock browser smoke", () => {
 
     await page.goto("/stock-analysis", { waitUntil: "domcontentloaded" });
 
-    await expect(page.getByTestId("stock-analysis-page")).toBeVisible();
+    const stockPage = page.getByTestId("stock-analysis-page");
+    await expect(stockPage).toBeVisible();
+    const reviewQueue = page.getByTestId("stock-analysis-review-queue");
+    await expect(reviewQueue).toBeVisible({ timeout: 30_000 });
+    await expect(reviewQueue).toContainText("多因子");
 
-    const observationPreview = page.getByTestId("stock-analysis-observation-preview");
-    await expect(observationPreview).toBeVisible({ timeout: 30_000 });
-    await expect(observationPreview).toContainText("多因子");
-    await expect(observationPreview).toContainText("超跌");
+    const researchDesk = page.getByTestId("stock-analysis-research-desk");
+    await expect(researchDesk).toContainText("盘前未闭合");
+    await page.getByTestId("stock-analysis-deep-research-summary").click();
 
-    const eventsMonitor = page.getByTestId("stock-analysis-events-monitoring");
-    await expect(eventsMonitor).toContainText("题材观察阻断");
-    await expect(eventsMonitor).not.toContainText("concept membership table pending");
+    // Mock qualification is unavailable: current observations remain readable,
+    // while the qualified strategy workspace must stay unmounted.
+    const readOnlyResearch = page.getByTestId("stock-analysis-readonly-research");
+    await expect(readOnlyResearch).toBeVisible({ timeout: 30_000 });
+    await expect(readOnlyResearch).toContainText("个股详情");
+    await expect(readOnlyResearch).toContainText("K线观察");
+    await expect(readOnlyResearch).toContainText("当前行业快照");
+    await expect(readOnlyResearch).toContainText("详情 已就绪 / K线 已就绪 / 行业 已匹配");
+    await expect(readOnlyResearch).toContainText("盘前资格未闭合，未读取");
+    await expect(readOnlyResearch).toContainText("保持关闭");
+    await expect(page.getByTestId("stock-analysis-stock-selection")).toHaveCount(0);
+    await expect(page.getByTestId("stock-analysis-events-monitoring")).toHaveCount(0);
+
+    const actionRail = page.getByTestId("stock-analysis-action-rail");
+    await expect(actionRail).toContainText("风险与执行结论保持关闭");
+    await expect(actionRail).toContainText("只读观察，不形成交易指令");
+    await expect(stockPage).not.toContainText("concept membership table pending");
+    await expect(readOnlyResearch).not.toContainText("读取失败");
   });
 });

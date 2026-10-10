@@ -32,9 +32,34 @@ def _normalize_lineage_value(value: object) -> str:
     return "__".join(sorted(tokens))
 
 
-def _is_dirty_lineage_value(value: object) -> bool:
+def _is_dirty_lineage_value(value: object, *, field_name: str) -> bool:
     text = str(value or "").strip()
-    return bool(text) and "," in text
+    if not text or "," not in text:
+        return False
+
+    prefix, separator, json_suffix = text.partition(":")
+    if (
+        field_name == "source_version"
+        and separator
+        and prefix.startswith("sv_")
+        and "," not in prefix
+        and json_suffix.startswith("{")
+    ):
+        try:
+            fingerprint = json.loads(json_suffix)
+        except json.JSONDecodeError:
+            pass
+        else:
+            canonical_fingerprint = json.dumps(
+                fingerprint,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            if isinstance(fingerprint, dict) and canonical_fingerprint == json_suffix:
+                return False
+
+    return True
 
 
 def audit_governance_lineage(governance_dir: str | Path) -> dict[str, object]:
@@ -55,7 +80,7 @@ def audit_governance_lineage(governance_dir: str | Path) -> dict[str, object]:
             row_dirty = False
             for field_name in TARGET_FIELDS:
                 raw_value = row.get(field_name)
-                if not _is_dirty_lineage_value(raw_value):
+                if not _is_dirty_lineage_value(raw_value, field_name=field_name):
                     continue
                 row_dirty = True
                 finding_key = (cache_key, field_name)

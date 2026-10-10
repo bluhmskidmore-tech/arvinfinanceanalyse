@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import time
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 
 import duckdb
-
+import pytest
 from backend.app.repositories.task_write_guard import repository_task_write_scope
+
 from tests.helpers import load_module
 
 
@@ -65,6 +67,8 @@ def test_risk_tensor_repo_round_trip_preserves_lineage_and_warnings(tmp_path):
             tensor=tensor,
             source_version="sv_risk_tensor__sv_bond_snap_1",
             upstream_source_version="sv_bond_snap_1",
+            upstream_rule_version="rv_bond_snap_1",
+            upstream_cache_version="cv_bond_snap_1",
             liability_source_version="sv_tyw_liability_synthetic",
             liability_rule_version="rv_tyw_formal_synthetic",
             rule_version="rv_risk_tensor_formal_materialize_v1",
@@ -82,6 +86,8 @@ def test_risk_tensor_repo_round_trip_preserves_lineage_and_warnings(tmp_path):
     assert row is not None
     assert row["source_version"] == "sv_risk_tensor__sv_bond_snap_1"
     assert row["upstream_source_version"] == "sv_bond_snap_1"
+    assert row["upstream_rule_version"] == "rv_bond_snap_1"
+    assert row["upstream_cache_version"] == "cv_bond_snap_1"
     assert row["liability_source_version"] == "sv_tyw_liability_synthetic"
     assert row["liability_rule_version"] == "rv_tyw_formal_synthetic"
     assert row["rule_version"] == "rv_risk_tensor_formal_materialize_v1"
@@ -101,6 +107,71 @@ def test_risk_tensor_repo_round_trip_preserves_lineage_and_warnings(tmp_path):
     assert row["liquidity_gap_90d"] == row["asset_cashflow_90d"] - row["liability_cashflow_90d"]
 
 
+def test_risk_tensor_repo_round_trip_preserves_materialized_duration_scope(tmp_path):
+    core_mod = load_module(
+        "backend.app.core_finance.risk_tensor",
+        "backend/app/core_finance/risk_tensor.py",
+    )
+    repo_mod = load_module(
+        "backend.app.repositories.risk_tensor_repo",
+        "backend/app/repositories/risk_tensor_repo.py",
+    )
+    tensor = replace(
+        _sample_tensor(core_mod),
+        rate_risk_market_value=Decimal("80.00000000"),
+        rate_risk_dv01=Decimal("1.00000000"),
+        rate_risk_modified_duration=Decimal("1.50000000"),
+        duration_excluded_market_value=Decimal("20.00000000"),
+        duration_excluded_count=1,
+        missing_maturity_market_value=Decimal("12.00000000"),
+        missing_maturity_count=1,
+        missing_liability_maturity_principal_amount=Decimal("7.00000000"),
+        missing_liability_maturity_count=2,
+        floating_rate_proxy_market_value=Decimal("8.00000000"),
+        floating_rate_proxy_count=1,
+        payment_frequency_fallback_market_value=Decimal("8.00000000"),
+        payment_frequency_fallback_count=1,
+        bullet_value_date_fallback_market_value=Decimal("4.00000000"),
+        bullet_value_date_fallback_count=1,
+    )
+    repo = repo_mod.RiskTensorRepository(str(tmp_path / "moss.duckdb"))
+
+    with _task_write_scope():
+        repo.replace_risk_tensor_row(
+            report_date="2026-03-31",
+            tensor=tensor,
+            source_version="sv_risk_tensor__sv_bond_snap_1",
+            upstream_source_version="sv_bond_snap_1",
+            upstream_rule_version="rv_bond_snap_1",
+            upstream_cache_version="cv_bond_snap_1",
+            liability_source_version="",
+            liability_rule_version="",
+            rule_version="rv_risk_tensor_formal_materialize_v7",
+            cache_version="cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v7",
+            trace_id="trace_risk_tensor_20260331",
+        )
+
+    row = repo.fetch_risk_tensor_row("2026-03-31")
+    assert row is not None
+    assert row["rule_version"] == "rv_risk_tensor_formal_materialize_v7"
+    assert row["cache_version"] == "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v7"
+    assert row["rate_risk_market_value"] == Decimal("80.00000000")
+    assert row["rate_risk_dv01"] == Decimal("1.00000000")
+    assert row["rate_risk_modified_duration"] == Decimal("1.50000000")
+    assert row["duration_excluded_market_value"] == Decimal("20.00000000")
+    assert row["duration_excluded_count"] == 1
+    assert row["missing_maturity_market_value"] == Decimal("12.00000000")
+    assert row["missing_maturity_count"] == 1
+    assert row["missing_liability_maturity_principal_amount"] == Decimal("7.00000000")
+    assert row["missing_liability_maturity_count"] == 2
+    assert row["floating_rate_proxy_market_value"] == Decimal("8.00000000")
+    assert row["floating_rate_proxy_count"] == 1
+    assert row["payment_frequency_fallback_market_value"] == Decimal("8.00000000")
+    assert row["payment_frequency_fallback_count"] == 1
+    assert row["bullet_value_date_fallback_market_value"] == Decimal("4.00000000")
+    assert row["bullet_value_date_fallback_count"] == 1
+
+
 def test_risk_tensor_read_paths_work_while_read_only_connection_is_open(tmp_path):
     core_mod = load_module(
         "backend.app.core_finance.risk_tensor",
@@ -118,6 +189,8 @@ def test_risk_tensor_read_paths_work_while_read_only_connection_is_open(tmp_path
             tensor=_sample_tensor(core_mod),
             source_version="sv_risk_tensor__sv_bond_snap_1",
             upstream_source_version="sv_bond_snap_1",
+            upstream_rule_version="rv_bond_snap_1",
+            upstream_cache_version="cv_bond_snap_1",
             liability_source_version="sv_tyw_liability_synthetic",
             liability_rule_version="rv_tyw_formal_synthetic",
             rule_version="rv_risk_tensor_formal_materialize_v1",
@@ -132,14 +205,22 @@ def test_risk_tensor_read_paths_work_while_read_only_connection_is_open(tmp_path
     finally:
         held_read_conn.close()
 
-    assert lineage_rows == [
-        {
-            "report_date": "2026-03-31",
-            "upstream_source_version": "sv_bond_snap_1",
-            "liability_source_version": "sv_tyw_liability_synthetic",
-            "liability_rule_version": "rv_tyw_formal_synthetic",
-        }
-    ]
+    assert len(lineage_rows) == 1
+    assert lineage_rows[0] == {
+        "report_date": "2026-03-31",
+        "upstream_source_version": "sv_bond_snap_1",
+        "upstream_rule_version": "rv_bond_snap_1",
+        "upstream_cache_version": "cv_bond_snap_1",
+        "liability_source_version": "sv_tyw_liability_synthetic",
+        "liability_rule_version": "rv_tyw_formal_synthetic",
+        "rule_version": "rv_risk_tensor_formal_materialize_v1",
+        "cache_version": "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v1",
+        "rate_risk_market_value": Decimal("0"),
+        "rate_risk_dv01": Decimal("0"),
+        "rate_risk_modified_duration": Decimal("0"),
+        "duration_excluded_market_value": Decimal("0"),
+        "duration_excluded_count": 0,
+    }
     assert row is not None
     assert row["source_version"] == "sv_risk_tensor__sv_bond_snap_1"
 
@@ -229,8 +310,17 @@ def test_risk_tensor_read_paths_do_not_mutate_legacy_schema(tmp_path):
         {
             "report_date": "2026-03-31",
             "upstream_source_version": "sv_bond_snap_1",
+            "upstream_rule_version": "",
+            "upstream_cache_version": "",
             "liability_source_version": "",
             "liability_rule_version": "",
+            "rule_version": "rv_risk_tensor_formal_materialize_v1",
+            "cache_version": "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v1",
+            "rate_risk_market_value": None,
+            "rate_risk_dv01": None,
+            "rate_risk_modified_duration": None,
+            "duration_excluded_market_value": None,
+            "duration_excluded_count": None,
         }
     ]
     assert row is not None
@@ -241,7 +331,26 @@ def test_risk_tensor_read_paths_do_not_mutate_legacy_schema(tmp_path):
     assert row["liability_cashflow_90d"] == 0
     assert row["liability_source_version"] == ""
     assert row["liability_rule_version"] == ""
+    assert row["upstream_rule_version"] == ""
+    assert row["upstream_cache_version"] == ""
     assert row["warnings"] == ["legacy warning"]
+    assert row["missing_maturity_market_value"] is None
+    assert row["missing_maturity_count"] is None
+    for field_name in (
+        "fund_no_maturity_market_value", "fund_no_maturity_count",
+        "unknown_maturity_market_value", "unknown_maturity_count",
+        "matured_outstanding_market_value", "matured_outstanding_count",
+        "nonpositive_duration_market_value", "nonpositive_duration_count",
+    ):
+        assert row[field_name] is None
+    assert row["missing_liability_maturity_principal_amount"] is None
+    assert row["missing_liability_maturity_count"] is None
+    assert row["floating_rate_proxy_count"] is None
+    assert row["floating_rate_proxy_market_value"] is None
+    assert row["payment_frequency_fallback_market_value"] is None
+    assert row["payment_frequency_fallback_count"] is None
+    assert row["bullet_value_date_fallback_market_value"] is None
+    assert row["bullet_value_date_fallback_count"] is None
 
     conn = duckdb.connect(str(duckdb_path), read_only=True)
     try:
@@ -251,6 +360,20 @@ def test_risk_tensor_read_paths_do_not_mutate_legacy_schema(tmp_path):
     assert "asset_cashflow_30d" not in columns
     assert "regulatory_dv01" not in columns
     assert "liability_source_version" not in columns
+    assert "missing_maturity_count" not in columns
+    projection_quality_columns = {
+        "missing_maturity_market_value",
+        "missing_maturity_count",
+        "missing_liability_maturity_principal_amount",
+        "missing_liability_maturity_count",
+        "floating_rate_proxy_market_value",
+        "floating_rate_proxy_count",
+        "payment_frequency_fallback_market_value",
+        "payment_frequency_fallback_count",
+        "bullet_value_date_fallback_market_value",
+        "bullet_value_date_fallback_count",
+    }
+    assert projection_quality_columns.isdisjoint(columns)
 
 
 def test_risk_tensor_write_path_aligns_legacy_applied_v4_schema(tmp_path):
@@ -321,6 +444,8 @@ def test_risk_tensor_write_path_aligns_legacy_applied_v4_schema(tmp_path):
             tensor=_sample_tensor(core_mod),
             source_version="sv_risk_tensor__sv_bond_snap_1",
             upstream_source_version="sv_bond_snap_1",
+            upstream_rule_version="rv_bond_snap_1",
+            upstream_cache_version="cv_bond_snap_1",
             liability_source_version="sv_tyw_liability_synthetic",
             liability_rule_version="rv_tyw_formal_synthetic",
             rule_version="rv_risk_tensor_formal_materialize_v1",
@@ -342,6 +467,25 @@ def test_risk_tensor_write_path_aligns_legacy_applied_v4_schema(tmp_path):
     assert "asset_cashflow_30d" in columns
     assert "regulatory_dv01" in columns
     assert "liability_source_version" in columns
+    assert "missing_maturity_count" in columns
+    assert "fund_no_maturity_count" in columns
+    assert "unknown_maturity_count" in columns
+    assert "matured_outstanding_count" in columns
+    assert "nonpositive_duration_count" in columns
+    assert "bullet_value_date_fallback_market_value" in columns
+    projection_quality_columns = {
+        "missing_maturity_market_value",
+        "missing_maturity_count",
+        "missing_liability_maturity_principal_amount",
+        "missing_liability_maturity_count",
+        "floating_rate_proxy_market_value",
+        "floating_rate_proxy_count",
+        "payment_frequency_fallback_market_value",
+        "payment_frequency_fallback_count",
+        "bullet_value_date_fallback_market_value",
+        "bullet_value_date_fallback_count",
+    }
+    assert projection_quality_columns <= columns
 
 
 def test_load_current_tyw_liability_lineage_by_report_date_deduplicates_and_sorts(tmp_path):
@@ -393,3 +537,65 @@ def test_load_current_tyw_liability_lineage_by_report_date_deduplicates_and_sort
             "rule_version": "rv_3",
         },
     }
+
+
+@pytest.mark.parametrize(
+    "reader_name",
+    [
+        "load_current_tyw_liability_lineage_state",
+        "load_current_tyw_liability_lineage_snapshot_by_report_date",
+    ],
+)
+def test_tyw_liability_lineage_readers_propagate_programming_errors(
+    tmp_path, monkeypatch, reader_name
+):
+    repo_mod = load_module(
+        "backend.app.repositories.risk_tensor_repo",
+        "backend/app/repositories/risk_tensor_repo.py",
+    )
+    duckdb_path = tmp_path / "moss.duckdb"
+    duckdb.connect(str(duckdb_path)).close()
+
+    def _broken_table_check(*_args):
+        raise TypeError("broken table inspection")
+
+    monkeypatch.setattr(repo_mod, "_table_exists", _broken_table_check)
+    reader = getattr(repo_mod, reader_name)
+    kwargs = {"duckdb_path": str(duckdb_path)}
+    if reader_name == "load_current_tyw_liability_lineage_state":
+        kwargs["report_date"] = "2026-03-31"
+
+    with pytest.raises(TypeError, match="broken table inspection"):
+        reader(**kwargs)
+
+
+@pytest.mark.parametrize(
+    "reader_name",
+    [
+        "load_current_tyw_liability_lineage_state",
+        "load_current_tyw_liability_lineage_snapshot_by_report_date",
+    ],
+)
+def test_tyw_liability_lineage_readers_mark_duckdb_query_failures_unavailable(
+    tmp_path, reader_name
+):
+    repo_mod = load_module(
+        "backend.app.repositories.risk_tensor_repo",
+        "backend/app/repositories/risk_tensor_repo.py",
+    )
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path))
+    try:
+        conn.execute(
+            "create table fact_formal_tyw_balance_daily "
+            "(report_date varchar, position_scope varchar, currency_basis varchar)"
+        )
+    finally:
+        conn.close()
+
+    reader = getattr(repo_mod, reader_name)
+    kwargs = {"duckdb_path": str(duckdb_path)}
+    if reader_name == "load_current_tyw_liability_lineage_state":
+        kwargs["report_date"] = "2026-03-31"
+
+    assert reader(**kwargs).availability == "unavailable"

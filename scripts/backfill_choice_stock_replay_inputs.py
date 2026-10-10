@@ -10,8 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import duckdb
-
+from backend.app.repositories.duckdb_repo import read_only_connection
 from backend.app.services.livermore_candidate_history_service import (
     livermore_candidate_history_backtest_window_summary,
 )
@@ -141,8 +140,7 @@ def load_replay_row_stats(*, duckdb_path: str | Path) -> dict[str, dict[str, int
     path = Path(duckdb_path)
     if not path.exists():
         return {}
-    conn = duckdb.connect(str(path), read_only=True)
-    try:
+    with read_only_connection(str(path)) as conn:
         tables = {str(row[0]) for row in conn.execute("show tables").fetchall()}
         if "livermore_candidate_history" not in tables:
             return {}
@@ -169,8 +167,6 @@ def load_replay_row_stats(*, duckdb_path: str | Path) -> dict[str, dict[str, int
             group by snapshot_as_of_date
             """
         ).fetchall()
-    finally:
-        conn.close()
     return {
         str(trade_date)[:10]: {
             "row_count": int(row_count or 0),

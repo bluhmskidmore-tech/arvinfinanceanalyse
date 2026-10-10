@@ -1,6 +1,6 @@
 import * as React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,10 +10,17 @@ import { runPollingTask } from "../app/jobs/polling";
 import type { Numeric, ResultMeta } from "../api/contracts";
 import type { ActionAttributionResponse } from "../features/bond-analytics/types";
 import { formatRawAsNumeric } from "../utils/format";
+import { SystemReadInteractionContext } from "../router/systemReadInteractionContext";
+
+vi.mock("../app/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../app/navigation")>()),
+  isAgentFrontendEnabled: () => true,
+}));
 
 let latestOverviewProps: Record<string, unknown> | null = null;
 let latestDetailProps: Record<string, unknown> | null = null;
 let detailMountSeq = 0;
+const lazyModuleLoads = vi.hoisted(() => ({ detail: 0 }));
 
 vi.mock("../app/jobs/polling", () => ({
   runPollingTask: vi.fn(),
@@ -64,6 +71,7 @@ vi.mock("../features/bond-analytics/components/BondAnalyticsOverviewPanels", () 
 }));
 
 vi.mock("../features/bond-analytics/components/BondAnalyticsDetailSection", () => {
+  lazyModuleLoads.detail += 1;
   return {
     BondAnalyticsDetailSection: function MockBondAnalyticsDetailSection(
       props: Record<string, unknown>,
@@ -93,6 +101,39 @@ vi.mock("../features/bond-analytics/components/RiskTrendChart", () => ({
 vi.mock("../features/bond-analytics/components/BondEventCalendar", () => ({
   default: function MockBondEventCalendar() {
     return <div data-testid="mock-bond-event-calendar" />;
+  },
+}));
+
+vi.mock("../features/agent/AgentPanel", () => ({
+  AgentPanel: function MockAgentPanel({
+    pageId,
+    reportDate = null,
+    currentFilters = {},
+    defaultFilters = {},
+    selectedRows = [],
+    contextNote = null,
+  }: {
+    pageId: string;
+    reportDate?: string | null;
+    currentFilters?: Record<string, unknown>;
+    defaultFilters?: Record<string, unknown>;
+    selectedRows?: Array<Record<string, unknown>>;
+    contextNote?: string | null;
+  }) {
+    const pageContext = {
+      page_id: pageId,
+      current_filters:
+        reportDate != null
+          ? { ...defaultFilters, ...currentFilters, report_date: reportDate }
+          : { ...defaultFilters, ...currentFilters },
+      selected_rows: selectedRows,
+      context_note: contextNote,
+    };
+    return (
+      <div data-testid="agent-panel">
+        <code data-testid="agent-panel-page-context">{JSON.stringify(pageContext)}</code>
+      </div>
+    );
   },
 }));
 
@@ -174,6 +215,7 @@ function renderViewContent(
       queries: { retry: false, refetchOnWindowFocus: false },
     },
   }),
+  generation: string | null = null,
 ) {
   latestOverviewProps = null;
   latestDetailProps = null;
@@ -182,7 +224,11 @@ function renderViewContent(
     <MemoryRouter>
       <ApiClientProvider client={client}>
         <QueryClientProvider client={queryClient}>
-          <BondAnalyticsViewContent />
+          <SystemReadInteractionContext.Provider
+            value={{ generation, coverageDates: {}, refresh: vi.fn() }}
+          >
+            <BondAnalyticsViewContent />
+          </SystemReadInteractionContext.Provider>
         </QueryClientProvider>
       </ApiClientProvider>
     </MemoryRouter>,
@@ -199,7 +245,33 @@ describe("BondAnalyticsViewContent", () => {
     vi.unstubAllGlobals();
   });
 
-  it("passes initial wiring state into overview and detail mocks", async () => {
+  it("does not preload the detail module before the drilldown is opened", async () => {
+    const user = userEvent.setup();
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsDates: vi.fn(async () => ({
+        result_meta: createResultMeta({ result_kind: "bond_analytics.dates" }),
+        result: { report_dates: ["2026-03-31"] },
+      })),
+      getBondAnalyticsActionAttribution: vi.fn(async () => createActionAttributionEnvelope()),
+    };
+
+    renderViewContent(client);
+
+    await screen.findByTestId("mock-bond-analytics-overview-panels");
+    await vi.dynamicImportSettled();
+
+    expect(screen.getByTestId("bond-analysis-detail-drilldown")).not.toHaveAttribute("open");
+    expect(lazyModuleLoads.detail).toBe(0);
+
+    await user.click(screen.getByTestId("trigger-open-credit-spread"));
+
+    expect(await screen.findByTestId("mock-bond-analytics-detail-section")).toBeInTheDocument();
+    expect(lazyModuleLoads.detail).toBe(1);
+  });
+
+  it("defers detail wiring until a drilldown is opened", async () => {
+    const user = userEvent.setup();
     const client = {
       ...createApiClient({ mode: "mock" }),
       getBondAnalyticsDates: vi.fn(async () => ({
@@ -211,7 +283,6 @@ describe("BondAnalyticsViewContent", () => {
     renderViewContent(client);
 
     await screen.findByTestId("mock-bond-analytics-overview-panels");
-    await screen.findByTestId("mock-bond-analytics-detail-section");
 
     await waitFor(() => {
       expect(latestOverviewProps?.reportDate).toBeTruthy();
@@ -220,17 +291,72 @@ describe("BondAnalyticsViewContent", () => {
     const firstDate = (latestOverviewProps?.dateOptions as { value: string }[])[0]?.value;
     expect(firstDate).toBeTruthy();
     expect(latestOverviewProps?.reportDate).toBe(firstDate);
-    expect(latestDetailProps?.reportDate).toBe(firstDate);
-
     expect(latestOverviewProps?.periodType).toBe("MoM");
-    expect(latestDetailProps?.periodType).toBe("MoM");
+    expect(screen.getByTestId("bond-analysis-detail-drilldown")).not.toHaveAttribute("open");
+    expect(screen.queryByTestId("mock-bond-analytics-detail-section")).not.toBeInTheDocument();
+    expect(latestDetailProps).toBeNull();
 
-    expect(latestDetailProps?.activeTab).toBe("action-attribution");
-    expect(screen.getByTestId("mock-bond-analytics-detail-section")).toHaveAttribute(
+    await user.click(screen.getByTestId("trigger-open-credit-spread"));
+
+    expect(await screen.findByTestId("mock-bond-analytics-detail-section")).toHaveAttribute(
       "data-active-tab",
-      "action-attribution",
+      "credit-spread",
     );
+    expect(latestDetailProps?.reportDate).toBe(firstDate);
+    expect(latestDetailProps?.periodType).toBe("MoM");
+    expect(latestDetailProps?.activeTab).toBe("credit-spread");
     expect(client.getBondAnalyticsActionAttribution).toHaveBeenCalled();
+  });
+
+  it("keeps a large report-date list out of the closed DOM and selects an exact searched date", async () => {
+    const user = userEvent.setup();
+    const reportDates = Array.from({ length: 521 }, (_, index) =>
+      new Date(Date.UTC(2026, 11, 31 - index)).toISOString().slice(0, 10),
+    );
+    const targetReportDate = reportDates[400]!;
+    const getBondAnalyticsActionAttribution = vi.fn(async () =>
+      createActionAttributionEnvelope(),
+    );
+    const getResearchCalendarEvents = vi.fn(async () => []);
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsDates: vi.fn(async () => ({
+        result_meta: createResultMeta({ result_kind: "bond_analytics.dates" }),
+        result: { report_dates: reportDates },
+      })),
+      getBondAnalyticsActionAttribution,
+      getResearchCalendarEvents,
+    };
+
+    renderViewContent(client);
+
+    await screen.findByTestId("mock-bond-analytics-overview-panels");
+    await waitFor(() => {
+      expect(latestOverviewProps?.reportDate).toBe(reportDates[0]);
+    });
+
+    expect(document.querySelectorAll("option").length).toBeLessThan(50);
+
+    const reportDateInput = screen.getByRole("combobox", { name: "报告日" });
+    await user.click(reportDateInput);
+    const listbox = await screen.findByRole("listbox");
+    expect(listbox.querySelectorAll('[role="option"]').length).toBeLessThan(50);
+    expect(document.querySelector(".ant-select-dropdown")?.className).toContain(
+      "toolbarDateDropdown",
+    );
+    await user.type(reportDateInput, targetReportDate);
+    await user.click(await screen.findByTitle(targetReportDate));
+
+    await waitFor(() => {
+      expect(latestOverviewProps?.reportDate).toBe(targetReportDate);
+      expect(getBondAnalyticsActionAttribution).toHaveBeenLastCalledWith(
+        targetReportDate,
+        "MoM",
+      );
+      expect(getResearchCalendarEvents).toHaveBeenLastCalledWith({
+        reportDate: targetReportDate,
+      });
+    });
   });
 
   it("puts the workstation overview directly after the toolbar", async () => {
@@ -267,6 +393,25 @@ describe("BondAnalyticsViewContent", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(toolbar.compareDocumentPosition(overview)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(overview.compareDocumentPosition(detail)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    /* 眉标去重（C16）：上方参数条已用「复核入口」，明细横带改「进一步分析」。 */
+    expect(detail).toHaveTextContent("进一步分析");
+    expect(detail).not.toHaveTextContent("复核入口");
+    expect(detail).toHaveTextContent("分析明细");
+    expect(detail).toHaveTextContent("查看动作归因、收益拆解、信用利差和持仓明细");
+    expect(detail).not.toHaveTextContent("分析师解读");
+    expect(detail).not.toHaveAttribute("open");
+    expect(screen.queryByTestId("mock-bond-analytics-detail-section")).not.toBeInTheDocument();
+    expect(latestDetailProps).toBeNull();
+    const diagnostics = within(detail).getByTestId("bond-analysis-page-diagnostics");
+    const pageEvidence = within(diagnostics).getByTestId("bond-analysis-page-evidence");
+    expect(diagnostics).not.toHaveAttribute("open");
+    expect(pageEvidence).not.toBeVisible();
+    expect(pageEvidence).toHaveTextContent("PAGE-BOND-ANALYSIS-001");
+    expect(pageEvidence).toHaveTextContent("candidate");
+    const user = userEvent.setup();
+    await user.click(detail.querySelector("summary")!);
+    await user.click(within(diagnostics).getByText("技术诊断"));
+    expect(pageEvidence).toBeVisible();
     await waitFor(() => {
       expect(latestOverviewProps?.actionAttributionResult).toEqual(
         expect.objectContaining({
@@ -274,8 +419,6 @@ describe("BondAnalyticsViewContent", () => {
         }),
       );
     });
-    expect(detail).not.toHaveAttribute("open");
-    expect(latestDetailProps?.activeTab).toBe("action-attribution");
   });
 
   it("keeps the workstation visible when action-attribution evidence fails", async () => {
@@ -318,6 +461,39 @@ describe("BondAnalyticsViewContent", () => {
       expect(client.getBondAnalyticsActionAttribution).not.toHaveBeenCalled();
     });
     expect(screen.queryByTestId("bond-analysis-decision-cockpit")).not.toBeInTheDocument();
+  });
+
+  it("recovers from a single dates failure without flipping to the fallback workbench", async () => {
+    let datesAttempts = 0;
+    const getBondAnalyticsDates = vi.fn(async () => {
+      datesAttempts += 1;
+      if (datesAttempts === 1) {
+        throw new Error("502 bad gateway during backend restart");
+      }
+      return {
+        result_meta: createResultMeta({ result_kind: "bond_analytics.dates" }),
+        result: { report_dates: ["2026-03-31"] },
+      };
+    });
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsDates,
+      getBondAnalyticsActionAttribution: vi.fn(async () => createActionAttributionEnvelope()),
+    };
+
+    renderViewContent(client);
+
+    // retry: 2 且首次失败后按默认退避（~1s）重试成功，页面不应翻转到日期兜底工作台。
+    await waitFor(
+      () => {
+        expect(latestOverviewProps?.reportDate).toBe("2026-03-31");
+      },
+      { timeout: 10_000 },
+    );
+    expect(datesAttempts).toBe(2);
+    expect(
+      screen.queryByTestId("bond-analysis-date-fallback-workbench"),
+    ).not.toBeInTheDocument();
   });
 
   it("loads research calendar events for the effective report date and passes them to the overview panels", async () => {
@@ -449,13 +625,19 @@ describe("BondAnalyticsViewContent", () => {
     await screen.findByTestId("mock-bond-analytics-overview-panels");
 
     await user.click(screen.getByTestId("trigger-open-credit-spread"));
-    expect(latestDetailProps?.activeTab).toBe("credit-spread");
+    await waitFor(() => {
+      expect(latestDetailProps?.activeTab).toBe("credit-spread");
+    });
 
     await user.click(screen.getByTestId("trigger-report-date"));
-    expect(latestDetailProps?.reportDate).toBe("2025-12-31");
+    await waitFor(() => {
+      expect(latestDetailProps?.reportDate).toBe("2025-12-31");
+    });
 
     await user.click(screen.getByTestId("trigger-period-type"));
-    expect(latestDetailProps?.periodType).toBe("YTD");
+    await waitFor(() => {
+      expect(latestDetailProps?.periodType).toBe("YTD");
+    });
   });
 
   it("surfaces successful refresh run id to overview and remounts the detail mock", async () => {
@@ -478,6 +660,8 @@ describe("BondAnalyticsViewContent", () => {
     await waitFor(() => {
       expect(latestOverviewProps?.reportDate).toBeTruthy();
     });
+    await user.click(screen.getByTestId("trigger-open-credit-spread"));
+    await screen.findByTestId("mock-bond-analytics-detail-section");
     const instanceBefore = screen
       .getByTestId("mock-bond-analytics-detail-section")
       .getAttribute("data-detail-instance");
@@ -496,6 +680,51 @@ describe("BondAnalyticsViewContent", () => {
         .getAttribute("data-detail-instance");
       expect(after).not.toBe(instanceBefore);
     });
+  });
+
+  it("keeps published bond data and filters visible after a fixed-generation refresh completes", async () => {
+    const user = userEvent.setup();
+    runPollingTaskMock.mockImplementation(async (options) => {
+      const onUpdate = options.onUpdate as
+        | ((payload: { run_id?: string; status: string }) => void)
+        | undefined;
+      onUpdate?.({ run_id: "run-awaiting-publication", status: "completed" });
+      return { status: "completed", run_id: "run-awaiting-publication" };
+    });
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsActionAttribution: vi.fn(async () => createActionAttributionEnvelope()),
+    };
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
+    });
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+
+    renderViewContent(client, queryClient, "full-gen-a");
+    await screen.findByTestId("mock-bond-analytics-overview-panels");
+    await user.click(screen.getByTestId("trigger-report-date"));
+    await user.click(screen.getByTestId("trigger-period-type"));
+    await user.click(screen.getByTestId("trigger-open-credit-spread"));
+    await screen.findByTestId("mock-bond-analytics-detail-section");
+    const detailInstance = screen
+      .getByTestId("mock-bond-analytics-detail-section")
+      .getAttribute("data-detail-instance");
+
+    await user.click(screen.getByTestId("trigger-refresh"));
+
+    const state = await screen.findByTestId("bond-analysis-refresh-awaiting-publication");
+    expect(state).toHaveAttribute("data-state-variant", "stale");
+    expect(state).toHaveTextContent("计算任务完成");
+    expect(state).toHaveTextContent(
+      "当前页面仍显示已发布的数据。请在数据中心完成发布后重新进入本页。",
+    );
+    expect(latestOverviewProps?.reportDate).toBe("2025-12-31");
+    expect(latestOverviewProps?.periodType).toBe("YTD");
+    expect(screen.getByTestId("mock-bond-analytics-detail-section")).toHaveAttribute(
+      "data-detail-instance",
+      detailInstance,
+    );
+    expect(invalidateQueries).not.toHaveBeenCalled();
   });
 
   it("surfaces refresh failure to overview when polling does not complete", async () => {
@@ -550,5 +779,48 @@ describe("BondAnalyticsViewContent", () => {
     await waitFor(() => {
       expect(screen.getByTestId("overview-refresh-error")).toHaveTextContent("network down");
     });
+  });
+
+  it("opens the review copilot drawer with the bond-analysis page context", { timeout: 45_000 }, async () => {
+    const user = userEvent.setup();
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsDates: vi.fn(async () => ({
+        result_meta: createResultMeta({ result_kind: "bond_analytics.dates" }),
+        result: { report_dates: ["2026-03-31"] },
+      })),
+      getBondAnalyticsActionAttribution: vi.fn(async () => createActionAttributionEnvelope()),
+    };
+
+    renderViewContent(client);
+
+    await screen.findByTestId("mock-bond-analytics-overview-panels");
+    await waitFor(() => {
+      expect(latestOverviewProps?.reportDate).toBe("2026-03-31");
+    });
+
+    await user.click(screen.getByTestId("bond-analysis-agent-open"));
+
+    expect(
+      await screen.findByTestId("bond-analysis-agent-drawer", undefined, { timeout: 30_000 }),
+    ).toBeInTheDocument();
+
+    const contextCode = await screen.findByTestId("agent-panel-page-context", undefined, {
+      timeout: 10_000,
+    });
+    const pageContext = JSON.parse(contextCode.textContent ?? "{}") as {
+      page_id: string;
+      current_filters: Record<string, unknown>;
+      selected_rows: unknown[];
+      context_note: string | null;
+    };
+
+    expect(pageContext.page_id).toBe("bond-analysis");
+    expect(pageContext.current_filters.report_date).toBe("2026-03-31");
+    expect(pageContext.current_filters.period_type).toBe("MoM");
+    expect(pageContext.current_filters.asset_class).toBe("all");
+    expect(pageContext.current_filters.accounting_class).toBe("all");
+    expect(pageContext.selected_rows).toEqual([]);
+    expect(pageContext.context_note).toContain("债券分析");
   });
 });

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from backend.app.schemas.result_meta import (
     ResultMeta,
@@ -56,10 +56,13 @@ def _build_result_meta(
     date_basis: str | None = None,
     fallback_date: str | None = None,
     generated_at: datetime | str | None = None,
+    data_built_at: datetime | str | None = None,
 ) -> ResultMeta:
     formal_use_allowed, scenario_flag = _BASIS_FIXED_FLAGS[basis]
     effective_surface = source_surface or infer_source_surface_for_result_kind(result_kind)
-    meta_kwargs = {
+    # Heterogeneous kwargs for the pydantic constructor; per-field validation
+    # happens at runtime inside ResultMeta.
+    meta_kwargs: dict[str, Any] = {
         "trace_id": trace_id,
         "basis": basis,
         "result_kind": result_kind,
@@ -86,6 +89,8 @@ def _build_result_meta(
     }
     if generated_at is not None:
         meta_kwargs["generated_at"] = generated_at
+    if data_built_at is not None:
+        meta_kwargs["data_built_at"] = data_built_at
     return ResultMeta(
         **meta_kwargs,
     )
@@ -264,6 +269,7 @@ def build_formal_result_meta(
     date_basis: str | None = None,
     fallback_date: str | None = None,
     generated_at: datetime | str | None = None,
+    data_built_at: datetime | str | None = None,
 ) -> ResultMeta:
     return _build_result_meta(
         basis="formal",
@@ -288,6 +294,7 @@ def build_formal_result_meta(
         date_basis=date_basis,
         fallback_date=fallback_date,
         generated_at=generated_at,
+        data_built_at=data_built_at,
     )
 
 
@@ -317,6 +324,10 @@ def build_formal_result_meta_from_lineage(
     return build_formal_result_meta(
         trace_id=trace_id,
         result_kind=result_kind,
+        data_built_at=_resolve_optional_lineage_field(
+            lineage=lineage,
+            field_name="finished_at",
+        ),
         cache_version=(
             _resolve_lineage_field(
                 lineage=lineage,
@@ -450,6 +461,25 @@ def _resolve_lineage_field(
     if missing_field_message is not None:
         raise RuntimeError(missing_field_message(field_name))
     raise RuntimeError(f"Formal result lineage field unavailable: {field_name}.")
+
+
+def _resolve_optional_lineage_field(
+    *,
+    lineage: Mapping[str, object] | None,
+    field_name: str,
+) -> str | None:
+    """Read a lineage field that may be absent, unlike _resolve_lineage_field.
+
+    Lineage mappings that merge a completed build terminal carry the whole
+    governance row, so callers must name the single field they want instead of
+    forwarding the mapping wholesale: the row's own report_date is the build's,
+    not the business-resolved report date.
+    """
+
+    if lineage is None:
+        return None
+    resolved = str(lineage.get(field_name) or "").strip()
+    return resolved or None
 
 
 def build_result_envelope(

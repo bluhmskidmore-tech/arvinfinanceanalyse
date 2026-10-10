@@ -54,6 +54,11 @@ class FakeCurveRepo:
         return None
 
 
+class FakeChoiceMacroRepo:
+    def credit_3y_yields_on_or_before(self, _trade_date: str) -> dict[str, Any]:
+        return {}
+
+
 def _install_repos(
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -69,6 +74,16 @@ def _install_repos(
     }
     monkeypatch.setattr(svc, "_bond_repo", lambda: FakeBondRepo(row_dates, rows_by_date))
     monkeypatch.setattr(svc, "_curve_repo", lambda: FakeCurveRepo(curves or _curves()))
+    # This baseline tests bond/curve decomposition. The bridge-success case
+    # below supplies its own formal bridge after installing these repositories.
+    monkeypatch.setattr(svc, "_try_fetch_formal_bridge", lambda **_kwargs: None)
+    # The spread function is imported from campisi_attribution_service; patch
+    # its defining namespace so the legacy curve fixture remains self-contained.
+    monkeypatch.setitem(
+        svc.fetch_credit_spread_market.__globals__,
+        "_choice_macro_repo",
+        lambda _duckdb_path: FakeChoiceMacroRepo(),
+    )
 
 
 def _curves(
@@ -302,6 +317,44 @@ def test_diagnostics_propagate_to_warnings(monkeypatch: pytest.MonkeyPatch) -> N
     assert any("MISSING_AI" in warning for warning in warnings)
 
 
+def test_accrued_interest_mismatch_preserves_total_and_closes_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    start, end = _bond_rows(
+        code="AI_MISMATCH",
+        market_value_start=1_000.0,
+        market_value_end=1_010.0,
+        accrued_interest_start=5.0,
+        accrued_interest_end=8.0,
+        coupon_rate=0.03,
+    )
+    _install_repos(monkeypatch, rows_start=[start], rows_end=[end])
+
+    envelope = svc.campisi_attribution_envelope(
+        start_date=START_DATE,
+        end_date=END_DATE,
+    )
+    result = envelope["result"]
+
+    expected_total = 10.0 + (0.03 * 1_000.0 * 30.0 / 365.0)
+    assert _raw(result, "total_return") == pytest.approx(round(expected_total, 4))
+    assert _raw(result, "total_return") != pytest.approx(13.0)
+    components = sum(
+        _raw(result, key)
+        for key in (
+            "total_income",
+            "total_treasury_effect",
+            "total_spread_effect",
+            "total_selection_effect",
+        )
+    )
+    assert components == pytest.approx(_raw(result, "total_return"))
+    warnings = result.get("warnings") or []
+    assert any("accrued_interest_exceeds_modeled_carry" in warning for warning in warnings)
+    assert any("AI_MISMATCH" in warning for warning in warnings)
+    assert envelope["result_meta"]["quality_flag"] == "warning"
+
+
 def test_legacy_campisi_envelope_uses_formal_bridge_when_available(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -332,6 +385,9 @@ def test_legacy_campisi_envelope_uses_formal_bridge_when_available(
                     "treasury_curve": {"raw": 2.0},
                     "credit_spread": {"raw": 3.0},
                     "actual_pnl": {"raw": 35.0},
+                    # PnlBridgeRowSchema 强制 residual；bridge 路径的 selection 用它做
+                    # 独立闭合对照。residual = actual − explained = 35 − (5+1+2+3)。
+                    "residual": {"raw": 24.0},
                 }
             ],
         },

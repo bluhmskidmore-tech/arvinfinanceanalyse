@@ -1,0 +1,296 @@
+/* ============================================================
+   template.css — 管理层决策册（1280×720 幻灯片式 HTML 报告）设计系统
+   ============================================================
+   修订入口：改这里，全局生效。禁止在报告 HTML 里新增与本文件冲突的规则。
+   配套文件：brand.css（行徽）、components.html（页面骨架）、WRITING.md（文字规范）。
+
+   四条硬约束（历史教训，勿破坏）：
+   1) 字号只允许使用 --fs-* 变量，禁止新增裸像素字号。正文下限 12.5px。
+   2) 语义色固定：绿=正常/有利，金=关注/待定，红=警示/不利，蓝=口径/说明。
+      禁止把语义色挪作章节装饰色（旧版金色三义导致警示失效）。
+   3) 免责/口径声明每页只允许出现在页脚一处（.foot），正文不重复。
+   4) 深色页（.cover / .chapter-cover）必须使用本文件的深色配套规则，
+      禁止把浅色页规则原样复制（旧版封面红底部门标 bug 即由此而来）。
+   ============================================================ */
+
+@page { size: 1280px 720px; margin: 0; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  /* ---- 中性色 ---- */
+  --paper: #FAF9F5;   /* 页面底 */
+  --ink:   #1C2B27;   /* 正文 */
+  --muted: #70807B;   /* 次要文字 */
+  --faint: #9AA7A2;   /* 辅助/页脚 */
+  --hair:  #E4E1D7;   /* 分隔线 */
+  --card:  #FFFFFF;   /* 卡片底 */
+  --dark:  #0D211E;   /* 深色页底 */
+  --dark-hair: #1E3833;
+  --dark-muted: #7E948C;
+  --dark-ink: #E9EFEA;
+  --dark-accent: #2FA98C;
+
+  /* ---- 语义色（语义固定，见硬约束 2）---- */
+  --ok:        #0E6E5C;  --ok-soft:   #E9F1ED;
+  --warn:      #A9791C;  --warn-soft: #F5EDDA;
+  --risk:      #B23A32;  --risk-soft: #F7EAE7;
+  --info:      #2C5F8A;  --info-soft: #E9F0F6;
+
+  /* ---- 图表数据序列（与语义色分离，图内曲线/柱用这三色）---- */
+  --s1: #0E6E5C;  --s2: #2C5F8A;  --s3: #A9791C;
+
+  /* ---- 字阶（8 档封顶，禁止新增）---- */
+  --fs-chrome:  10.5px; /* 页眉页脚 mono 标签，仅限 .chrome/.foot/.eyebrow */
+  --fs-note:    11.5px; /* 来源、脚注、图轴 */
+  --fs-body:    12.5px; /* 正文下限 */
+  --fs-lead:    14px;   /* 重点正文 / 结论条 */
+  --fs-h3:      16px;   /* 卡片标题 */
+  --fs-kpi:     30px;   /* 大数字 */
+  --fs-h1:      30px;   /* 页标题 */
+  --fs-display: 52px;   /* 封面主标题 */
+
+  /* 字体栈（经典衬线报告系，2026-08 选型定稿）：只依赖 Windows 常见字体。
+     标题华文中宋加粗（正式报告腔），数字 Georgia（等宽老式数字，投行财报感），正文雅黑。 */
+  --sans: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif;
+  --display: "STZhongsong", "NSimSun", "SimSun", serif;
+  --serif: var(--display);
+  --mono: "Georgia", "Times New Roman", "Segoe UI", serif;
+}
+
+body {
+  font-family: var(--sans); color: var(--ink); background: #888;
+  /* 出版纪律：全册数字等宽对齐（表格、KPI、图轴的数位不跳动） */
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+/* Bahnschrift 无中文字形，混排时中文回落雅黑；数字与大写英文获得 DIN 质感 */
+.num, .kpi .v, .ckpi .v { letter-spacing: 0.2px; }
+
+/* ============ 页面框架：每页固定五段 chrome / headline / body / foot ============ */
+.page {
+  width: 1280px; height: 720px; background: var(--paper);
+  page-break-after: always; overflow: hidden; position: relative;
+  padding: 44px 64px 40px;
+  display: flex; flex-direction: column;
+}
+
+/* 页眉：左=页码/章节，中=册名/日期，右=行徽。唯一允许英文 mono 的装饰位。 */
+.chrome {
+  display: flex; justify-content: space-between; align-items: center;
+  font-family: var(--mono); font-size: var(--fs-chrome); letter-spacing: 1.6px;
+  color: var(--muted); padding-bottom: 10px; border-bottom: 1px solid var(--hair);
+}
+.chrome .l::before {
+  content: ""; display: inline-block; width: 26px; height: 3px;
+  background: var(--ok); margin-right: 10px; vertical-align: 2px;
+}
+.chrome .chapter-chip {
+  font-family: var(--sans); letter-spacing: 1px; font-weight: 700;
+  background: var(--ok-soft); color: var(--ok);
+  border-radius: 3px; padding: 2px 8px; margin-right: 10px;
+}
+/* 机密等级：每页页眉中段必带（出版纪律，见 WRITING.md 第 8 节） */
+.chrome .conf { font-weight: 700; letter-spacing: 2.2px; color: var(--muted); }
+.chrome .chapter-context { display: flex; align-items: center; gap: 14px; }
+
+/* 页标题：单结论句 ≤18 字（见 WRITING.md），deck 一行补充口径 */
+.headline { margin-top: 22px; }
+.headline h1 { font-family: var(--display); font-size: var(--fs-h1); font-weight: 900; letter-spacing: 1px; line-height: 1.35; }
+.headline .deck { margin-top: 8px; font-size: var(--fs-body); color: var(--muted); letter-spacing: 0.3px; }
+
+.body { flex: 1; margin-top: 20px; min-height: 0; }
+
+/* 页脚：部门标 + 免责声明唯一落位 + 报告日 + 页码 */
+.foot {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 16px;
+  border-top: 1px solid var(--hair); padding-top: 10px; margin-top: 18px;
+  font-size: var(--fs-chrome); color: var(--faint); letter-spacing: 0.4px;
+}
+.foot .department-mark { font-weight: 700; color: var(--ok); margin-right: 8px; }
+.foot .disclaimer { flex: 1; }
+.foot .report-date { font-family: var(--mono); white-space: nowrap; }
+.foot .pn { font-family: var(--mono); color: var(--muted); }
+
+/* ============ 深色页（封面 / 章节页）配套，勿用浅色规则覆盖 ============ */
+.cover, .chapter-cover { background: var(--dark); color: var(--dark-ink); }
+.cover .chrome, .chapter-cover .chrome { color: var(--dark-muted); border-bottom-color: var(--dark-hair); }
+.cover .chrome .l::before, .chapter-cover .chrome .l::before { background: var(--dark-accent); }
+.cover .foot, .chapter-cover .foot { border-top-color: var(--dark-hair); color: #5E756D; }
+/* 修复点：深色页部门标 = 透明底 + 品牌绿浅字（旧版红底白字为 bug） */
+.cover .foot .department-mark, .chapter-cover .foot .department-mark {
+  color: var(--dark-accent); background: none; padding: 0;
+}
+/* 行徽双版本切换（display 只在此处控制；brand.css 仅提供尺寸与图片） */
+.bank-logo-light-bg { display: block; }
+.bank-logo-dark-bg { display: none; }
+.cover .bank-logo-light-bg, .chapter-cover .bank-logo-light-bg { display: none; }
+.cover .bank-logo-dark-bg, .chapter-cover .bank-logo-dark-bg { display: block; }
+
+/* ---- 封面布局 ---- */
+.cover-grid { flex: 1; display: grid; grid-template-columns: 1fr 340px; gap: 56px; margin-top: 40px; min-height: 0; }
+.cover-title .kicker { font-family: var(--mono); font-size: var(--fs-chrome); letter-spacing: 3px; color: var(--dark-accent); }
+.cover-title h1 { font-family: var(--display); font-size: var(--fs-display); font-weight: 900; margin-top: 18px; letter-spacing: 3px; }
+.cover-title h2 { font-family: var(--display); font-size: 26px; font-weight: 700; color: #A9BBB2; margin-top: 14px; letter-spacing: 4px; }
+.cover-title .desc { font-size: var(--fs-body); color: var(--dark-muted); margin-top: 22px; letter-spacing: 0.5px; }
+.cover-hv { margin-top: 44px; border-top: 1px solid var(--dark-hair); padding-top: 20px; max-width: 640px; }
+.cover-hv .tag { font-family: var(--mono); font-size: var(--fs-chrome); letter-spacing: 2.5px; color: var(--dark-accent); }
+.cover-hv p { font-size: 18px; font-weight: 700; margin-top: 12px; line-height: 1.55; }
+.cover-kpis { border-left: 1px solid var(--dark-hair); padding-left: 44px; display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+.ckpi { padding: 16px 0; border-bottom: 1px solid var(--dark-hair); }
+.ckpi:last-child { border-bottom: none; }
+.ckpi .lb { font-family: var(--mono); font-size: var(--fs-chrome); letter-spacing: 1.5px; color: var(--dark-muted); }
+.ckpi .v { font-family: var(--mono); font-size: 34px; font-weight: 700; margin-top: 8px; }
+.ckpi .v .u { font-size: 16px; margin-left: 2px; }
+.ckpi .note { font-size: var(--fs-note); color: var(--dark-muted); margin-top: 6px; }
+
+/* ============ 通用组件 ============ */
+.num { font-family: var(--mono); }
+.pos { color: var(--ok); } .neg { color: var(--risk); }
+.att { color: var(--warn); } .ref { color: var(--info); }
+
+.card { background: var(--card); border: 1px solid var(--hair); border-radius: 6px; }
+
+/* 小节标签：中文为主，mono 仅作字体风格 */
+.sec-label {
+  font-family: var(--sans); font-size: var(--fs-body); letter-spacing: 1px;
+  font-weight: 700; color: var(--ok); margin-bottom: 8px;
+}
+.sec-label .en { font-family: var(--mono); font-size: var(--fs-chrome); color: var(--faint); font-weight: 400; margin-left: 8px; }
+
+/* 结论条：每页最多 1 条，放本页唯一核心判断 */
+.houseview {
+  display: flex; align-items: center; gap: 16px;
+  background: var(--ok-soft); border-left: 3px solid var(--ok);
+  padding: 12px 18px; border-radius: 0 6px 6px 0;
+}
+.houseview .tag { font-size: var(--fs-body); letter-spacing: 2px; color: var(--ok); font-weight: 700; white-space: nowrap; }
+.houseview .txt { font-size: var(--fs-lead); font-weight: 700; line-height: 1.5; }
+.houseview.warn { background: var(--warn-soft); border-left-color: var(--warn); }
+.houseview.warn .tag { color: var(--warn); }
+.houseview.risk { background: var(--risk-soft); border-left-color: var(--risk); }
+.houseview.risk .tag { color: var(--risk); }
+
+/* 口径说明框：蓝色专用，不承载结论 */
+.note-box { background: var(--info-soft); border-left: 3px solid var(--info); padding: 11px 15px; border-radius: 0 5px 5px 0; }
+.note-box .t { font-size: var(--fs-note); letter-spacing: 1px; color: var(--info); font-weight: 700; }
+.note-box p { font-size: var(--fs-body); margin-top: 5px; line-height: 1.5; }
+
+/* 状态签：仅 正常 / 关注 / 警示 三态 */
+.tag-status {
+  display: inline-block; font-size: var(--fs-note); font-weight: 700;
+  border-radius: 3px; padding: 2px 8px; letter-spacing: 1px;
+}
+.tag-status.ok   { background: var(--ok-soft);   color: var(--ok); }
+.tag-status.warn { background: var(--warn-soft); color: var(--warn); }
+.tag-status.risk { background: var(--risk-soft); color: var(--risk); }
+
+/* KPI 格 */
+.kpi { padding: 14px 16px; }
+.kpi .k { font-size: var(--fs-body); color: var(--muted); }
+.kpi .v { font-family: var(--mono); font-size: var(--fs-kpi); font-weight: 700; margin-top: 6px; }
+.kpi .v .u { font-size: 14px; font-weight: 400; color: var(--muted); margin-left: 2px; }
+.kpi .n { font-size: var(--fs-note); color: var(--muted); margin-top: 6px; line-height: 1.5; }
+
+/* ---- Exhibit 编号系统（出版纪律：每个图/表有编号、标题、单位与资料来源行）---- */
+.exhibit { display: flex; flex-direction: column; min-width: 0; }
+.exhibit-head {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+  padding-bottom: 7px; border-bottom: 2px solid var(--ink); margin-bottom: 10px;
+}
+.exhibit-head .t { font-size: var(--fs-body); font-weight: 700; }
+.exhibit-head .t .no { color: var(--ok); margin-right: 8px; }
+.exhibit-head .unit { font-size: var(--fs-note); color: var(--muted); white-space: nowrap; }
+.exhibit-src { font-size: var(--fs-note); color: var(--faint); margin-top: 8px; }
+
+/* 数据表：投行式规则线（表头上下细墨线、总计行双线收口），≤14 行/页 */
+.data-table { width: 100%; border-collapse: collapse; line-height: 1.3; }
+.data-table th {
+  font-size: var(--fs-note); color: var(--muted); font-weight: 400;
+  text-align: right; padding: 7px 10px; white-space: nowrap;
+  border-top: 1.5px solid var(--ink); border-bottom: 1px solid var(--ink);
+}
+.data-table th:first-child, .data-table td:first-child { text-align: left; }
+.data-table td { font-size: var(--fs-body); padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--hair); }
+.data-table td.num, .data-table td .num { font-family: var(--mono); }
+.data-table tr.total td {
+  font-weight: 700;
+  border-top: 1px solid var(--ink); border-bottom: 3px double var(--ink);
+}
+
+/* 脚注区：页底编号脚注，来源与口径补充的唯一正文落位 */
+.footnotes { margin-top: 10px; font-size: var(--fs-note); color: var(--faint); line-height: 1.5; }
+.footnotes .fn { display: block; }
+sup { color: var(--info); font-weight: 700; }
+
+/* 图表：去装饰（Tufte）——只留横向网格线，数据直标，终值高亮。
+   质感层（v2）：面积填充、终值药丸标签、光环点、圆角柱、加重零线。 */
+svg text { font-family: var(--mono); font-size: var(--fs-note); fill: var(--muted); }
+svg .grid { stroke: #ECE9DE; stroke-width: 1; }
+svg .grid-base { stroke: var(--hair); stroke-width: 1.25; } /* 底部基线/零线，略重 */
+svg .axis { stroke: var(--muted); stroke-width: 1.25; }
+svg .series { fill: none; stroke: var(--s1); stroke-width: 2.75; stroke-linecap: round; stroke-linejoin: round; }
+svg .area { fill: var(--s1); opacity: .08; }            /* 折线下方单色面积，闭合到基线 */
+svg .pt { fill: var(--paper); stroke: var(--s1); stroke-width: 2; }
+svg .pt-last { fill: var(--s1); stroke: var(--s1); }
+svg .halo { fill: var(--s1); opacity: .16; }            /* 终值光环：pt-last 外圈 r≈9 */
+svg .lbl { fill: var(--ink); font-weight: 700; }
+svg .lbl-last { fill: var(--s1); font-weight: 700; }
+svg .pill { fill: var(--s1); }                          /* 终值药丸底，rect rx=9 */
+svg .pill-txt { fill: #FFFFFF; font-weight: 700; }
+svg .bar { fill: var(--s1); rx: 2; }                    /* 柱形统一圆角 */
+svg .bar-dim { fill: var(--s1); opacity: .45; rx: 2; }  /* 非重点柱降透明度，突出峰值 */
+svg .bar-risk { fill: var(--risk); rx: 2; }
+svg .annot { fill: var(--muted); }
+svg .annot-line { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 2 4; stroke-linecap: round; }
+
+/* ============ 页型布局 ============ */
+/* 摘要页：左结论（≤4 条）右立场表 */
+.layout-exec { display: grid; grid-template-columns: 1.25fr 1fr; gap: 44px; height: 100%; }
+.es-item { display: flex; gap: 16px; padding: 15px 0; border-bottom: 1px solid var(--hair); }
+.es-item:last-child { border-bottom: none; }
+.es-item .no { font-family: var(--mono); font-size: var(--fs-body); color: var(--ok); font-weight: 700; padding-top: 3px; }
+.es-item h3 { font-size: var(--fs-h3); font-weight: 700; }
+.es-item p { font-size: var(--fs-body); color: var(--muted); margin-top: 6px; line-height: 1.55; }
+.es-item .src { font-size: var(--fs-note); color: var(--info); margin-top: 6px; }
+
+.pos-table { width: 100%; border-collapse: collapse; }
+.pos-table th { font-size: var(--fs-note); color: var(--muted); font-weight: 400; text-align: left; padding: 8px 4px; border-bottom: 1px solid var(--hair); }
+.pos-table td { font-size: var(--fs-body); padding: 10px 4px; border-bottom: 1px solid var(--hair); }
+.pos-table td.t { font-family: var(--mono); font-weight: 700; white-space: nowrap; }
+.pos-table td.stance { font-weight: 700; text-align: right; white-space: nowrap; }
+
+/* 决策页：决策卡 ≤3 张 + 仪表盘 ≤4 格（旧版 5 卡 6 格为反例） */
+.layout-decision { display: grid; grid-template-rows: auto 1fr; gap: 20px; height: 100%; }
+.ask-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.ask-card { background: var(--card); border: 1px solid var(--hair); border-radius: 6px; padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; }
+.ask-card .head { display: flex; align-items: baseline; gap: 10px; }
+.ask-card .head .no { font-family: var(--mono); font-size: var(--fs-body); color: var(--ok); font-weight: 700; }
+.ask-card .head b { font-size: var(--fs-h3); }
+.ask-card p { font-size: var(--fs-body); color: var(--muted); line-height: 1.5; }
+.ask-card .meta { font-size: var(--fs-note); color: var(--faint); margin-top: auto; padding-top: 8px; border-top: 1px solid var(--hair); }
+.dash { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; align-content: start; }
+.dash .cell { background: var(--card); border: 1px solid var(--hair); border-radius: 6px; padding: 14px 16px; }
+
+/* 图表页：左主图右注释（注释 ≤4 条） */
+.layout-chart { display: grid; grid-template-columns: 1.4fr 1fr; gap: 44px; height: 100%; }
+.chart-notes { display: flex; flex-direction: column; gap: 0; }
+.cn-item { padding: 12px 0; border-bottom: 1px solid var(--hair); }
+.cn-item:last-child { border-bottom: none; }
+.cn-item .k { font-family: var(--mono); font-size: var(--fs-body); font-weight: 700; }
+.cn-item p { font-size: var(--fs-body); color: var(--muted); margin-top: 4px; line-height: 1.5; }
+
+/* 表格页：整页单表 */
+.layout-table { display: flex; flex-direction: column; height: 100%; }
+.layout-table .data-table { flex: 0 0 auto; }
+
+/* 监管页：事实/判断/建议三栏分离 */
+.layout-reg { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; height: 100%; }
+.reg-col { display: flex; flex-direction: column; gap: 10px; }
+.reg-col .col-head { font-size: var(--fs-body); font-weight: 700; padding-bottom: 8px; border-bottom: 2px solid var(--ink); }
+.reg-col.fact .col-head { border-color: var(--info); color: var(--info); }
+.reg-col.judge .col-head { border-color: var(--warn); color: var(--warn); }
+.reg-col.action .col-head { border-color: var(--ok); color: var(--ok); }
+.reg-item { font-size: var(--fs-body); line-height: 1.5; padding: 10px 0; border-bottom: 1px solid var(--hair); }
+.reg-item b { display: block; margin-bottom: 3px; }
+.reg-item .src { font-size: var(--fs-note); color: var(--faint); }

@@ -1,4 +1,4 @@
-﻿> 2026-04-17 status update:
+> 2026-04-17 status update:
 > The current repository default boundary is now interpreted as `repo-wide Phase 2 (??????)` for the governed formal-compute mainline.
 > Any older wording in this document that says the repo default is still `Phase 1` or that repo-wide `Phase 2` is not open should be read as historical context only.
 > The active cutover interpretation now enters through `AGENTS.md` -> `docs/DOCUMENT_AUTHORITY.md` -> `docs/CURRENT_EFFECTIVE_ENTRYPOINT.md`; use `docs/REPO_WIDE_PHASE2_CUTOVER_DEFINITION.md` as the cutover-definition reference.
@@ -114,7 +114,9 @@ CNX/CNY 分开求和；`foreign_cash = cnx_cash - cny_cash`。
 
 ---
 
-**版本提示**：`product_category_source_service.RULE_VERSION = "rv_product_category_pnl_v1"`；源结构变更时应递增规则版本并在 `result_meta` / 治理字段中可追溯（若适用）。
+**版本提示**：`product_category_source_service.RULE_VERSION = "rv_product_category_pnl_v2"`；v2
+覆盖双口径利差、CLN 拆解与零基准 FTP 重估闭合规则。后续源结构或公式变更仍须递增规则版本，
+并在 `result_meta` / 治理字段中可追溯。
 
 ## 13. ZQTZ / TYW Formal Balance Analysis Boundary
 

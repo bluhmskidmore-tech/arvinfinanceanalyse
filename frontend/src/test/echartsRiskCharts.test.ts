@@ -7,7 +7,7 @@ import {
   buildAssetClassMarketValuePieOption,
   buildKrdDv01BarOption,
 } from "../features/bond-analytics/utils/echartsRiskCharts";
-import { designTokens } from "../theme/designSystem";
+import { nocturneTokens } from "../theme/designSystem";
 import { formatRawAsNumeric } from "../utils/format";
 
 function numeric(
@@ -44,13 +44,13 @@ describe("echartsRiskCharts", () => {
       const buckets: KRDBucket[] = [
         {
           tenor: "1Y",
-          krd: ratio(0),
+          avg_modified_duration: ratio(0),
           dv01: dv01(123_456),
           market_value_weight: ratio(0),
         },
         {
           tenor: "5Y",
-          krd: ratio(0),
+          avg_modified_duration: ratio(0),
           dv01: dv01(240_000),
           market_value_weight: ratio(0),
         },
@@ -71,6 +71,36 @@ describe("echartsRiskCharts", () => {
       expect(line).toContain("1Y");
       expect(line).toContain("DV01");
       expect(line).toMatch(/万/);
+    });
+
+    it("keeps missing dv01 buckets as null gaps instead of zero bars", () => {
+      const buckets: KRDBucket[] = [
+        {
+          tenor: "1Y",
+          avg_modified_duration: ratio(0),
+          dv01: dv01(null),
+          market_value_weight: ratio(0),
+        },
+        {
+          tenor: "5Y",
+          avg_modified_duration: ratio(0),
+          dv01: dv01(240_000),
+          market_value_weight: ratio(0),
+        },
+      ];
+      const option = buildKrdDv01BarOption(buckets);
+      const series = firstSeriesEntry(option?.series) as
+        | { data: Array<{ value: number | null }> }
+        | undefined;
+      expect(series?.data?.[0]?.value).toBeNull();
+      expect(series?.data?.[1]?.value).toBe(240_000);
+
+      const tooltip = option?.tooltip as {
+        formatter?: (p: unknown) => string;
+      };
+      const line = tooltip?.formatter?.([{ dataIndex: 0 }]);
+      expect(line).toContain("1Y");
+      expect(line).not.toMatch(/0 万/);
     });
   });
 
@@ -118,10 +148,11 @@ describe("echartsRiskCharts", () => {
       };
       expect(series?.type).toBe("pie");
       expect(series?.data?.length).toBe(4);
-      expect(series?.data?.[0]?.itemStyle?.color).toBe(designTokens.color.info[500]);
-      expect(series?.data?.[1]?.itemStyle?.color).toBe(designTokens.color.warning[400]);
-      expect(series?.data?.[2]?.itemStyle?.color).toBe(designTokens.color.neutral[500]);
-      expect(series?.data?.[3]?.itemStyle?.color).toBe(designTokens.color.neutral[400]);
+      // Nocturne 换肤（2026-08-13）：ECharts canvas 取色切 nocturneTokens 常量组。
+      expect(series?.data?.[0]?.itemStyle?.color).toBe(nocturneTokens.color.blue);
+      expect(series?.data?.[1]?.itemStyle?.color).toBe(nocturneTokens.color.amber);
+      expect(series?.data?.[2]?.itemStyle?.color).toBe(nocturneTokens.color.inkMuted);
+      expect(series?.data?.[3]?.itemStyle?.color).toBe(nocturneTokens.color.inkSoft);
 
       const tooltip = option?.tooltip as {
         formatter?: (p: {

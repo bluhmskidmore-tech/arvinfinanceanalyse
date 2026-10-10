@@ -1,6 +1,6 @@
 ---
 name: moss-lineage-break-trace
-description: Use when a MOSS API result, displayed value, golden sample, source row, report date, lineage field, or page contract does not tie out and the cause must be traced.
+description: "【MOSS血缘断点追踪】用于API结果、页面值、黄金样本、来源行、报告日期或页面契约无法核对时追根因。"
 ---
 
 # MOSS Lineage Break Trace
@@ -24,8 +24,8 @@ Classify the mismatch before fixing it:
 ## Trace Path
 
 1. Capture the failing assertion or visible mismatch with exact value, date, metric ID, route, and endpoint.
-2. Pull authoritative contract and lineage evidence first when MCP servers are available.
-3. Inspect the concrete data source and report dates with read-only catalog queries or existing tests.
+2. Use authoritative contract and lineage evidence for the mismatch, reusing current evidence already gathered in this task.
+3. Inspect the concrete data source and report dates with read-only catalog queries or existing tests when needed to locate the divergence.
 4. Walk the implementation path from repository/service/core calculation through API schema to frontend adapter and component.
 5. Identify the first layer where expected and actual diverge.
 6. Fix that layer only; do not compensate downstream unless the downstream layer caused the break.
@@ -33,8 +33,8 @@ Classify the mismatch before fixing it:
 
 ## Root Cause Statement
 
-Use this form:
+A useful form is:
 
 `<layer> produced/displayed <wrong value/state> because <specific evidence-backed cause>.`
 
-Include owner area, expected clearing/fix action, and residual risk if evidence was unavailable.
+Include the evidence-backed cause and any residual risk in the repository's completion report; do not add a second report for this skill.

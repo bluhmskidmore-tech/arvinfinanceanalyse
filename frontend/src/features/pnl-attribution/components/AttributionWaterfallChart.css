@@ -1,0 +1,16 @@
+.attribution-waterfall-chart__copy {
+  margin: 0 0 var(--moss-space-3);
+  font-size: 13px;
+  color: var(--dh-api-soft);
+  line-height: 1.5;
+}
+
+.attribution-waterfall-chart__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--moss-space-4);
+  justify-content: center;
+  margin-top: var(--moss-space-3);
+  font-size: 12px;
+  color: var(--dh-api-soft);
+}

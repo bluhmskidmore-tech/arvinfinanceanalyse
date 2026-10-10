@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import date
+
+logger = logging.getLogger(__name__)
 
 PMI_SERIES_ID = "M0017126"
 SOCIAL_FINANCING_YOY_SERIES_ID = "M5525763"
@@ -37,16 +41,19 @@ def compute_pmi_signal(pmi: float) -> float:
     return _clamp((pmi - 47.0) / 6.0)
 
 
-def compute_credit_impulse_signal(*, current_yoy: float, prior_yoy: float) -> float:
-    """Credit impulse proxy: month-over-month change in social-financing YoY (ppt); pending product sign-off."""
+def compute_credit_impulse_signal(*, current_yoy: float, prior_yoy: float) -> tuple[float, float]:
+    """Credit impulse proxy: month-over-month change in social-financing YoY (ppt); pending product sign-off.
+
+    Returns ``(signal in [0, 1], impulse_ppt)``.
+    """
     impulse_ppt = current_yoy - prior_yoy
     return _clamp((impulse_ppt + 2.0) / 4.0), impulse_ppt
 
 
-def compute_price_spread_signal(*, pe: float, cn10y: float) -> float:
+def compute_price_spread_signal(*, pe: float, cn10y: float) -> tuple[float, float | None]:
     """Earnings yield minus 10Y yield (ppt), normalized to [0, 1]."""
     if pe <= 0:
-        return 0.0
+        return 0.0, None
     spread_ppt = (100.0 / pe) - cn10y
     return _clamp((spread_ppt + 1.0) / 5.0), spread_ppt
 
@@ -76,6 +83,7 @@ def build_cycle_macro_snapshot(
     *,
     pmi_points: Iterable[tuple[str, float]] | None,
     social_financing_yoy_points: Iterable[tuple[str, float]] | None,
+    credit_impulse_series_id: str = SOCIAL_FINANCING_YOY_SERIES_ID,
     pe: float | None,
     cn10y: float | None,
     as_of_date: str,
@@ -85,7 +93,7 @@ def build_cycle_macro_snapshot(
     pmi_ready = False
     pmi_lineage: dict[str, object] = {}
 
-    ordered_pmi = _ordered_points(pmi_points)
+    ordered_pmi = _ordered_points(pmi_points, as_of_date=as_of_date)
     if ordered_pmi:
         trade_date, value = ordered_pmi[-1]
         pmi_value = value
@@ -101,22 +109,28 @@ def build_cycle_macro_snapshot(
     credit_value: float | None = None
     credit_ready = False
     credit_lineage: dict[str, object] = {}
-    ordered_sf = _ordered_points(social_financing_yoy_points)
-    if len(ordered_sf) >= 2:
-        prior_date, prior_yoy = ordered_sf[-2]
-        current_date, current_yoy = ordered_sf[-1]
+    credit_pair = _latest_adjacent_month_pair(
+        social_financing_yoy_points,
+        as_of_date=as_of_date,
+    )
+    if credit_pair is not None and credit_impulse_series_id in {
+        SOCIAL_FINANCING_YOY_SERIES_ID,
+        M2_YOY_SERIES_ID,
+    }:
+        prior_date, prior_yoy, current_date, current_yoy = credit_pair
         credit_signal, credit_value = compute_credit_impulse_signal(
             current_yoy=current_yoy,
             prior_yoy=prior_yoy,
         )
         credit_ready = True
         credit_lineage = {
-            "series_id": SOCIAL_FINANCING_YOY_SERIES_ID,
-            "current_trade_date": current_date,
-            "prior_trade_date": prior_date,
+            "series_id": credit_impulse_series_id,
+            "current_reference_date": current_date,
+            "prior_reference_date": prior_date,
             "current_yoy": current_yoy,
             "prior_yoy": prior_yoy,
             "impulse_ppt": credit_value,
+            "unit": "ppt",
         }
 
     price_signal: float | None = None
@@ -161,7 +175,7 @@ def build_cycle_macro_snapshot(
     if pmi_ready and pmi_value is not None:
         evidence_parts.append(f"PMI {pmi_value:.1f} ({PMI_SERIES_ID})")
     if credit_ready and credit_value is not None:
-        evidence_parts.append(f"credit_impulse {credit_value:+.2f}ppt ({SOCIAL_FINANCING_YOY_SERIES_ID})")
+        evidence_parts.append(f"credit_impulse {credit_value:+.2f}ppt ({credit_impulse_series_id})")
     if price_ready and spread_ppt is not None:
         evidence_parts.append(f"price_spread {spread_ppt:.2f}ppt")
     if macro_score is not None:
@@ -195,10 +209,87 @@ def build_cycle_macro_snapshot(
     )
 
 
-def _ordered_points(points: Iterable[tuple[str, float]] | None) -> list[tuple[str, float]]:
+def _ordered_points(
+    points: Iterable[tuple[str, float]] | None,
+    *,
+    as_of_date: str | None = None,
+) -> list[tuple[str, float]]:
+    """Sort ascending by trade_date; drop any point after as_of_date to avoid look-ahead leakage."""
     if not points:
         return []
-    return sorted(((str(trade_date), float(value)) for trade_date, value in points), key=lambda row: row[0])
+    rows = ((str(trade_date), float(value)) for trade_date, value in points)
+    if as_of_date is not None:
+        rows = (row for row in rows if row[0] <= as_of_date)
+    return sorted(rows, key=lambda row: row[0])
+
+
+_CREDIT_IMPULSE_REJECT_DISCLOSED: set[tuple[str, str]] = set()
+
+
+def _warn_credit_impulse_rejected(reason: str, as_of_date: str) -> None:
+    """Fail-closed 拒绝必须 fail-loud 披露（审计 宏观 M-3）：每进程按 (reason, as_of) 去重。"""
+    key = (reason, as_of_date)
+    if key in _CREDIT_IMPULSE_REJECT_DISCLOSED:
+        return
+    _CREDIT_IMPULSE_REJECT_DISCLOSED.add(key)
+    logger.warning(
+        "credit_impulse component rejected (whole-series fail-closed): reason=%s as_of=%s; "
+        "macro score re-normalizes remaining weights without this component.",
+        reason,
+        as_of_date,
+    )
+
+
+def _latest_adjacent_month_pair(
+    points: Iterable[tuple[str, float]] | None,
+    *,
+    as_of_date: str,
+) -> tuple[str, float, str, float] | None:
+    # Fail-closed by design: ANY malformed value, future-dated point, or
+    # duplicated month in the input series returns None, which disables the
+    # credit-impulse component entirely. compute_macro_score then re-normalizes
+    # the remaining component weights; the rejection itself is disclosed via a
+    # deduplicated warning (audit macro M-3) plus the snapshot missing_inputs.
+    # This is intentionally conservative (never compute an impulse from
+    # suspect data) but brittle; revisit if upstream data quality allows
+    # per-point filtering instead of whole-series rejection.
+    if not points:
+        return None
+    try:
+        evaluation_date = date.fromisoformat(as_of_date)
+    except ValueError:
+        _warn_credit_impulse_rejected("invalid_as_of_date", as_of_date)
+        return None
+
+    rows: list[tuple[date, float]] = []
+    months: set[tuple[int, int]] = set()
+    for raw_date, raw_value in points:
+        try:
+            reference_date = date.fromisoformat(str(raw_date)[:10])
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            _warn_credit_impulse_rejected("malformed_point", as_of_date)
+            return None
+        if reference_date > evaluation_date:
+            _warn_credit_impulse_rejected("future_dated_point", as_of_date)
+            return None
+        month = (reference_date.year, reference_date.month)
+        if month in months:
+            _warn_credit_impulse_rejected("duplicated_month", as_of_date)
+            return None
+        months.add(month)
+        rows.append((reference_date, value))
+
+    rows.sort(key=lambda row: row[0])
+    if len(rows) < 2:
+        return None
+    prior, current = rows[-2:]
+    prior_month = prior[0].year * 12 + prior[0].month
+    current_month = current[0].year * 12 + current[0].month
+    if current_month - prior_month != 1:
+        _warn_credit_impulse_rejected("non_adjacent_months", as_of_date)
+        return None
+    return prior[0].isoformat(), prior[1], current[0].isoformat(), current[1]
 
 
 def _clamp(value: float, lower: float = 0.0, upper: float = 1.0) -> float:

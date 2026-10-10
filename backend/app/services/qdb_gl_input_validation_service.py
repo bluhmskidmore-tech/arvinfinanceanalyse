@@ -13,8 +13,7 @@ from backend.app.schemas.qdb_gl_contract import (
     QdbGlContractFinding,
     QdbGlLineage,
 )
-from openpyxl import load_workbook
-from openpyxl.utils import get_column_letter
+from backend.app.services.source_file_hash import sha256_file
 
 RULE_VERSION = "rv_qdb_gl_input_contract_v1"
 
@@ -125,6 +124,8 @@ def validate_qdb_gl_baseline_source(path: str | Path) -> QdbGlBaselineValidation
     sheet_names: list[str] = []
     bound_currency_groups: set[str] = set()
 
+    from openpyxl import load_workbook
+
     try:
         workbook = load_workbook(binding.path, read_only=True, data_only=True)
         checks["source_binding"].status_label = "pass"
@@ -192,6 +193,8 @@ def _validate_ledger_workbook(workbook, checks: dict[str, QdbGlContractCheck]) -
 
 
 def _validate_ledger_header(worksheet, checks: dict[str, QdbGlContractCheck]) -> None:
+    from openpyxl.utils import get_column_letter
+
     header_row = next(worksheet.iter_rows(min_row=6, max_row=6, values_only=True), tuple())
     for column_index, expected_header in enumerate(LEDGER_HEADERS, start=1):
         actual = _normalize_text(header_row[column_index - 1] if len(header_row) >= column_index else None)
@@ -286,6 +289,17 @@ def _validate_ledger_rows(
         debit_amount = _to_decimal(debit_value)
         credit_amount = _to_decimal(credit_value)
         ending_amount = _to_decimal(ending_value)
+        for column_letter, amount in zip("DEFG", (beginning_amount, debit_amount, credit_amount, ending_amount)):
+            if amount is None:
+                for check_id in ("row_shape", "required_raw_fields"):
+                    _record_failure(
+                        checks,
+                        check_id,
+                        message="Ledger amount field must be a finite number.",
+                        sheet_name=worksheet.title,
+                        row_locator=row_index,
+                        cell_ref=f"{column_letter}{row_index}",
+                    )
         if None not in {beginning_amount, debit_amount, credit_amount, ending_amount}:
             delta = beginning_amount + debit_amount - credit_amount - ending_amount
             if abs(delta) > RECONCILIATION_TOLERANCE:
@@ -349,6 +363,8 @@ def _validate_average_rows(
     checks: dict[str, QdbGlContractCheck],
     bound_currency_groups: set[str],
 ) -> None:
+    from openpyxl.utils import get_column_letter
+
     for row_index, row in enumerate(worksheet.iter_rows(min_row=4, values_only=True), start=4):
         row_values = list(row)
         if all(_is_blank(value) for value in row_values):
@@ -416,14 +432,15 @@ def _validate_average_rows(
                 continue
 
             if _to_decimal(balance_value) is None:
-                _record_failure(
-                    checks,
-                    "row_shape",
-                    message="Average workbook balance field must be numeric.",
-                    sheet_name=worksheet.title,
-                    row_locator=row_index,
-                    cell_ref=f"{get_column_letter(column_index + 3)}{row_index}",
-                )
+                for check_id in ("row_shape", "required_raw_fields"):
+                    _record_failure(
+                        checks,
+                        check_id,
+                        message="Average workbook balance field must be a finite number.",
+                        sheet_name=worksheet.title,
+                        row_locator=row_index,
+                        cell_ref=f"{get_column_letter(column_index + 3)}{row_index}",
+                    )
                 column_index += 3
                 continue
 
@@ -447,6 +464,8 @@ def _parse_average_block_specs(
     checks: dict[str, QdbGlContractCheck],
     sheet_name: str,
 ) -> list[tuple[int, int]]:
+    from openpyxl.utils import get_column_letter
+
     block_specs: list[tuple[int, int]] = []
     column_index = 0
     row_length = len(header_row)
@@ -556,7 +575,8 @@ def _build_source_version(path: Path) -> str:
         return f"sv_qdb_gl_{digest}"
 
     stat = path.stat()
-    seed = f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}"
+    content_sha256 = sha256_file(path)[:16]
+    seed = f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}:{content_sha256}"
     digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:12]
     return f"sv_qdb_gl_{digest}"
 
@@ -602,7 +622,8 @@ def _to_decimal(value: object) -> Decimal | None:
     if _is_blank(value):
         return None
     try:
-        return Decimal(str(value))
+        result = Decimal(str(value))
+        return result if result.is_finite() else None
     except (InvalidOperation, ValueError):
         return None
 

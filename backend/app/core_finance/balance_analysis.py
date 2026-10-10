@@ -165,6 +165,20 @@ def average_daily_cny_amounts(daily_native_and_fx: list[tuple[Decimal, Decimal]]
 
 
 def _zqtz_overdue_days_split(row: ZqtzSnapshotRow) -> tuple[int, int]:
+    """Split ``overdue_days`` into (overdue_principal_days, overdue_interest_days).
+
+    Known source-data limitation: ``ZqtzSnapshotRow.overdue_days`` is a single
+    integer field with no principal/interest breakdown, so the second element
+    (interest overdue days) is always ``0`` here by construction, not because
+    interest is confirmed non-overdue. This materialized semantic (principal =
+    all overdue days, interest = 0) is intentionally kept unchanged to avoid
+    breaking `fact_formal_zqtz_balance_daily` compatibility; consumers that
+    surface ``overdue_interest_days`` to business users must carry an explicit
+    "source data limitation, not evidence of zero interest overdue" annotation
+    per docs/calc_rules.md §14 (no silent 0-downgrade without a flag). See the
+    ``rule_reference`` table entry ``bal_overdue_interest_days_placeholder`` in
+    balance_analysis_workbook.py.
+    """
     raw = row.overdue_days
     if raw is None:
         return 0, 0

@@ -33,10 +33,43 @@ function pct(raw: number | null, display: string): Numeric {
   };
 }
 
+function riskCoverage() {
+  return {
+    total_row_count: 100,
+    covered_row_count: 100,
+    excluded_row_count: 0,
+    total_market_value: n(12_000_000_000),
+    covered_market_value: n(12_000_000_000),
+    excluded_market_value: n(0),
+    coverage_pct: pct(1, "100.00%"),
+    excluded_pct: pct(0, "0.00%"),
+    exclusions: [],
+  };
+}
+
 const CONTRIBUTION_PCT_NOTE =
   "占比按各效应绝对值计算，方向相反时合计可能超过 100%";
 
 describe("AdvancedAttributionChart caliber labels", () => {
+  it("shows the missing curve side without reporting zero or a largest contribution", () => {
+    const krdData: KRDAttributionPayload = {
+      report_date: "2026-04-30", start_date: "2026-03-31", end_date: "2026-04-30",
+      total_market_value: n(1000), risk_coverage: riskCoverage(), portfolio_duration: n(5),
+      portfolio_dv01: n(0.5), total_duration_effect: n(null), calculation_status: "unavailable",
+      curve_shift_type: "unavailable", curve_interpretation: "国债曲线缺失，久期效应不可用。",
+      warnings: ["缺少期初（2026-03-31）可用的 10Y 国债收益率。"],
+      max_contribution_tenor: "", max_contribution_value: n(null),
+      buckets: [{ tenor: "5Y", tenor_years: n(5), market_value: n(1000), weight: pct(1, "100%"),
+        bond_count: 1, bucket_duration: n(5), krd: n(5), yield_change: n(0, "bp"),
+        duration_contribution: n(null), contribution_pct: pct(null, "") }],
+    };
+    render(<AdvancedAttributionChart carryData={null} spreadData={null} krdData={krdData}
+      state={{ kind: "ok" }} onRetry={() => {}} />);
+    expect(screen.getByTestId("krd-curve-unavailable")).toHaveTextContent("期初（2026-03-31）");
+    expect(screen.queryByText(/最大贡献期限/)).not.toBeInTheDocument();
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
+  });
+
   it("surfaces monthly and annualized carry/rolldown labels", () => {
     const carryData: CarryRollDownPayload = {
       report_date: "2026-04-30",
@@ -101,12 +134,25 @@ describe("AdvancedAttributionChart caliber labels", () => {
       treasury_10y_end: pct(0.0179, "+1.79%"),
       treasury_10y_change: n(-6.98, "bp"),
       total_market_value: n(12_000_000_000),
+      risk_coverage: riskCoverage(),
       portfolio_duration: n(3.8),
       total_treasury_effect: n(22_000_000),
       total_spread_effect: n(-4_000_000),
       total_price_change: n(18_000_000),
       primary_driver: "treasury",
       interpretation: "test",
+      attribution_basis: "matched_positions_start_exposure",
+      calculation_status: "partial",
+      warnings: ["部分持仓未覆盖"],
+      method_note: "使用匹配期初暴露，国债效应包含期限滚动，不能与 Carry 骑乘直接相加。",
+      attribution_coverage: {
+        start_row_count: 100, end_row_count: 105, matched_position_count: 90, attributed_position_count: 80,
+        start_market_value: n(12_000_000_000), end_market_value: n(12_500_000_000),
+        covered_start_market_value: n(9_000_000_000), covered_end_market_value: n(9_500_000_000),
+        excluded_start_market_value: n(3_000_000_000), excluded_end_market_value: n(3_000_000_000),
+        start_coverage_pct: pct(0.75, "75.00%"), end_coverage_pct: pct(0.76, "76.00%"),
+        exclusions: [{ reason: "added_position", start_row_count: 0, end_row_count: 15, start_market_value: n(0), end_market_value: n(1_000_000_000) }],
+      },
       items: [
         {
           category: "credit",
@@ -120,6 +166,9 @@ describe("AdvancedAttributionChart caliber labels", () => {
           treasury_effect: n(12_000_000),
           spread_effect: n(-2_000_000),
           total_price_effect: n(10_000_000),
+          matched_start_market_value: n(900_000_000),
+          attribution_duration: n(2.8),
+          attributed_position_count: 80,
           treasury_contribution_pct: pct(0.6, "60.0%"),
           spread_contribution_pct: pct(0.4, "40.0%"),
         },
@@ -130,6 +179,7 @@ describe("AdvancedAttributionChart caliber labels", () => {
       start_date: "2026-03-31",
       end_date: "2026-04-30",
       total_market_value: n(12_000_000_000),
+      risk_coverage: riskCoverage(),
       portfolio_duration: n(3.8),
       portfolio_dv01: n(4_200_000),
       total_duration_effect: n(18_000_000),
@@ -172,6 +222,60 @@ describe("AdvancedAttributionChart caliber labels", () => {
     );
     expect(screen.getByText("国债贡献占比%")).toBeInTheDocument();
     expect(screen.getByText("利差贡献占比%")).toBeInTheDocument();
+    expect(screen.getByTestId("spread-matching-coverage")).toHaveTextContent("有效匹配 80 项");
+    expect(screen.getByTestId("spread-matching-coverage")).toHaveTextContent("75.00%");
+    expect(screen.getByRole("table", { name: "利差归因未覆盖原因" })).toHaveTextContent("区间新增持仓");
+    expect(screen.getByTestId("spread-method-note")).toHaveTextContent("不能与 Carry 骑乘直接相加");
+    expect(screen.getByText("匹配期初市值（亿元）")).toBeInTheDocument();
+    expect(screen.getByText("2.80")).toBeInTheDocument();
     expect(screen.getByText("贡献占比%")).toBeInTheDocument();
+  });
+
+  it("renders krd bucket weight as percent points from decimal-ratio raw", () => {
+    const krdData: KRDAttributionPayload = {
+      report_date: "2026-04-30",
+      start_date: "2026-03-31",
+      end_date: "2026-04-30",
+      total_market_value: n(12_000_000_000),
+      risk_coverage: riskCoverage(),
+      portfolio_duration: n(3.8),
+      portfolio_dv01: n(4_200_000),
+      total_duration_effect: n(18_000_000),
+      curve_shift_type: "bull_steepener",
+      curve_interpretation: "test",
+      max_contribution_tenor: "5Y",
+      max_contribution_value: n(8_500_000),
+      buckets: [
+        {
+          tenor: "3-5Y",
+          tenor_years: n(4),
+          market_value: n(4_500_000_000),
+          // weight 契约：unit="pct"，raw 为小数比率；display 置空以覆盖 raw×100 回退路径。
+          weight: pct(0.235, ""),
+          bond_count: 55,
+          bucket_duration: n(4.1),
+          krd: n(3.6),
+          yield_change: n(-9, "bp"),
+          duration_contribution: n(8_500_000),
+          contribution_pct: pct(0.472, "47.2%"),
+        },
+      ],
+    };
+
+    render(
+      <AdvancedAttributionChart
+        carryData={null}
+        spreadData={null}
+        krdData={krdData}
+        state={{ kind: "ok" }}
+        onRetry={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("23.50%")).toBeInTheDocument();
+    // 回归保护：raw=0.235 不得按旧写法 toFixed(1) 渲染成缩小 100 倍的 "0.2"。
+    expect(screen.queryByText("0.2")).not.toBeInTheDocument();
+    expect(screen.getByText("占比")).toBeInTheDocument();
+    expect(screen.getByText("Δyield(bp)")).toBeInTheDocument();
   });
 });

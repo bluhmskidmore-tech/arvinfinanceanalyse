@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from scripts.portfolio_home_dependency_consistency_check import build_dependency_consistency
 
 
@@ -14,6 +16,14 @@ SCRIPT = ROOT / "scripts" / "portfolio_home_dependency_consistency_check.py"
 DUCKDB = ROOT / "data" / "moss.duckdb"
 TEMPLATE = ROOT / "docs" / "portfolio" / "portfolio-home-business-owner-approval-template.md"
 REPORT_DATE = "2026-05-31"
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not DUCKDB.exists(),
+        reason="requires local governed DuckDB at data/moss.duckdb",
+    ),
+]
 
 
 def _run_check(*args: str) -> tuple[int, dict[str, object]]:
@@ -43,7 +53,7 @@ def test_portfolio_home_dependency_consistency_reports_current_clean_export_pack
         "krd_summary_row_count": 3,
         "krd_detail_row_count": 500,
         "krd_owner_decision_fields_blank": True,
-        "bond_missing_maturity_row_count": 114,
+        "bond_missing_maturity_row_count": 0,
         "tyw_liability_missing_maturity_row_count": 1455,
         "maturity_owner_fields_blank": True,
     }

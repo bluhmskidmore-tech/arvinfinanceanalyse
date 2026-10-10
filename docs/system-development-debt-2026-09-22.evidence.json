@@ -1,0 +1,376 @@
+{
+  "schema_version": 1,
+  "report_date": "2026-09-22",
+  "captured_at_utc": "2026-09-22T15:04:37.775Z",
+  "repository": "F:/MOSS-V3",
+  "head": "a97f0f3a268500ded23ba4233d55e1e0c96b70a3",
+  "gitnexus": {
+    "repoPath": "F:\\MOSS-V3",
+    "lastCommit": "a97f0f3a268500ded23ba4233d55e1e0c96b70a3",
+    "indexedAt": "2026-09-22T14:55:24.659Z",
+    "remoteUrl": "https://github.com/bluhmskidmore-tech/arvinfinanceanalyse",
+    "stats": {
+      "files": 4734,
+      "nodes": 158354,
+      "edges": 227499,
+      "communities": 2737,
+      "processes": 300,
+      "embeddings": 0
+    }
+  },
+  "scope": "Repository development-debt assessment and solution document only; no application code changes or deployment.",
+  "worktree_excluding_this_delivery": {
+    "git_status_entries": 865,
+    "tracked_changes": 527,
+    "untracked_entries": 338
+  },
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "cwd": "frontend",
+      "exit_code": 0
+    },
+    {
+      "command": "npm run lint",
+      "cwd": "frontend",
+      "exit_code": 0,
+      "errors": 0,
+      "warnings": 1,
+      "warning_rule": "react-refresh/only-export-components",
+      "warning_path": "frontend/src/features/pnl/PnlByBusinessPage.tsx:92:17"
+    },
+    {
+      "command": "npm run debt:audit",
+      "cwd": "frontend",
+      "exit_code": 1,
+      "segments_passed": 5,
+      "segments_total": 6,
+      "failure": {
+        "path": "backend/app/services/pnl_service.py",
+        "actual_lines": 3867,
+        "baseline_lines": 3748
+      }
+    },
+    {
+      "command": ".venv/Scripts/python.exe scripts/api_contract_coverage.py --surface full",
+      "exit_code": 0,
+      "summary": {
+        "operations": 287,
+        "structured": 108,
+        "structured_percent": 37.63,
+        "opaque_object": 131,
+        "opaque_unknown": 42,
+        "opaque_union": 5,
+        "no_schema": 1,
+        "leaf_fields": 6116,
+        "field_paths": 7581
+      }
+    },
+    {
+      "command": ".venv/Scripts/python.exe scripts/check_ruff_ble001_baseline.py",
+      "status": "blocked_before_diagnostics",
+      "reason": "Python version mismatch: expected 3.11, got 3.14",
+      "exit_code": 1
+    },
+    {
+      "command": "backend/.venv/Scripts/python.exe scripts/check_ruff_ble001_baseline.py",
+      "status": "blocked_before_diagnostics",
+      "reason": "No module named ruff",
+      "exit_code": 1
+    },
+    {
+      "command": ".venv/Scripts/python.exe -m pytest [six nodeids recorded below] -q -p no:cacheprovider",
+      "exit_code": 0,
+      "passed": 7,
+      "elapsed_seconds": 13.29,
+      "warning": "Unknown config option: cache_dir",
+      "nodeids": [
+        "tests/test_product_category_incremental_materialization.py::test_unchanged_input_skips_parsing_calculation_and_preserves_all_values",
+        "tests/test_product_category_incremental_materialization.py::test_revision_rebuilds_only_affected_year_and_equals_clean_full_with_original_precision",
+        "tests/test_product_category_incremental_materialization.py::test_source_content_change_with_same_size_and_mtime_is_not_a_noop",
+        "tests/test_product_category_incremental_materialization.py::test_calculation_failure_rolls_back_and_next_attempt_rebuilds_conservatively",
+        "tests/test_system_read_publication.py::test_data_update_pre_cas_system_publish_failure_never_retries_financial_chain",
+        "tests/test_system_read_publication.py::test_data_update_post_cas_recovery_only_repairs_metadata_without_financial_replay"
+      ]
+    }
+  ],
+  "in_memory_probes": [
+    {
+      "name": "financial publish transient failure replays business executor",
+      "mechanism": "Current AST-extracted queue functions with in-memory locks, queue, preflight, executor and recovery stubs",
+      "observed": {
+        "first_status": "retrying",
+        "first_attempt": 1,
+        "second_status": "retrying",
+        "second_attempt": 2,
+        "core_executions": 2
+      },
+      "scope": "Control flow only; no business database or real materialization"
+    },
+    {
+      "name": "balance movement malformed envelope",
+      "mechanism": "Current TypeScript module transpiled in memory with fake fetch",
+      "observed": {
+        "acceptedMalformedResult": {},
+        "requestHasSignal": false
+      }
+    },
+    {
+      "name": "spread attribution missing prior field",
+      "mechanism": "Current model function and helpers extracted from TypeScript AST",
+      "inputs": {
+        "currentSpreadPct": 1.05,
+        "priorSnapshotExists": true,
+        "priorSpread": null
+      },
+      "observed": {
+        "state": "ready",
+        "priorSpreadLabel": "—",
+        "spreadDeltaLabel": "—"
+      }
+    },
+    {
+      "name": "mypy same-file equal-count replacement",
+      "mechanism": "Current compare pure function invoked with one diagnostic count on each side",
+      "observed": {
+        "regressions": [],
+        "new_files": [],
+        "improvements": []
+      },
+      "scope": "Verifies count comparator limitation; full mypy not run"
+    }
+  ],
+  "governance_registry": {
+    "rows": 38,
+    "temporary_exceptions": 18,
+    "review_dates_before_report_date": 38,
+    "meaning": "Dates in registry are past; does not establish page failure or absence of owner review elsewhere"
+  },
+  "independent_review": {
+    "type": "Read-only source review; no independent test execution",
+    "additional_findings": [
+      "publish receipt lacks business_body_status so adding a name to the set alone is insufficient",
+      "Previously retrying requests require pre-execution handling",
+      "Unwrapped callback failures remain outside the demonstrated receipt-based case"
+    ],
+    "incorporated": true
+  },
+  "environment": {
+    "node": "v24.13.0",
+    "root_venv_python": "3.14.2",
+    "backend_venv_python": "3.11.9",
+    "ci_python": "3.11",
+    "ci_node": "22"
+  },
+  "not_verified": [
+    "Hosted CI runs and branch protection",
+    "Current deployment version or live UI behavior",
+    "Full repository test suite",
+    "Independent business reconciliation",
+    "Current BLE001 or mypy diagnostic totals"
+  ],
+  "snapshot_note": "Source hashes captured when authoring this report, after checks. Detailed tool outputs remain in the task history; this JSON is a structured receipt, not a complete raw log or an atomic test-time filesystem snapshot.",
+  "sources": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "sha256": "0004c32a983553a2592ffc639f0d65750d130fd49961d473f1570f3764b3b7cd",
+      "lines": 853
+    },
+    {
+      "path": "_pytest_duckdb_guard.py",
+      "sha256": "396893ec8eee1283e4bdfb91220eb078314120739235309d93b45c9c6599d4b3",
+      "lines": 476
+    },
+    {
+      "path": "backend/app/api/routes/balance_analysis.py",
+      "sha256": "656b086ec5c9cf3c7e9eb625c3527c2bf0374dd950dd70b0ddbea05f6c144451",
+      "lines": 547
+    },
+    {
+      "path": "backend/app/api/routes/product_category_pnl.py",
+      "sha256": "370493402006760670e433135357e4cf8aa3e2c87344b5505d983b88f9ea96ac",
+      "lines": 359
+    },
+    {
+      "path": "backend/app/api/routes/risk_tensor.py",
+      "sha256": "32149cf01473c3b11de84e53ca9f03a1f4cfe2dee7470da4ca21b2ebbbdf0b0d",
+      "lines": 155
+    },
+    {
+      "path": "backend/app/security/auth_context.py",
+      "sha256": "be95d321691ccf2a559610549cbb24d63f3f5e0c67bbdda2a4d443640df90b7d",
+      "lines": 324
+    },
+    {
+      "path": "backend/app/services/pnl_service.py",
+      "sha256": "efd5e2ef2c74413b09bfc37bd327d18de65d6805656720993dc40cf0dd0be89f",
+      "lines": 3868
+    },
+    {
+      "path": "backend/app/tasks/data_update_center.py",
+      "sha256": "8506a7552bb1e8b3621f1cc7cf32bf523452bd395ff384acb197ca85a8b80de3",
+      "lines": 722
+    },
+    {
+      "path": "backend/app/tasks/product_category_pnl.py",
+      "sha256": "d5cdda07da58685ffc9d2700313308e64ffb99e95b3a755f583775c4162afba5",
+      "lines": 368
+    },
+    {
+      "path": "conftest.py",
+      "sha256": "3fd3f478912f030fa81b5d31f1e0d6daad6221491a4edc675c5cec1e748f8156",
+      "lines": 4
+    },
+    {
+      "path": "docs/TESTING.md",
+      "sha256": "9a508c62e75de6575c05a547b060439c0a92b257bcd249b366e09a28348934a2",
+      "lines": 186
+    },
+    {
+      "path": "docs/data_update_center.md",
+      "sha256": "1febd590a5780e28f05cc4416ece2ec97baa6dc7a3705aed174778a57603a3d1",
+      "lines": 75
+    },
+    {
+      "path": "docs/live_route_maturity.md",
+      "sha256": "5e7dbcef9614370f0917a19d479d8a705ae63f47337b1da6a43c46b20e451a25",
+      "lines": 91
+    },
+    {
+      "path": "frontend/package.json",
+      "sha256": "77accfefeae3afed368d9e25c78d04e363157257344d50f28068c5acaf27a624",
+      "lines": 76
+    },
+    {
+      "path": "frontend/src/api/balanceMovementClient.ts",
+      "sha256": "61a4948a542560ffc3bdb1272fd1a18a5561a198c98f4b89c580542f1d9d19f4",
+      "lines": 77
+    },
+    {
+      "path": "frontend/src/api/client.ts",
+      "sha256": "c69608d53d5ab65fa59888af62e296b9ff58dc88d77611f04547e772cc23a02e",
+      "lines": 294
+    },
+    {
+      "path": "frontend/src/api/contracts.ts",
+      "sha256": "244f158e3da81616236dbcb341cd0a58ce1435e3f877c0305a524b8c171ac15b",
+      "lines": 20
+    },
+    {
+      "path": "frontend/src/api/transport.ts",
+      "sha256": "d63a0f4ccbcf07bc10f4d2a0d42562868f14ab307f53f35b0b923c84be820877",
+      "lines": 553
+    },
+    {
+      "path": "frontend/src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx",
+      "sha256": "f06ad6cd80ca55ced4d017b74daf4a0f5b574c92cdec42b4b860cde3b12cdf45",
+      "lines": 4928
+    },
+    {
+      "path": "frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.spreadMovementUnits.test.ts",
+      "sha256": "1556916ba9c9d63b9d59104a2b250538a77637267bc7522993ae47d50f962a05",
+      "lines": 120
+    },
+    {
+      "path": "frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.ts",
+      "sha256": "e85a9d0466af91a0bf2c7670d8844362ccee871b7cbce06a03e6e75a19b279de",
+      "lines": 5374
+    },
+    {
+      "path": "frontend/vite.config.ts",
+      "sha256": "21a2c2e3c138c7fa1d28c37540ec44f596ac5d2de848730f1910ab05f39e9d23",
+      "lines": 139
+    },
+    {
+      "path": "scripts/api_contract_coverage.py",
+      "sha256": "5ab3e9a0dc27aef4d2a68a8436913958b604e6dfb320ec840ee54e0911a65418",
+      "lines": 198
+    },
+    {
+      "path": "scripts/audit_worktree_scope.py",
+      "sha256": "1323eb507e4161c8bbb2dea2e5c36cacfcc123cc5d2d56582f4c1937473822fe",
+      "lines": 146
+    },
+    {
+      "path": "scripts/backend_release_suite.py",
+      "sha256": "fa490dbcc246a49bc6d19dfe3fc7459d46a88da6d280bb819f2daea5efc54c2f",
+      "lines": 290
+    },
+    {
+      "path": "scripts/check_caliber_gate.py",
+      "sha256": "d53d70c1dde5ba0cb1702fe901866d222389261f1a8c4c30bd314b7785b9efce",
+      "lines": 502
+    },
+    {
+      "path": "scripts/check_mypy_baseline.py",
+      "sha256": "16f306f4bc0ce91d4633bb5237a2a01a842f966b21693ba824c1a5163253a882",
+      "lines": 304
+    },
+    {
+      "path": "scripts/check_ruff_ble001_baseline.py",
+      "sha256": "79671ef9408f8e9083bd0949cf735357ade8396f8139adaf86ee06020cf89152",
+      "lines": 511
+    },
+    {
+      "path": "scripts/debt-baselines.json",
+      "sha256": "a0f465253579f197d81b1b44a1063f92ca44e34de268b75f51317672990682bc",
+      "lines": 79
+    },
+    {
+      "path": "scripts/dev_runtime_control.py",
+      "sha256": "fc8399c24ed7476c7921fd084356a3abff6251a887a801e9157ebbe49e4421f9",
+      "lines": 303
+    },
+    {
+      "path": "scripts/mypy_baseline.json",
+      "sha256": "745907f2e654902bdbc74b93f6ef09501a90263118829537a6af13fd6f21a127",
+      "lines": 242
+    },
+    {
+      "path": "scripts/ruff_ble001_baseline.json",
+      "sha256": "7edb45813203e70fc3261d933f84dec9fda15369c14cac0b207f00ae901dd430",
+      "lines": 1653
+    },
+    {
+      "path": "scripts/run_frontend_debt_audits.mjs",
+      "sha256": "14ec07820c111a1ed5f0ca2a6dddda605f9debc85154d4d3babec6acc74f74b0",
+      "lines": 124
+    },
+    {
+      "path": "scripts/run_global_data_refresh.py",
+      "sha256": "6efcd68d30f8da5c1b3c8345554d5f8bdb4b51a96f332cf408336a1c26c6cdff",
+      "lines": 953
+    },
+    {
+      "path": "tests/conftest.py",
+      "sha256": "88ef659ae33614ab63cd9025b115dd46c15f70205fe846e8bb09ed8ab7bd245f",
+      "lines": 262
+    },
+    {
+      "path": "tests/test_live_route_page_contract_completeness.py",
+      "sha256": "1da306ae8cf057dcb5142339574895629ed43946db22828460de0f6c077a8434",
+      "lines": 593
+    },
+    {
+      "path": "tests/test_product_category_incremental_materialization.py",
+      "sha256": "fc9d1e0823c8f5b9cda5231a83f60df1b76c7ec7fa3c3b3fe4e0553c02f296f2",
+      "lines": 423
+    },
+    {
+      "path": "tests/test_system_read_publication.py",
+      "sha256": "d62d41e87e8b588597732717ebe3fd2ce911ab12a7bd7fa08b0dca1fb2fc0318",
+      "lines": 2634
+    }
+  ],
+  "initial_worktree_observation": {
+    "git_status_entries": 852,
+    "tracked_changes": 522,
+    "untracked_entries": 330
+  },
+  "worktree_note": "The shared working tree changed during assessment. Initial and report-authoring counts are distinct observations; no application edits were made by this task.",
+  "initial_gitnexus_observation": {
+    "lastCommit": "a97f0f3a268500ded23ba4233d55e1e0c96b70a3",
+    "indexedAt": "2026-09-18T14:23:40.156Z"
+  },
+  "authoring_note": "ProductCategoryPnlPage.tsx was 5065 audit lines when checked and 4927 audit lines when report sources were captured. The missing-prior-field model condition and corresponding render branch were rechecked; the document points to line 3313 at authoring time. Index metadata also changed during assessment without this task rebuilding it."
+}

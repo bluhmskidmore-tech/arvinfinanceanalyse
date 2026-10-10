@@ -4,13 +4,15 @@ These routes now delegate to ``AnalyticalBridgeService`` which handles
 ``formal``, ``analytical``, and ``ledger`` bases.  The previous stub
 (``_raise_cube_query_not_promoted``) is replaced by the real service path.
 
-Auth is required via ``AuthContext`` (header X-User-Id / X-User-Role or
-env-based fallback).
+Endpoints enforce RBAC scope checks via ``AuthContext``; the application
+does not perform authentication, and caller identity must be established at
+the deployment boundary (e.g., API gateway).
 """
 from __future__ import annotations
 
 from typing import Annotated
 
+from backend.app.api.deps import ensure_read_allowed
 from backend.app.governance.settings import Settings, get_settings
 from backend.app.schemas.cube_query import CubeQueryRequest, CubeQueryResponse
 from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
@@ -22,17 +24,7 @@ router = APIRouter(prefix="/api/cube")
 
 
 def _ensure_cube_read_allowed(auth: AuthContext) -> None:
-    try:
-        ensure_user_allowed(
-            auth=auth,
-            settings=get_settings(),
-            resource="cube",
-            action="read",
-        )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    ensure_read_allowed(auth, "cube", settings=get_settings(), authorize=ensure_user_allowed)
 
 
 @router.post("/query", response_model=CubeQueryResponse)

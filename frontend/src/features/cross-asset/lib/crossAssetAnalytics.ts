@@ -10,7 +10,50 @@
  * All functions are pure and stateless; no side effects.
  */
 
-import type { ResolvedCrossAssetKpi, CrossAssetKpiFormat } from "./crossAssetKpiModel";
+import { designTokens } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
+import {
+  isAssetLevelKpiKey,
+  type CrossAssetDatedValue,
+  type ResolvedCrossAssetKpi,
+  type CrossAssetKpiFormat,
+} from "./crossAssetKpiModel";
+
+/**
+ * Cross-asset analytics presentation palette.
+ * Token-equal colors resolve through designTokens; non-equal hex stay verbatim.
+ */
+const CA_PALETTE = {
+  riskOn: "#16a34a",
+  riskOnBg: "#f0fdf4",
+  riskOff: designTokens.color.danger[600],
+  riskOffBg: designTokens.color.danger[50],
+  stagflation: "#ea580c",
+  stagflationBg: "#fff7ed",
+  deflation: designTokens.color.info[600],
+  deflationBg: designTokens.color.info[50],
+  liquidity: designTokens.color.primary[600],
+  liquidityBg: designTokens.color.primary[50],
+  mixed: designTokens.color.cockpit.ink600,
+  mixedBg: designTokens.color.cockpit.surface20,
+  percentileExtremeLow: designTokens.color.info[600],
+  percentileLow: designTokens.color.info[400],
+  percentileMid: designTokens.color.cockpit.ink600,
+  percentileHigh: "#f59e0b",
+  percentileExtremeHigh: designTokens.color.danger[500],
+  erpCheap: "#16a34a",
+  erpCheapBg: "#f0fdf4",
+  erpExpensive: designTokens.color.danger[600],
+  erpExpensiveBg: designTokens.color.danger[50],
+  erpNeutral: designTokens.color.warning[500],
+  erpNeutralBg: "#fffbeb",
+  erpUnavailable: designTokens.color.cockpit.ink600,
+  erpUnavailableBg: designTokens.color.cockpit.surface20,
+  waterfallUp: designTokens.color.danger[600],
+  waterfallDown: "#16a34a",
+  waterfallTotalNeutral: designTokens.color.cockpit.ink600,
+  waterfallFactorNeutral: designTokens.color.cockpit.ink450,
+} as const;
 
 /* ================================================================
  *  1. Asset Correlation Matrix
@@ -61,28 +104,53 @@ function pearsonR(xs: number[], ys: number[]): number | null {
 }
 
 /**
- * Build an NxN correlation matrix from the sparkline arrays attached to KPIs.
- * Only includes KPIs that have at least 5 sparkline data points.
- * Correlation is computed on the overlapping tail of each pair.
+ * Build an NxN correlation matrix from date-bearing KPI observations.
+ * Only includes KPIs that have at least 5 unique dated observations.
+ * Each pair is aligned by common trade_date and requires at least 5 overlaps.
+ * Undated sparkline arrays are presentation-only and must not be positionally paired.
  */
 export function buildCorrelationMatrix(kpis: ResolvedCrossAssetKpi[]): CorrelationMatrix {
-  const eligible = kpis.filter((k) => k.sparkline.length >= 5);
-  const keys = eligible.map((k) => k.key);
-  const labels = eligible.map((k) => k.label);
+  const minimumObservations = 5;
+  const eligible = kpis
+    .map((kpi) => ({ kpi, points: normalizeDatedValues(kpi.sparklinePoints) }))
+    .filter(({ kpi, points }) => isAssetLevelKpiKey(kpi.key) && points.length >= minimumObservations);
+  const keys = eligible.map(({ kpi }) => kpi.key);
+  const labels = eligible.map(({ kpi }) => kpi.label);
 
-  const cells: CorrelationCell[][] = eligible.map((rowKpi, ri) => {
-    return eligible.map((colKpi, ci) => {
+  const cells: CorrelationCell[][] = eligible.map(({ kpi: rowKpi, points: rowPoints }, ri) => {
+    return eligible.map(({ kpi: colKpi, points: colPoints }, ci) => {
       if (ri === ci) {
         return { rowKey: rowKpi.key, colKey: colKpi.key, value: 1 };
       }
-      const minLen = Math.min(rowKpi.sparkline.length, colKpi.sparkline.length);
-      const xs = rowKpi.sparkline.slice(-minLen);
-      const ys = colKpi.sparkline.slice(-minLen);
-      return { rowKey: rowKpi.key, colKey: colKpi.key, value: pearsonR(xs, ys) };
+      const colByDate = new Map(colPoints.map((point) => [point.tradeDate, point.value]));
+      const aligned = rowPoints
+        .filter((point) => colByDate.has(point.tradeDate))
+        .map((point) => ({ x: point.value, y: colByDate.get(point.tradeDate)! }));
+      const value =
+        aligned.length >= minimumObservations
+          ? pearsonR(
+              aligned.map((point) => point.x),
+              aligned.map((point) => point.y),
+            )
+          : null;
+      return { rowKey: rowKpi.key, colKey: colKpi.key, value };
     });
   });
 
   return { keys, labels, cells };
+}
+
+function normalizeDatedValues(points: CrossAssetDatedValue[] | undefined): CrossAssetDatedValue[] {
+  const byDate = new Map<string, number>();
+  for (const point of points ?? []) {
+    if (!point.tradeDate || !Number.isFinite(point.value)) {
+      continue;
+    }
+    byDate.set(point.tradeDate, point.value);
+  }
+  return [...byDate.entries()]
+    .sort(([leftDate], [rightDate]) => leftDate.localeCompare(rightDate))
+    .map(([tradeDate, value]) => ({ tradeDate, value }));
 }
 
 /**
@@ -107,7 +175,7 @@ export function correlationColor(r: number | null): string {
  * Format a correlation value for display.
  */
 export function formatCorrelation(r: number | null): string {
-  if (r == null) return "—";
+  if (r == null) return EM_DASH;
   return r.toFixed(2);
 }
 
@@ -136,43 +204,43 @@ const REGIME_META: Record<MarketRegime, Omit<MarketRegimeInfo, "regime">> = {
   risk_on: {
     label: "Risk-On",
     description: "风险偏好回暖：权益上行 + 利率上行/持平 + 流动性中性偏松",
-    color: "#16a34a",
-    bgColor: "#f0fdf4",
+    color: CA_PALETTE.riskOn,
+    bgColor: CA_PALETTE.riskOnBg,
     icon: "🟢",
   },
   risk_off: {
     label: "Risk-Off",
     description: "避险模式：权益走弱 + 利率下行 + 资金面宽松",
-    color: "#dc2626",
-    bgColor: "#fef2f2",
+    color: CA_PALETTE.riskOff,
+    bgColor: CA_PALETTE.riskOffBg,
     icon: "🔴",
   },
   stagflation: {
     label: "滞胀交易",
     description: "增长放缓叠加通胀压力：商品走强 + 权益走弱 + 利率上行",
-    color: "#ea580c",
-    bgColor: "#fff7ed",
+    color: CA_PALETTE.stagflation,
+    bgColor: CA_PALETTE.stagflationBg,
     icon: "🟠",
   },
   deflation_trade: {
     label: "通缩交易",
     description: "通缩预期主导：商品走弱 + 利率下行 + 权益承压",
-    color: "#2563eb",
-    bgColor: "#eff6ff",
+    color: CA_PALETTE.deflation,
+    bgColor: CA_PALETTE.deflationBg,
     icon: "🔵",
   },
   liquidity_driven: {
     label: "流动性驱动",
     description: "宽松流动性主导：资金面偏松 + 股债同涨 + 利率下行",
-    color: "#7c3aed",
-    bgColor: "#f5f3ff",
+    color: CA_PALETTE.liquidity,
+    bgColor: CA_PALETTE.liquidityBg,
     icon: "🟣",
   },
   mixed: {
     label: "信号分化",
     description: "各资产信号冲突，无法归入单一体制",
-    color: "#64748b",
-    bgColor: "#f8fafc",
+    color: CA_PALETTE.mixed,
+    bgColor: CA_PALETTE.mixedBg,
     icon: "⚪",
   },
 };
@@ -222,7 +290,7 @@ export function identifyMarketRegime(kpis: ResolvedCrossAssetKpi[]): MarketRegim
   }
 
   const bondDir = dir("cn_gov_10y"); // yield: rising = rates up
-  const equityDir = dir("financial_conditions");
+  const equityDir = dir("csi300");
   const moneyDir = dir("money_market_7d"); // rising = tightening
   const brentDir = dir("brent");
   const steelDir = dir("steel");
@@ -285,7 +353,8 @@ export function computeSparklinePercentile(sparkline: number[]): PercentileInfo 
   else if (clamped >= 70) zone = "high";
   else zone = "mid";
 
-  return { percentile: clamped, label: `${clamped}th`, zone };
+  // 分位标签用百分数形态（"21%"），避免英文序数词在窄 chip 内折行（§7 语域）。
+  return { percentile: clamped, label: `${clamped}%`, zone };
 }
 
 /**
@@ -294,15 +363,15 @@ export function computeSparklinePercentile(sparkline: number[]): PercentileInfo 
 export function percentileZoneColor(zone: PercentileInfo["zone"]): string {
   switch (zone) {
     case "extreme_low":
-      return "#2563eb"; // blue — extremely low
+      return CA_PALETTE.percentileExtremeLow;
     case "low":
-      return "#60a5fa"; // light blue
+      return CA_PALETTE.percentileLow;
     case "mid":
-      return "#64748b"; // slate
+      return CA_PALETTE.percentileMid;
     case "high":
-      return "#f59e0b"; // amber
+      return CA_PALETTE.percentileHigh;
     case "extreme_high":
-      return "#ef4444"; // red
+      return CA_PALETTE.percentileExtremeHigh;
   }
 }
 
@@ -332,7 +401,7 @@ function pctChange(arr: number[], lookback: number): number | null {
 
 export function buildMomentumScoreboard(kpis: ResolvedCrossAssetKpi[]): MomentumRow[] {
   return kpis
-    .filter((k) => k.sparkline.length >= 2)
+    .filter((k) => isAssetLevelKpiKey(k.key) && k.sparkline.length >= 2)
     .map((k) => {
       const chg1d = pctChange(k.sparkline, 1);
       const chg5d = pctChange(k.sparkline, Math.min(5, k.sparkline.length - 1));
@@ -393,7 +462,7 @@ export const TREND_GROUPS: TrendGroup[] = [
   {
     key: "equity",
     label: "权益",
-    kpiKeys: ["financial_conditions", "csi300_pe", "mega_cap_weight", "mega_cap_top5_weight"],
+    kpiKeys: ["csi300", "csi300_pe", "mega_cap_weight", "mega_cap_top5_weight"],
   },
   {
     key: "commodity_fx",
@@ -466,7 +535,7 @@ export function detectVolatilityClustering(
   recentWindow = 5,
   elevationThreshold = 1.5,
 ): VolatilityAlert {
-  const eligible = kpis.filter((k) => k.sparkline.length >= 8);
+  const eligible = kpis.filter((k) => isAssetLevelKpiKey(k.key) && k.sparkline.length >= 8);
   const assets: VolatilityAssetDetail[] = eligible.map((k) => {
     const fullVol = rollingStdDev(k.sparkline, k.sparkline.length);
     const recentVol = rollingStdDev(k.sparkline, recentWindow);
@@ -521,15 +590,45 @@ export type EquityBondERP = {
   verdict: "equity_cheap" | "equity_expensive" | "neutral" | "unavailable";
   verdictLabel: string;
   verdictDescription: string;
+  /** 结论同视觉单元内的非正式口径披露，不可藏入 tooltip。 */
+  caliberLabel: string;
   verdictColor: string;
   verdictBg: string;
 };
 
+/** 展示层试算披露文案；与产品分类页「候选指标 · 非正式结论」同级可见。 */
+export const ERP_DISPLAY_CALIBER_LABEL = "展示层试算 · 非正式口径";
+
+/**
+ * 股债利差分档边界，镜像自 `backend/app/core_finance/macro_bond_linkage.py`
+ * 的 `EQUITY_BOND_SPREAD_RULES`：
+ *   - `restrictive` / `conflicted` 规则的 `spread_min=4.0` → 利差高档下沿；
+ *   - `supportive` 规则的 `spread_max=2.75` → 利差低档上沿。
+ * 后端改动这两个数值时，`crossAssetAnalytics.test.ts` 的常量一致性用例会失败。
+ */
+export const EQUITY_BOND_SPREAD_WIDE_MIN_PCT = 4.0;
+export const EQUITY_BOND_SPREAD_NARROW_MAX_PCT = 2.75;
+
 /**
  * Compute equity-bond risk premium from CSI300 PE and 10Y gov yield.
- * ERP = (1/PE × 100) − 10Y_yield
- * ERP > 3% → equity relatively cheap
- * ERP < 1% → equity relatively expensive
+ * ERP = (1/PE × 100) − 10Y_yield，与后端 `cycle_macro_score.compute_price_spread_signal`
+ *（`spread_ppt = (100.0 / pe) - cn10y`）以及 `macro_bond_linkage_service` 组装
+ * `EquityBondSpreadSignal.spread_pct` 时同一公式。
+ *
+ * 分档镜像后端 `EQUITY_BOND_SPREAD_RULES` 的利差边界（见上方常量），但股票视角的
+ * cheap/expensive 判定是前端展示层分档，后端未定义该判定：
+ *   - ERP ≥ 4.0：对应后端 `_match_equity_bond_spread_rule` 的 `spread_min` 检查通过
+ *     （`spread_pct < spread_min` 才跳过，即含等号命中）时的债券视角 `restrictive`/`conflicted`
+ *     高档；换成股票视角即"盈利收益率远高于无风险利率"→股票偏便宜。
+ *   - ERP ≤ 2.75：对应后端 `spread_max` 检查通过（`spread_pct > spread_max` 才跳过，即含等号
+ *     命中）时的债券视角 `supportive` 低档；股票视角即股票偏贵。
+ *   - 2.75 < ERP < 4.0：后端无规则命中、落回 `neutral`，此处同样判中性。
+ *
+ * 只镜像利差边界、不复用后端 stance：后端规则还叠加了 `index_pct_change` 日涨跌幅条件
+ * （±0.25），stance 是"利差档位 × 指数动量"的联合结果，无法一一还原为纯利差的股票估值判定。
+ * 展示文案也只用股票视角词汇，`supportive` / `restrictive` 按 `docs/page_contracts.md`
+ * §14.6.1 B 仅保留给受治理的传导轴输出。后端因债券侧原因调整这两个阈值时，需人工复核本镜像
+ * 是否仍适用——护栏测试只提示不一致，不应被当作"跟着改前端常量即可"的信号。
  */
 export function computeEquityBondERP(kpis: ResolvedCrossAssetKpi[]): EquityBondERP {
   const byKey = new Map(kpis.map((k) => [k.key, k]));
@@ -544,8 +643,9 @@ export function computeEquityBondERP(kpis: ResolvedCrossAssetKpi[]): EquityBondE
     verdict: "unavailable",
     verdictLabel: "数据不足",
     verdictDescription: "缺少沪深300市盈率或10Y国债数据，无法计算股债性价比。",
-    verdictColor: "#64748b",
-    verdictBg: "#f8fafc",
+    caliberLabel: ERP_DISPLAY_CALIBER_LABEL,
+    verdictColor: CA_PALETTE.erpUnavailable,
+    verdictBg: CA_PALETTE.erpUnavailableBg,
   };
 
   if (!peKpi || !bondKpi) return unavailable;
@@ -564,24 +664,24 @@ export function computeEquityBondERP(kpis: ResolvedCrossAssetKpi[]): EquityBondE
   let verdictColor: string;
   let verdictBg: string;
 
-  if (erp > 3) {
+  if (erp >= EQUITY_BOND_SPREAD_WIDE_MIN_PCT) {
     verdict = "equity_cheap";
     verdictLabel = "股票偏便宜";
-    verdictDescription = `ERP ${erp.toFixed(2)}% > 3%：盈利收益率显著高于无风险利率，股票相对债券有吸引力。`;
-    verdictColor = "#16a34a";
-    verdictBg = "#f0fdf4";
-  } else if (erp < 1) {
+    verdictDescription = `ERP ${erp.toFixed(2)}% ≥ ${EQUITY_BOND_SPREAD_WIDE_MIN_PCT.toFixed(2)}%：盈利收益率显著高于无风险利率，股票相对债券有吸引力。`;
+    verdictColor = CA_PALETTE.erpCheap;
+    verdictBg = CA_PALETTE.erpCheapBg;
+  } else if (erp <= EQUITY_BOND_SPREAD_NARROW_MAX_PCT) {
     verdict = "equity_expensive";
     verdictLabel = "股票偏贵";
-    verdictDescription = `ERP ${erp.toFixed(2)}% < 1%：盈利收益率接近无风险利率，股票估值偏高。`;
-    verdictColor = "#dc2626";
-    verdictBg = "#fef2f2";
+    verdictDescription = `ERP ${erp.toFixed(2)}% ≤ ${EQUITY_BOND_SPREAD_NARROW_MAX_PCT.toFixed(2)}%：盈利收益率接近无风险利率，股票估值偏高。`;
+    verdictColor = CA_PALETTE.erpExpensive;
+    verdictBg = CA_PALETTE.erpExpensiveBg;
   } else {
     verdict = "neutral";
-    verdictLabel = "中性区间";
-    verdictDescription = `ERP ${erp.toFixed(2)}%：盈利收益率适度高于无风险利率，股债性价比中性。`;
-    verdictColor = "#d97706";
-    verdictBg = "#fffbeb";
+    verdictLabel = "中性均衡";
+    verdictDescription = `ERP ${erp.toFixed(2)}% 落在 ${EQUITY_BOND_SPREAD_NARROW_MAX_PCT.toFixed(2)}%–${EQUITY_BOND_SPREAD_WIDE_MIN_PCT.toFixed(2)}% 之间：股债性价比中性，不构成方向判断。`;
+    verdictColor = CA_PALETTE.erpNeutral;
+    verdictBg = CA_PALETTE.erpNeutralBg;
   }
 
   return {
@@ -592,6 +692,7 @@ export function computeEquityBondERP(kpis: ResolvedCrossAssetKpi[]): EquityBondE
     verdict,
     verdictLabel,
     verdictDescription,
+    caliberLabel: ERP_DISPLAY_CALIBER_LABEL,
     verdictColor,
     verdictBg,
   };
@@ -611,73 +712,30 @@ export type WaterfallBar = {
   color: string;
 };
 
-/**
- * Build waterfall chart data from environment scores.
- * Each factor (liquidity, rate, growth, inflation) contributes to the composite score.
- * The waterfall shows how each factor pushes the composite up or down.
- */
-function buildDriverWaterfallLegacy(env: {
-  liquidity_score?: number;
-  rate_direction_score?: number;
-  growth_score?: number;
-  inflation_score?: number;
-  composite_score?: number;
-}): WaterfallBar[] {
-  const factors: Array<{ key: string; label: string; value: number }> = [
-    { key: "liquidity", label: "流动性", value: env.liquidity_score ?? 0 },
-    { key: "rate", label: "海外利率", value: env.rate_direction_score ?? 0 },
-    { key: "growth", label: "增长预期", value: env.growth_score ?? 0 },
-    { key: "inflation", label: "通胀扰动", value: env.inflation_score ?? 0 },
-  ];
-
-  const bars: WaterfallBar[] = [];
-  let cumulative = 0;
-
-  for (const f of factors) {
-    cumulative += f.value;
-    bars.push({
-      key: f.key,
-      label: f.label,
-      value: f.value,
-      cumulative,
-      kind: "factor",
-      color: f.value > 0.05 ? "#16a34a" : f.value < -0.05 ? "#dc2626" : "#94a3b8",
-    });
-  }
-
-  // Total bar
-  const composite = env.composite_score ?? cumulative;
-  bars.push({
-    key: "composite",
-    label: "综合",
-    value: composite,
-    cumulative: composite,
-    kind: "total",
-    color: composite > 0.05 ? "#16a34a" : composite < -0.05 ? "#dc2626" : "#64748b",
-  });
-
-  return bars;
-}
-
 type CompositeContribution = {
   component?: string;
   signed_contribution?: number;
 };
 
 const CONTRIBUTION_LABELS: Record<string, { key: string; label: string }> = {
-  liquidity: { key: "liquidity", label: "Liquidity" },
-  rate: { key: "rate", label: "Rates" },
-  rate_direction: { key: "rate", label: "Rates" },
-  growth: { key: "growth", label: "Growth" },
-  inflation: { key: "inflation", label: "Inflation" },
+  liquidity: { key: "liquidity", label: "流动性" },
+  rate: { key: "rate", label: "海外利率" },
+  rate_direction: { key: "rate", label: "海外利率" },
+  growth: { key: "growth", label: "增长预期" },
+  inflation: { key: "inflation", label: "通胀扰动" },
 };
 
 function waterfallColor(value: number, kind: "factor" | "total") {
-  if (value > 0.05) return "#dc2626";
-  if (value < -0.05) return "#16a34a";
-  return kind === "total" ? "#64748b" : "#94a3b8";
+  if (value > 0.05) return CA_PALETTE.waterfallUp;
+  if (value < -0.05) return CA_PALETTE.waterfallDown;
+  return kind === "total"
+    ? CA_PALETTE.waterfallTotalNeutral
+    : CA_PALETTE.waterfallFactorNeutral;
 }
 
+/**
+ * Build waterfall chart data from backend-provided composite contributions.
+ */
 export function buildDriverWaterfall(env: {
   composite_contributions?: CompositeContribution[];
   composite_score?: number;
@@ -689,10 +747,7 @@ export function buildDriverWaterfall(env: {
     const value = contribution.signed_contribution;
     if (typeof value !== "number" || !Number.isFinite(value)) continue;
     const component = String(contribution.component ?? "").trim();
-    const labelConfig = CONTRIBUTION_LABELS[component] ?? {
-      key: component || `factor-${bars.length + 1}`,
-      label: component || "Factor",
-    };
+    const labelConfig = CONTRIBUTION_LABELS[component] ?? { key: component || `factor-${bars.length + 1}`, label: component || "因子" };
     cumulative += value;
     bars.push({
       key: labelConfig.key,
@@ -707,7 +762,7 @@ export function buildDriverWaterfall(env: {
   if (typeof env.composite_score === "number" && Number.isFinite(env.composite_score)) {
     bars.push({
       key: "composite",
-      label: "Composite",
+      label: "综合",
       value: env.composite_score,
       cumulative: env.composite_score,
       kind: "total",

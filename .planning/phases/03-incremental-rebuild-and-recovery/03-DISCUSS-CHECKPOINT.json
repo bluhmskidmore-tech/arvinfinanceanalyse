@@ -1,0 +1,138 @@
+{
+  "phase": "03",
+  "phase_name": "Incremental Rebuild and Recovery",
+  "timestamp": "2026-07-17T07:31:36.6450546Z",
+  "areas_completed": [
+    "Invalidation scope"
+  ],
+  "areas_remaining": [
+    "Overlapping request coalescing",
+    "Per-cutoff failure recovery",
+    "Selected-cutoff page state"
+  ],
+  "decisions": {
+    "Invalidation scope": [
+      {
+        "question": "When should a committed formal source refresh trigger historical precompute invalidation?",
+        "answer": "Only after the formal source transaction commits successfully.",
+        "options_presented": ["after commit", "when refresh is queued", "both"]
+      },
+      {
+        "question": "Which manual-adjustment state changes trigger invalidation?",
+        "answer": "Only changes that alter formal results: approval, revocation of an approved adjustment, or editing an approved adjustment; pending drafts do not trigger.",
+        "options_presented": ["formal-result changes only", "all edits", "approval only"]
+      },
+      {
+        "question": "How should multiple same-year changes combine?",
+        "answer": "Use the earliest affected cutoff and rebuild through the latest available same-year cutoff.",
+        "options_presented": ["earliest affected cutoff", "separate target sets", "changed month only"]
+      },
+      {
+        "question": "What happens if rebuild dispatch fails after a business change commits?",
+        "answer": "Keep the business change, persist an explicit dispatch-failed/rebuild-required state, serve live fallback, and allow retry.",
+        "options_presented": ["keep change and fail visibly", "roll back business change", "log only"]
+      },
+      {
+        "question": "How is the earliest affected date established for a multi-date formal commit?",
+        "answer": "Use the earliest actual changed date from committed evidence; if evidence is missing, fail closed rather than guessing.",
+        "options_presented": ["committed change evidence", "request report date", "rebuild full year"]
+      },
+      {
+        "question": "When is the target cutoff set determined?",
+        "answer": "Freeze the explicit target cutoff list at enqueue time; later cutoffs require a later source event.",
+        "options_presented": ["freeze at enqueue", "resolve at execution", "expand on retry"]
+      },
+      {
+        "question": "Does cumulative invalidation cross calendar years?",
+        "answer": "No; propagation is limited to the same natural year because YTD accumulation resets.",
+        "options_presented": ["same year only", "cross year", "metric-specific"]
+      },
+      {
+        "question": "How are affected partitions served while rebuild is pending?",
+        "answer": "Mark them stale immediately and serve governed live fallback until the exact partition is current again.",
+        "options_presented": ["stale plus live fallback", "keep old precompute", "block page"]
+      },
+      {
+        "question": "How is a non-month-end source change mapped?",
+        "answer": "Map it to the first available month-end on or after the change date and retain both source date and mapped cutoff in evidence.",
+        "options_presented": ["next available month-end", "reject non-month-end", "first month-end of year"]
+      },
+      {
+        "question": "How is an approved adjustment moved to a new report date handled?",
+        "answer": "Invalidate the old cutoff chain immediately; the new cutoff chain is invalidated only after re-approval.",
+        "options_presented": ["old now, new after approval", "both immediately", "both after approval"]
+      },
+      {
+        "question": "What evidence survives when changes are coalesced?",
+        "answer": "Retain every source or adjustment event id, original date, mapped cutoff, and trigger reason.",
+        "options_presented": ["all change sources", "earliest only", "latest only"]
+      },
+      {
+        "question": "What happens when no available month-end exists after the change date?",
+        "answer": "Record an audited no-target result and do not create an empty or long-lived task; a future formal commit triggers future coverage.",
+        "options_presented": ["audited no-target", "wait for future data", "fail business change"]
+      },
+      {
+        "question": "Does an identical committed refresh trigger invalidation?",
+        "answer": "No; record an idempotent no-change result when the governed input fingerprint is unchanged.",
+        "options_presented": ["audited no-change", "always rebuild", "manual refresh only"]
+      },
+      {
+        "question": "Do metadata-only manual-adjustment edits trigger invalidation?",
+        "answer": "No; preserve the audit event but rebuild only when formal calculation inputs change.",
+        "options_presented": ["audit only", "always rebuild", "ignore metadata change"]
+      },
+      {
+        "question": "What happens to a precompute partition whose formal cutoff disappears?",
+        "answer": "Stop serving it immediately but retain historical partition evidence; do not physically delete it in this phase.",
+        "options_presented": ["unserve but retain", "delete", "continue serving"]
+      },
+      {
+        "question": "Which data changes can trigger this phase's automatic invalidation?",
+        "answer": "Only governed inputs actually used by the /pnl-by-business formal calculation chain.",
+        "options_presented": ["relevant governed inputs", "any system data", "manual adjustments only"]
+      },
+      {
+        "question": "How are source fingerprints scoped?",
+        "answer": "Use an independent cumulative fingerprint per cutoff so later changes do not make earlier partitions stale.",
+        "options_presented": ["cutoff-local cumulative fingerprint", "annual global fingerprint", "latest version only"]
+      },
+      {
+        "question": "What is the ordering between invalidation evidence and task dispatch?",
+        "answer": "Persist invalidation evidence before attempting dispatch so queue failure cannot hide staleness.",
+        "options_presented": ["persist invalidation first", "record after enqueue", "record when running"]
+      },
+      {
+        "question": "Does a governed input detail change with unchanged totals trigger rebuild?",
+        "answer": "Yes; lineage, record count, and diagnostics must remain aligned, so change detection is not total-only.",
+        "options_presented": ["rebuild on governed input change", "compare totals only", "metadata update only"]
+      },
+      {
+        "question": "Does a failed and rolled-back formal source transaction invalidate precompute?",
+        "answer": "No; record source refresh failure separately because committed formal data did not change.",
+        "options_presented": ["no invalidation", "mark stale", "retry precompute"]
+      }
+    ]
+  },
+  "deferred_ideas": [
+    "Long-lived scheduling that waits for future cutoffs remains outside Phase 03."
+  ],
+  "canonical_refs": [
+    ".planning/PROJECT.md",
+    ".planning/REQUIREMENTS.md",
+    ".planning/ROADMAP.md",
+    ".planning/phases/02-exact-cutoff-historical-coverage/02-CONTEXT.md",
+    ".planning/phases/02-exact-cutoff-historical-coverage/02-VERIFICATION.md",
+    "AGENTS.md",
+    "backend/CLAUDE.md",
+    "backend/app/services/pnl_service.py",
+    "backend/app/tasks/pnl_materialize.py",
+    "backend/app/tasks/pnl_by_business_precompute.py",
+    "backend/app/repositories/pnl_repo.py",
+    "backend/app/api/routes/pnl.py",
+    "frontend/src/api/contracts.ts",
+    "frontend/src/api/pnlClient.ts",
+    "frontend/src/features/pnl/PnlByBusinessPage.tsx",
+    "tests/test_pnl_api_contract.py"
+  ]
+}

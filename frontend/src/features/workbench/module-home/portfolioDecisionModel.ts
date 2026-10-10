@@ -8,6 +8,7 @@ import {
   formatRatePercent,
   nativeToNumber,
 } from "../../bond-dashboard/utils/format";
+import { EM_DASH } from "../../../utils/format";
 import type {
   ModuleHomeDecision,
   ModuleHomeDetailPanel,
@@ -34,16 +35,17 @@ export type PortfolioEvidenceState = {
 };
 
 export function pnlDriverLabel(driver: PnlAttributionAnalysisSummary["primary_driver"]) {
-  if (driver === "volume") {
-    return "规模";
-  }
-  if (driver === "rate") {
-    return "利率";
-  }
-  if (driver === "market") {
-    return "市场";
-  }
-  return "待确认";
+  return {
+    volume: "利息规模",
+    rate: "利息收益率",
+    interaction: "交叉效应",
+    fair_value: "公允价值变动",
+    capital_gain: "投资收益变动",
+    manual_adjustment: "手工调整变动",
+    unexplained: "未解释差额",
+    market: "市场",
+    unknown: "待确认",
+  }[driver] ?? "待确认";
 }
 
 function buildPortfolioActionQueue(args: {
@@ -268,8 +270,8 @@ export function buildPortfolioDecision(args: {
       ? `${formatDv01Wan(args.bondKpis.total_dv01)} 万元`
       : args.risk
         ? `${formatDv01Wan(args.risk.total_dv01)} 万元`
-        : "-";
-  const creditValue = args.risk ? `${formatRatePercent(args.risk.credit_ratio)}%` : "-";
+        : EM_DASH;
+  const creditValue = args.risk ? `${formatRatePercent(args.risk.credit_ratio)}%` : EM_DASH;
   const attributionValue = args.pnlSummary
     ? pnlDriverLabel(args.pnlSummary.primary_driver)
     : args.pnlState.label;
@@ -295,7 +297,7 @@ export function buildPortfolioDecision(args: {
       {
         label: "DV01",
         value: dv01Value,
-        tone: dv01Value === "-" ? "muted" : "ok",
+        tone: dv01Value === EM_DASH ? "muted" : "ok",
       },
       {
         label: "归因摘要",
@@ -312,7 +314,9 @@ export function buildPortfolioDecision(args: {
         value: args.readiness.sourceDates,
         tone: args.readiness.blockingReasons.some((reason) => reason.includes("日期不一致"))
           ? "error"
-          : "ok",
+          : args.readiness.sourceDates === EM_DASH
+            ? "muted"
+            : "ok",
       },
       {
         label: "风险闭合",
@@ -331,11 +335,28 @@ export function buildPortfolioDecision(args: {
       },
     ],
     actions,
+    readiness: {
+      decisionReady: args.readiness.decisionReady,
+      riskClosureReady: args.readiness.riskClosureReady,
+      blockingReasons: args.readiness.blockingReasons,
+      warningReasons: args.readiness.warningReasons,
+      sourceFacts: args.readiness.sourceFacts,
+      sourceDates: args.readiness.sourceDates,
+      riskClosureFact: args.readiness.riskClosureFact,
+    },
   };
 }
 
 const MOCK_PORTFOLIO_GUARD_DETAIL =
   "当前为 MOCK 模式，样例市值、信用占比、DV01、持仓只数和归因结论仅用于页面结构验证，不可用于业务决策。";
+const MOCK_PORTFOLIO_STRUCTURE_DETAIL =
+  "MOCK 模式保留结构样例用于页面视觉验收；不可作为正式组合读数或调仓依据。";
+const MOCK_PORTFOLIO_STRUCTURE_PANEL_KEYS = new Set([
+  "portfolio-comparison",
+  "yield-distribution",
+  "spread-analysis",
+  "business-type-metrics",
+]);
 
 export function guardMockPortfolioHomeView(view: ModuleHomeViewBody): ModuleHomeViewBody {
   const guardedDetailPanel: ModuleHomeDetailPanel = {
@@ -349,7 +370,7 @@ export function guardMockPortfolioHomeView(view: ModuleHomeViewBody): ModuleHome
         key: "mock-portfolio-guard-row",
         label: "正式数据源",
         value: "待切换",
-        tradeDate: "-",
+        tradeDate: EM_DASH,
         source: "mock-mode-guard",
         tone: "error",
         detail: "切换真实数据源后再查看组合规模、信用占比、DV01、持仓只数和归因摘要。",
@@ -357,6 +378,20 @@ export function guardMockPortfolioHomeView(view: ModuleHomeViewBody): ModuleHome
     ],
     tone: "error",
   };
+  const guardedDistributionPanels = view.distributionPanels?.map((panel) => ({
+    ...panel,
+    stateLabel: "模拟数据",
+    stateDetail: `${panel.stateDetail} ${MOCK_PORTFOLIO_STRUCTURE_DETAIL}`,
+    tone: "watch" as ModuleHomeTone,
+  }));
+  const guardedStructurePanels = (view.detailPanels ?? [])
+    .filter((panel) => MOCK_PORTFOLIO_STRUCTURE_PANEL_KEYS.has(panel.key))
+    .map((panel) => ({
+      ...panel,
+      stateLabel: panel.rows.length > 0 ? "模拟数据" : panel.stateLabel,
+      stateDetail: `${panel.stateDetail} ${MOCK_PORTFOLIO_STRUCTURE_DETAIL}`,
+      tone: panel.rows.length > 0 ? ("watch" as ModuleHomeTone) : panel.tone,
+    }));
 
   return {
     ...view,
@@ -407,12 +442,13 @@ export function guardMockPortfolioHomeView(view: ModuleHomeViewBody): ModuleHome
         tone: "muted",
       },
     ],
-    distributionPanels: [],
-    detailPanels: [guardedDetailPanel],
+    distributionPanels: guardedDistributionPanels,
+    detailPanels: [guardedDetailPanel, ...guardedStructurePanels],
     dataNote: {
       title: "模拟数据说明",
       lines: [
         MOCK_PORTFOLIO_GUARD_DETAIL,
+        MOCK_PORTFOLIO_STRUCTURE_DETAIL,
         "请切换正式数据源后再查看组合规模、信用占比、DV01、持仓只数和归因摘要。",
       ],
       tone: "error",

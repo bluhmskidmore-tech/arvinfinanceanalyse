@@ -1,12 +1,27 @@
+import http from "node:http";
+
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import tailwindcss from "@tailwindcss/vite";
+import { productionMockBoundary } from "./scripts/productionMockBoundary.mjs";
 
 /** Dev proxy target; override if the API runs elsewhere, e.g. `MOSS_VITE_API_PROXY=http://127.0.0.1:8765`. */
 const apiTarget = process.env.MOSS_VITE_API_PROXY ?? "http://127.0.0.1:7888";
 
+/**
+ * Without an explicit agent, http-proxy forces `Connection: close` and opens a
+ * fresh TCP connection to the backend for every proxied request (measured: one
+ * TIME_WAIT socket per request, ~50ms extra per 18-request page load plus
+ * 100-250ms tail spikes). A keep-alive agent lets the proxy reuse connections.
+ */
+const apiProxyAgent = new http.Agent({ keepAlive: true, maxSockets: 32 });
+
 /** DuckDB / storage bootstrap on first request can be slow; avoid proxy timing out mid-migration. */
-const apiProxy = { target: apiTarget, changeOrigin: true, timeout: 120_000 } as const;
+const apiProxy = {
+  target: apiTarget,
+  changeOrigin: true,
+  timeout: 120_000,
+  agent: apiProxyAgent,
+} as const;
 
 function isReactVendorModule(normalizedId: string) {
   return (
@@ -76,27 +91,29 @@ function getHomeStartupChunkName(id: string) {
 }
 
 export default defineConfig({
-  plugins: [tailwindcss(), react()],
+  plugins: [react(), productionMockBoundary()],
   /** `vite preview` does not inherit `server.proxy` unless mirrored here — without it, `/api` and `/ui` hit the static server and return 404. */
   preview: {
-    host: true,
+    host: "localhost",
     port: 5888,
     strictPort: true,
     proxy: {
       "/ui": apiProxy,
       "/api": apiProxy,
       "/health": apiProxy,
+      "/openapi.json": apiProxy,
     },
   },
   server: {
-    // true：同时监听 IPv4/常见 IPv6，避免浏览器用 http://localhost:5888 时解析到 ::1 却连不上仅绑定 127.0.0.1 的情况
-    host: true,
+    // 开发匿名回退只允许本机读取；代理默认只监听回环，避免将远端请求转成后端回环来源。
+    host: "localhost",
     port: 5888,
     strictPort: true,
     proxy: {
       "/ui": apiProxy,
       "/api": apiProxy,
       "/health": apiProxy,
+      "/openapi.json": apiProxy,
     },
   },
   build: {

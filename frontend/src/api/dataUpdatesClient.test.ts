@@ -1,0 +1,133 @@
+import { describe, expect, it, vi } from "vitest";
+
+import { createDataUpdatesClient } from "./dataUpdatesClient";
+
+describe("data update client", () => {
+  const scope = {
+    scanned_report_dates: ["2025-01-31", "2026-01-31"], scanned_years: ["2025", "2026"], scanned_date_count: 2,
+    rebuilt_report_dates: ["2026-01-31"], rebuilt_years: ["2026"], rebuilt_date_count: 1,
+    reused_report_dates: ["2025-01-31"], reused_years: ["2025"], reused_date_count: 1,
+    removed_report_dates: [], removed_years: [], removed_date_count: 0,
+  };
+
+  it.each([
+    { refresh_scope: { ...scope, scanned_date_count: -1 } },
+    { refresh_scope: { ...scope, scanned_date_count: 99 } },
+    { refresh_scope: { ...scope, scanned_report_dates: [null] } },
+    { refresh_scope: { ...scope, scanned_years: ["F:/private-source"] } },
+    { refresh_scope: { ...scope, removed_report_dates: undefined } },
+    { refresh_scope: scope, status: "failed" },
+    { refresh_scope: scope, key: "formal_balance" },
+  ])("rejects malformed or misplaced product-category scope (%j)", async (override) => {
+    const receipt = { run_id: "scope-run", report_date: "2026-08-31", status: "completed",
+      updated_at: "2026-09-01T00:00:00Z", message: "已完成。", steps: [
+        { key: "product_category_pnl", label: "产品损益", status: "completed", ...override },
+      ] };
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify(receipt), { status: 202 }));
+    const api = createDataUpdatesClient({ fetchImpl });
+    await expect(api.requestCore("2026-08-31", false, "scope-key")).rejects.toThrow(/refresh_scope|处理范围/);
+  });
+
+  it("sends an explicit date and idempotency key without accepting a command", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      run_id: "run-1", report_date: "2026-08-31", workflow: "core_financial", status: "queued", message: "已受理。",
+      updated_at: "2026-09-01T00:00:00Z", steps: [],
+    }), { status: 202 }));
+    const api = createDataUpdatesClient({ baseUrl: "http://fixture", fetchImpl });
+    await api.requestCore("2026-08-31", true, "same-request");
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe("http://fixture/api/data-updates/core");
+    expect(init.headers["Idempotency-Key"]).toBe("same-request");
+    expect(JSON.parse(init.body)).toEqual({ report_date: "2026-08-31", wait_for_inputs: true, workflow: "core_financial" });
+  });
+
+  it("rejects malformed overview data instead of rendering it as success", async () => {
+    const api = createDataUpdatesClient({ fetchImpl: vi.fn().mockResolvedValue(new Response("{}")) });
+    await expect(api.overview()).rejects.toThrow("runs");
+  });
+
+  it("rejects malformed nested dates and permissions before the page renders", async () => {
+    const payload = {
+      runs: [], financial_dates: [null], schedule: { tasks: [] }, steps: [], input_directory: "F:/fixture",
+      permissions: { core: true, balance: "false", market: true },
+    };
+    const api = createDataUpdatesClient({ fetchImpl: vi.fn().mockResolvedValue(new Response(JSON.stringify(payload))) });
+    await expect(api.overview()).rejects.toThrow(/permissions.balance|financial_dates\[0\]/);
+  });
+
+  it("keeps historical core requests without a workflow field readable", async () => {
+    const payload = {
+      runs: [{ run_id: "old-core", report_date: "2026-08-31", status: "failed",
+        updated_at: "2026-09-01T00:00:00Z", message: "旧请求失败", steps: [] }],
+      financial_dates: [], schedule: { status: "available", detail: "已启用", tasks: [] },
+      steps: [], input_directory: "F:/fixture", permissions: { core: true, market: false },
+    };
+    const api = createDataUpdatesClient({ fetchImpl: vi.fn().mockResolvedValue(new Response(JSON.stringify(payload))) });
+    await expect(api.overview()).resolves.toMatchObject({ runs: [{ run_id: "old-core" }] });
+  });
+
+  it("rejects malformed preflight checks before offering an update", async () => {
+    const payload = { report_date: "2026-08-31", workflow: "balance_daily", ready: true,
+      input_directory: "F:/fixture", checks: [null] };
+    const api = createDataUpdatesClient({ fetchImpl: vi.fn().mockResolvedValue(new Response(JSON.stringify(payload))) });
+    await expect(api.preflight("2026-08-31", "balance_daily")).rejects.toThrow("checks[0]");
+  });
+
+  it("rejects an accepted response without a request receipt", async () => {
+    const api = createDataUpdatesClient({ fetchImpl: vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: "queued" }), { status: 202 }),
+    ) });
+    await expect(api.requestCore("2026-08-31", false, "receipt-required")).rejects.toThrow("run_id");
+  });
+
+  it("preserves an actionable backend error", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: "该报告日的文件尚未到齐。" }), { status: 409 }));
+    const api = createDataUpdatesClient({ fetchImpl });
+    await expect(api.requestCore("2026-08-31", false, "retry-key")).rejects.toThrow("尚未到齐");
+  });
+
+  it("recovers publication with the original receipt and an idempotency key without resubmitting financial work", async () => {
+    const receipt = { run_id: "recovery-1", report_date: "2026-08-31", workflow: "core_financial",
+      recovery_mode: "publication_only", recovery_of_run_id: "original/1", status: "queued",
+      updated_at: "2026-09-01T00:00:00Z", message: "仅恢复发布已受理。", steps: [] };
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify(receipt), { status: 202 }));
+    const api = createDataUpdatesClient({ baseUrl: "http://fixture", fetchImpl });
+    expect(await api.recoverPublication("original/1", "recovery-key")).toEqual(receipt);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe("http://fixture/api/data-updates/runs/original%2F1/recover-publication");
+    expect(init.method).toBe("POST");
+    expect(init.headers["Idempotency-Key"]).toBe("recovery-key");
+    expect(init.body).toBeUndefined();
+  });
+
+  it("rejects an accepted publication recovery without a request receipt", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ status: "queued" }), { status: 202 }));
+    const api = createDataUpdatesClient({ fetchImpl });
+
+    await expect(api.recoverPublication("original/1", "recovery-key")).rejects.toThrow("run_id");
+  });
+
+  it.each([
+    { run_id: "" },
+    { run_id: "   " },
+    { run_id: "original/1" },
+    { recovery_mode: undefined },
+    { recovery_mode: "full_financial" },
+    { recovery_of_run_id: undefined },
+    { recovery_of_run_id: "another-original" },
+  ])("rejects a publication recovery with an inconsistent receipt (%j)", async (override) => {
+    const receipt = { run_id: "recovery-1", report_date: "2026-08-31", workflow: "core_financial",
+      recovery_mode: "publication_only", recovery_of_run_id: "original/1", status: "queued",
+      updated_at: "2026-09-01T00:00:00Z", message: "仅恢复发布已受理。", steps: [], ...override };
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify(receipt), { status: 202 }));
+    const api = createDataUpdatesClient({ fetchImpl });
+
+    await expect(api.recoverPublication("original/1", "recovery-key")).rejects.toThrow("发布恢复回执与所选请求不一致");
+  });
+
+  it("preserves a source-version rejection from publication recovery", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: "来源版本已变化，不能恢复发布。" }), { status: 409 }));
+    const api = createDataUpdatesClient({ fetchImpl });
+    await expect(api.recoverPublication("original", "recovery-key")).rejects.toThrow("来源版本已变化");
+  });
+});

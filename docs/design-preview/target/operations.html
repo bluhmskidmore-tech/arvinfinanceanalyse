@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>经营分析 · 目标态视觉样张 · MOSS Workbench</title>
+<style>
+  /* ============ IB 目标态设计令牌 ============ */
+  :root{
+    --paper:#f4f3f0;
+    --card:#ffffff;
+    --hairline:#e2e0da;
+    --ink:#16191d;
+    --ink-2:#5c6370;
+    --ink-3:#8a8f98;
+    --accent:#14366b;
+    --up:#1f7a4d;
+    --down:#b42318;
+    --warn:#b54708;
+    --rail:#10161f;
+    --gold:#c9a85c;
+    --banner-bg:#faf6ec;
+    --sans:-apple-system,'PingFang SC','Microsoft YaHei UI','Segoe UI',sans-serif;
+    --mono:ui-monospace,'SF Mono','Cascadia Mono',Consolas,monospace;
+    --serif:Georgia,'Noto Serif SC',serif;
+    --r:2px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{background:var(--paper);}
+  body{
+    font-family:var(--sans);
+    font-size:13px;
+    color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+    font-style:normal;
+  }
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.01em;}
+  a{color:var(--accent);text-decoration:none;}
+
+  /* ============ 布局骨架 ============ */
+  .shell{display:flex;width:1440px;min-height:100vh;margin:0 auto;}
+
+  /* ============ 左侧 MOSS 深色导航 rail ============ */
+  .rail{
+    width:220px;flex:0 0 220px;
+    background:var(--rail);
+    color:#c7ccd4;
+    padding:18px 0 24px;
+    display:flex;flex-direction:column;gap:22px;
+  }
+  .brand{display:flex;align-items:center;gap:10px;padding:0 20px;}
+  .brand .m{
+    width:22px;height:22px;border:1px solid var(--gold);color:var(--gold);
+    display:flex;align-items:center;justify-content:center;
+    font-size:12px;font-weight:600;
+  }
+  .brand .word{font-size:15px;font-weight:600;letter-spacing:.14em;color:#e8e4da;}
+  .rail-group{padding:0 10px;}
+  .rail-label{
+    font-size:11px;color:#6b7280;letter-spacing:.08em;
+    padding:0 10px 8px;
+  }
+  .rail-item{
+    position:relative;display:flex;align-items:center;gap:9px;
+    padding:8px 10px;margin:1px 0;
+    font-size:13px;color:#aab1bc;border-radius:var(--r);
+  }
+  .rail-item .ico{
+    width:12px;height:12px;flex:0 0 12px;
+    border:1px solid #4a5260;border-radius:1px;
+  }
+  .rail-item .home{margin-left:auto;font-size:11px;color:#5d646f;}
+  .rail-item.active{
+    background:#1a2230;color:#eef0f3;
+  }
+  .rail-item.active::before{
+    content:"";position:absolute;left:-10px;top:6px;bottom:6px;width:2px;background:var(--gold);
+  }
+  .rail-item.active .ico{border-color:var(--gold);}
+  .rail-chat{display:flex;flex-direction:column;gap:2px;}
+  .chat-pill{
+    margin:6px 10px 0;align-self:flex-start;
+    font-size:11px;color:#7fb08f;border:1px solid #2e4a3a;border-radius:var(--r);
+    padding:2px 8px;
+  }
+  .chat-sub{padding:2px 10px 0 31px;font-size:11px;color:#5d646f;}
+
+  /* ============ 主区 ============ */
+  .main{flex:1;padding:16px 20px 40px;display:flex;flex-direction:column;gap:12px;}
+
+  /* 顶部页头 */
+  .topbar{
+    background:var(--card);border:1px solid var(--hairline);border-radius:var(--r);
+    padding:12px 16px;display:flex;align-items:flex-start;gap:18px;
+  }
+  .title-block{display:flex;align-items:center;gap:10px;flex:0 0 auto;padding-top:2px;}
+  .title-block h1{font-size:20px;font-weight:700;letter-spacing:.01em;}
+  .route-pill{
+    font-size:11px;color:var(--ink-2);
+    border:1px solid var(--hairline);border-radius:var(--r);
+    background:var(--paper);padding:3px 8px;white-space:nowrap;
+  }
+  .ticker{flex:1;display:flex;flex-wrap:wrap;gap:4px 18px;align-content:flex-start;}
+  .tick{display:flex;align-items:baseline;gap:6px;white-space:nowrap;}
+  .tick .k{font-size:11px;color:var(--ink-3);}
+  .tick .v{font-size:12.5px;font-weight:600;}
+  .tick .d{font-size:11px;}
+  .d.up{color:var(--up);} .d.down{color:var(--down);} .d.flat{color:var(--ink-3);}
+  .top-actions{display:flex;gap:8px;align-items:center;flex:0 0 auto;padding-top:2px;}
+  .chip-btn{
+    font-size:12px;color:var(--ink-2);
+    border:1px solid var(--hairline);border-radius:var(--r);background:var(--card);
+    padding:5px 10px;
+  }
+  .chip-btn.solid{background:var(--paper);}
+
+  /* 页面切换条 */
+  .pageswitch{
+    background:var(--card);border:1px solid var(--hairline);border-radius:var(--r);
+    padding:8px 16px;display:flex;align-items:center;gap:16px;
+  }
+  .pageswitch .cur{font-size:11px;color:var(--ink-3);}
+  .tabs{display:flex;gap:6px;}
+  .tab{
+    font-size:12.5px;color:var(--ink-2);
+    border:1px solid var(--hairline);border-radius:var(--r);
+    padding:5px 12px;background:var(--card);
+  }
+  .tab.active{background:var(--paper);color:var(--ink);font-weight:600;border-color:#cfccc4;}
+  .pageswitch .right{margin-left:auto;font-size:13px;font-weight:600;}
+
+  /* 临时例外横幅：警色左边线 3px + 米白底 */
+  .banner{
+    background:var(--banner-bg);
+    border:1px solid #e8dfc9;border-left:3px solid var(--warn);
+    border-radius:var(--r);
+    padding:10px 14px;
+  }
+  .banner .row1{display:flex;gap:10px;align-items:baseline;}
+  .banner .tag{font-size:12.5px;font-weight:700;color:var(--warn);white-space:nowrap;}
+  .banner .txt{font-size:12.5px;color:var(--ink);}
+  .banner .sub{margin-top:4px;font-size:12px;color:var(--ink-2);padding-left:64px;}
+
+  /* 受治理经营视图 主卡 */
+  .hero{
+    background:var(--card);border:1px solid var(--hairline);border-radius:var(--r);
+    padding:18px 20px;
+    display:grid;grid-template-columns:minmax(0,1.02fr) minmax(0,1fr);gap:24px;
+  }
+  .gov-label{font-size:11px;color:var(--ink-3);letter-spacing:.06em;margin-bottom:8px;}
+  .hero h2{
+    font-family:var(--serif);
+    font-size:30px;font-weight:700;letter-spacing:.01em;
+    margin-bottom:10px;
+  }
+  .hero .lede{font-size:13px;color:var(--ink-2);line-height:1.7;max-width:52ch;}
+  .badge-navy{
+    display:inline-block;margin-top:12px;
+    font-size:11.5px;color:var(--accent);
+    border:1px solid var(--accent);border-radius:var(--r);
+    padding:3px 10px;background:transparent;letter-spacing:.04em;
+  }
+
+  /* 筛选器 */
+  .filters{
+    margin-top:16px;border:1px solid var(--hairline);border-radius:var(--r);
+    background:var(--card);padding:12px 14px;
+    display:grid;grid-template-columns:1fr 1fr;gap:12px 16px;
+  }
+  .f-item label{display:block;font-size:11px;color:var(--ink-3);margin-bottom:5px;}
+  .f-select{
+    width:100%;appearance:none;-webkit-appearance:none;
+    font-family:var(--sans);font-size:12.5px;color:var(--ink);
+    background:var(--card) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M1 1l4 4 4-4' fill='none' stroke='%235c6370' stroke-width='1.2'/></svg>") no-repeat right 10px center;
+    border:1px solid var(--hairline);border-radius:var(--r);
+    padding:8px 26px 8px 10px;
+  }
+  .chain-note{
+    margin-top:14px;font-size:12px;color:var(--ink-2);line-height:1.75;
+    border-top:1px solid var(--hairline);padding-top:12px;
+  }
+  .chain-note b{color:var(--ink);font-weight:600;}
+
+  /* KPI 区 */
+  .kpi-zone{display:flex;flex-direction:column;gap:12px;}
+  .kpi-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+  .kpi{
+    background:var(--card);border:1px solid var(--hairline);border-top:2px solid var(--accent);
+    border-radius:var(--r);padding:12px 14px 11px;
+  }
+  .kpi .k{font-size:11.5px;color:var(--ink-2);}
+  .kpi .v{margin-top:6px;display:flex;align-items:baseline;gap:6px;}
+  .kpi .v .n{font-size:32px;font-weight:650;line-height:1;}
+  .kpi .v .u{font-size:11.5px;color:var(--ink-3);}
+  .kpi .meta{margin-top:8px;font-size:10.5px;color:var(--ink-3);line-height:1.6;}
+  .stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+  .stat{
+    background:var(--card);border:1px solid var(--hairline);border-radius:var(--r);
+    padding:10px 12px;min-height:96px;
+  }
+  .stat .k{font-size:11px;color:var(--ink-2);}
+  .stat .v{margin-top:5px;font-size:20px;font-weight:650;line-height:1.15;}
+  .stat .meta{margin-top:6px;font-size:10.5px;color:var(--ink-3);line-height:1.55;}
+  /* 源批次失败态：安静呈现 */
+  .stat.fail .v{color:var(--ink-3);font-weight:600;display:flex;align-items:center;gap:7px;}
+  .stat.fail .v::before{
+    content:"";width:7px;height:7px;border-radius:50%;background:var(--warn);flex:0 0 7px;
+  }
+  .retry{margin-top:6px;font-size:11px;color:var(--accent);cursor:pointer;}
+  .stat.fail .meta{margin-top:2px;}
+
+  /* 通用区块 */
+  .section{
+    background:var(--card);border:1px solid var(--hairline);border-radius:var(--r);
+    padding:16px 20px;
+  }
+  .sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:4px;}
+  .sec-head h3{font-size:16px;font-weight:700;}
+  .sec-head .sub{font-size:12px;color:var(--ink-2);}
+  .sec-lede{font-size:12px;color:var(--ink-3);margin-bottom:14px;}
+
+  .core-grid{display:grid;grid-template-columns:1.05fr 1fr 1fr;gap:20px;}
+  .core-col h4{font-size:13px;font-weight:700;margin-bottom:10px;}
+  .concl p{font-size:12.5px;color:var(--ink-2);line-height:1.8;}
+  .fact-chips{display:flex;flex-direction:column;gap:6px;margin-top:12px;}
+  .fact{
+    font-size:11.5px;color:var(--ink-2);
+    border:1px solid var(--hairline);border-radius:var(--r);
+    padding:5px 10px;background:var(--paper);
+  }
+  .fact b{color:var(--ink);font-weight:600;}
+  .bridge-cap{font-size:11px;color:var(--ink-3);line-height:1.6;margin-top:8px;}
+  .qual-list{display:flex;flex-direction:column;}
+  .qual{
+    display:flex;align-items:baseline;gap:8px;
+    padding:6px 0;border-bottom:1px solid var(--hairline);font-size:12px;
+  }
+  .qual:last-of-type{border-bottom:none;}
+  .qual .qk{color:var(--ink-2);flex:1;}
+  .qual .qv{font-size:12.5px;font-weight:600;}
+  .qual .qs{font-size:11px;width:44px;text-align:right;}
+  .qs.ok{color:var(--up);} .qs.warn{color:var(--warn);}
+  .qual-alert{
+    margin-top:10px;border-left:3px solid var(--warn);background:var(--banner-bg);
+    border-radius:var(--r);padding:8px 10px;
+  }
+  .qual-alert .t{font-size:12px;font-weight:700;color:var(--warn);}
+  .qual-alert .d{font-size:11.5px;color:var(--ink-2);line-height:1.6;margin-top:3px;}
+  .qual-alert .act{margin-top:6px;font-size:11.5px;}
+
+  /* 本期关注事项 */
+  .watch-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+  .watch{
+    border:1px solid var(--hairline);border-radius:var(--r);
+    padding:10px 12px;background:var(--card);
+  }
+  .watch .wt{font-size:12.5px;font-weight:600;}
+  .watch .wd{margin-top:5px;font-size:11.5px;color:var(--ink-2);line-height:1.6;}
+
+  /* 贡献区：表格 + 日历 */
+  .contrib-grid{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);gap:20px;}
+  .contrib-meta{
+    display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;
+    border:1px solid var(--hairline);border-radius:var(--r);background:var(--paper);
+    padding:8px 12px;margin-bottom:10px;font-size:11.5px;color:var(--ink-2);
+  }
+  .contrib-meta .big{font-size:13px;font-weight:700;color:var(--ink);}
+  .contrib-src{font-size:11px;color:var(--ink-3);line-height:1.7;margin-bottom:10px;}
+  table.pnl{width:100%;border-collapse:collapse;font-size:11.5px;}
+  .pnl th{
+    text-align:right;font-weight:600;color:var(--ink-2);font-size:11px;
+    padding:6px 8px;border-bottom:1px solid #cfccc4;white-space:nowrap;background:var(--paper);
+  }
+  .pnl th:first-child,.pnl th:nth-child(2){text-align:left;}
+  .pnl td{
+    padding:5px 8px;border-bottom:1px solid var(--hairline);
+    text-align:right;white-space:nowrap;color:var(--ink);
+  }
+  .pnl td:first-child{text-align:left;}
+  .pnl td.side{text-align:left;color:var(--ink-3);}
+  .pnl td.neg{color:var(--down);}
+  .pnl tr.total td{font-weight:700;border-top:1px solid #cfccc4;background:var(--paper);}
+  .pnl tr.grand td{font-weight:700;color:var(--accent);}
+  .pnl-foot{margin-top:8px;font-size:11px;color:var(--ink-3);}
+
+  .cal{display:flex;flex-direction:column;border:1px solid var(--hairline);border-radius:var(--r);}
+  .cal-row{
+    display:grid;grid-template-columns:52px 1fr auto;gap:4px 10px;align-items:baseline;
+    padding:10px 12px;border-bottom:1px solid var(--hairline);
+  }
+  .cal-row:last-child{border-bottom:none;}
+  .cal-date{font-size:12px;font-weight:700;color:var(--accent);}
+  .cal-what{font-size:12.5px;font-weight:600;}
+  .cal-amt{font-size:12px;color:var(--ink-2);}
+  .cal-sub{grid-column:2/4;display:flex;gap:10px;font-size:11px;color:var(--ink-3);}
+  .cal-tag{border:1px solid var(--hairline);border-radius:var(--r);padding:0 6px;background:var(--paper);}
+  .cal-tag.hi{color:var(--warn);border-color:#e3cfae;}
+
+  /* 数据标注角标 */
+  .snapshot{
+    align-self:flex-end;
+    font-size:11px;color:var(--ink-3);
+    border:1px solid var(--hairline);border-radius:var(--r);background:var(--card);
+    padding:4px 10px;letter-spacing:.02em;
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ============ 左侧 MOSS 深色导航 rail ============ -->
+  <nav class="rail">
+    <div class="brand"><span class="m">M</span><span class="word">MOSS</span></div>
+
+    <div class="rail-group">
+      <div class="rail-label">工作台</div>
+      <div class="rail-item active"><span class="ico"></span>经营日报<span class="home">首页</span></div>
+      <div class="rail-item"><span class="ico"></span>组合工作台<span class="home">首页</span></div>
+      <div class="rail-item"><span class="ico"></span>市场工作台<span class="home">首页</span></div>
+      <div class="rail-item"><span class="ico"></span>风险工作台<span class="home">首页</span></div>
+      <div class="rail-item"><span class="ico"></span>绩效工作台<span class="home">首页</span></div>
+      <div class="rail-item"><span class="ico"></span>报表与数据<span class="home">首页</span></div>
+    </div>
+
+    <div class="rail-group">
+      <div class="rail-label">对话</div>
+      <div class="rail-chat">
+        <div class="rail-item"><span class="ico"></span>MOSS Chat</div>
+        <div class="chat-pill">可用</div>
+        <div class="chat-sub">直接提问</div>
+      </div>
+    </div>
+
+    <div class="rail-group">
+      <div class="rail-label">支持入口</div>
+      <div class="rail-item"><span class="ico"></span>报表中心</div>
+      <div class="rail-item"><span class="ico"></span>中台配置</div>
+      <div class="rail-item"><span class="ico"></span>帮助文档</div>
+    </div>
+  </nav>
+
+  <!-- ============ 主内容区 ============ -->
+  <div class="main">
+
+    <!-- 数据标注角标 -->
+    <div class="snapshot">视觉样张 · 数据来自真实 API 快照（采集 2026-07-19）</div>
+
+    <!-- 顶部页头：标题 + 市场快讯 + 操作 -->
+    <header class="topbar">
+      <div class="title-block">
+        <h1>经营分析</h1>
+        <span class="route-pill">报告日 默认路由</span>
+      </div>
+      <div class="ticker">
+        <span class="tick"><span class="k">市场快讯</span></span>
+        <span class="tick"><span class="k">10年国债</span><span class="v num">1.74%</span><span class="d up num">+0.2bp</span></span>
+        <span class="tick"><span class="k">10年国开</span><span class="v num">1.79%</span><span class="d flat num">--</span></span>
+        <span class="tick"><span class="k">10年美债</span><span class="v num">4.56%</span><span class="d up num">+2bp</span></span>
+        <span class="tick"><span class="k">中美10年利差</span><span class="v num">-282bp</span><span class="d down num">-2bp</span></span>
+        <span class="tick"><span class="k">DR007</span><span class="v num">1.38%</span><span class="d flat num">0bp</span></span>
+        <span class="tick"><span class="k">美元/人民币</span><span class="v num">6.8CNY/USD</span><span class="d flat num">-0CNY/USD</span></span>
+      </div>
+      <div class="top-actions">
+        <span class="chip-btn solid">管理视角</span>
+        <span class="chip-btn">报表中心</span>
+        <span class="chip-btn">中台配置</span>
+      </div>
+    </header>
+
+    <!-- 页面切换条 -->
+    <div class="pageswitch">
+      <span class="cur">当前工作台页面</span>
+      <div class="tabs">
+        <span class="tab">经营日报</span>
+        <span class="tab active">经营分析</span>
+        <span class="tab">决策事项</span>
+      </div>
+      <span class="right">经营日报</span>
+    </div>
+
+    <!-- 临时例外横幅 -->
+    <div class="banner">
+      <div class="row1">
+        <span class="tag">临时例外</span>
+        <span class="txt">临时例外：该路由仅在第一阶段 PAGE-OPS-001 收口期间保持可见；如收口延期，下一轮 readiness 梳理需降级。</span>
+      </div>
+      <div class="sub">第一阶段仅在页面契约收口期间保留该路由可见；不要把它视为已完全治理的页面。</div>
+    </div>
+
+    <!-- 受治理经营视图 主卡 -->
+    <section class="hero">
+      <div>
+        <div class="gov-label">受治理经营视图</div>
+        <h2>经营分析</h2>
+        <p class="lede">从产品分类损益正式读模型出发，先给经营判断与可执行动作；资产负债余额读面只保留为专题入口。</p>
+        <span class="badge-navy">真实只读链路</span>
+
+        <!-- 筛选器 -->
+        <div class="filters">
+          <div class="f-item">
+            <label>范围</label>
+            <select class="f-select"><option>金融市场条线</option></select>
+          </div>
+          <div class="f-item">
+            <label>口径</label>
+            <select class="f-select"><option>产品分类损益</option></select>
+          </div>
+          <div class="f-item">
+            <label>币种</label>
+            <select class="f-select"><option>全部</option></select>
+          </div>
+          <div class="f-item">
+            <label>周期</label>
+            <select class="f-select"><option>月度</option></select>
+          </div>
+        </div>
+
+        <p class="chain-note"><b>链路：真实只读 API。</b>首屏只放总账对账 + 日均配对链路产出的 /ui/pnl/product-category formal 经营口径；源批次、宏观、新闻与正式 FX 物化/候选对账只作为可核验证据，不在这里展开明细。 下方「本期关注事项」「近期经营日历」仍为静态示例。</p>
+      </div>
+
+      <!-- KPI 区 -->
+      <div class="kpi-zone">
+        <div class="kpi-row">
+          <div class="kpi">
+            <div class="k">资产净收入</div>
+            <div class="v"><span class="n num">2.07</span><span class="u">亿元</span></div>
+            <div class="meta">正式经营口径 /ui/pnl/product-category · view monthly · 口径 正式口径 · 质量 正常 · 供应 正常</div>
+          </div>
+          <div class="kpi">
+            <div class="k">负债净收入</div>
+            <div class="v"><span class="n num">0.07</span><span class="u">亿元</span></div>
+            <div class="meta">正式经营口径 /ui/pnl/product-category · view monthly · 口径 正式口径 · 质量 正常 · 供应 正常</div>
+          </div>
+          <div class="kpi">
+            <div class="k">经营净收入</div>
+            <div class="v"><span class="n num">2.13</span><span class="u">亿元</span></div>
+            <div class="meta">正式经营口径 /ui/pnl/product-category · view monthly · 口径 正式口径 · 质量 正常 · 供应 正常</div>
+          </div>
+        </div>
+        <div class="stat-grid">
+          <div class="stat">
+            <div class="k">报告月份</div>
+            <div class="v num">2026-06-30</div>
+            <div class="meta">总账对账 + 日均配对链路 · 口径 正式口径 · 质量 正常 · 供应 正常</div>
+          </div>
+          <div class="stat">
+            <div class="k">产品行数</div>
+            <div class="v num">18</div>
+            <div class="meta">正式产品分类行（不含 grand_total）· 口径 正式口径 · 质量 正常 · 供应 正常</div>
+          </div>
+          <div class="stat fail">
+            <div class="k">源批次</div>
+            <div class="v">不可用</div>
+            <div class="meta">当前查询失败，请在下方面板重试。</div>
+            <div class="retry">重试</div>
+          </div>
+          <div class="stat">
+            <div class="k">宏观点位</div>
+            <div class="v num">132</div>
+            <div class="meta">宏观目录 145 条，最新交易日 2026-07-10 · 口径 分析口径 · 质量 正常 · 供应 正常</div>
+          </div>
+          <div class="stat">
+            <div class="k">正式 FX</div>
+            <div class="v num">5 / 5</div>
+            <div class="meta">物化/候选（对账）5 / 5 · 最新交易日 2026-06-30 · 沿用前值 0 · 口径 正式口径 · 质量 正常 · 供应 正常</div>
+          </div>
+          <div class="stat">
+            <div class="k">新闻事件</div>
+            <div class="v num">12418</div>
+            <div class="meta">来自 Choice 新闻事件流的当前查询总行数。 · 口径 分析口径 · 质量 正常 · 供应 正常</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 核心视图 -->
+    <section class="section">
+      <div class="sec-head"><h3>核心视图</h3><span class="sub">结论、桥接与质量观察</span></div>
+      <p class="sec-lede">先阅读已被正式读链路支撑的判断，再看质量观察提示哪些口径仍待补齐。收益成本桥明确保留为示意。</p>
+      <div class="core-grid">
+        <div class="core-col concl">
+          <h4>本期经营结论</h4>
+          <p>当前经营页首屏已切回产品分类损益正式读模型。报告日 2026-06-30，视图 monthly，产品分类行 18 行；资产净收入 2.07、负债净收入 0.07、经营净收入 2.13。资产负债余额读面降为专题入口，不作为首屏经营口径。</p>
+          <div class="fact-chips">
+            <span class="fact">经营口径: <b>产品分类损益</b></span>
+            <span class="fact">外汇覆盖: <b>可用</b></span>
+            <span class="fact">余额读面: <b>专题入口</b></span>
+          </div>
+        </div>
+        <div class="core-col">
+          <h4>收益成本桥（示意）</h4>
+          <!-- 内联 SVG 手绘瀑布，扁平色场，无渐变 -->
+          <svg width="100%" height="180" viewBox="0 0 320 180" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace,'SF Mono',Consolas,monospace">
+            <line x1="8" y1="140" x2="312" y2="140" stroke="#e2e0da" stroke-width="1"/>
+            <!-- 债券收益 -->
+            <rect x="16"  y="58"  width="34" height="82" fill="#14366b"/>
+            <!-- 同业资产收益 -->
+            <rect x="62"  y="96"  width="34" height="44" fill="#3c5f94"/>
+            <!-- 其他资产收益 -->
+            <rect x="108" y="118" width="34" height="22" fill="#8fa3c0"/>
+            <!-- 负债成本（负向） -->
+            <rect x="154" y="140" width="34" height="18" fill="#b42318"/>
+            <!-- 净贡献 -->
+            <rect x="216" y="72" width="34" height="68" fill="#1f7a4d"/>
+            <!-- 标注 -->
+            <text x="33"  y="52"  font-size="9" fill="#5c6370" text-anchor="middle">72.87</text>
+            <text x="33"  y="154" font-size="9" fill="#8a8f98" text-anchor="middle">债券</text>
+            <text x="79"  y="154" font-size="9" fill="#8a8f98" text-anchor="middle">同业</text>
+            <text x="125" y="154" font-size="9" fill="#8a8f98" text-anchor="middle">其他</text>
+            <text x="171" y="172" font-size="9" fill="#8a8f98" text-anchor="middle">负债成本</text>
+            <text x="233" y="66"  font-size="9" fill="#5c6370" text-anchor="middle">净贡献</text>
+            <text x="233" y="154" font-size="9" fill="#8a8f98" text-anchor="middle">合计</text>
+            <!-- 连接发丝线 -->
+            <line x1="50"  y1="96"  x2="62"  y2="96"  stroke="#cfccc4" stroke-width="1"/>
+            <line x1="96"  y1="118" x2="108" y2="118" stroke="#cfccc4" stroke-width="1"/>
+            <line x1="188" y1="140" x2="216" y2="140" stroke="#cfccc4" stroke-width="1"/>
+          </svg>
+          <p class="bridge-cap">债券与同业资产收益合计约 72.87 亿，抵减负债成本后得到净贡献（柱状为示意瀑布，单位亿元）。</p>
+        </div>
+        <div class="core-col">
+          <h4>经营质量观察</h4>
+          <div class="qual-list">
+            <div class="qual"><span class="qk">源批次数</span><span class="qv num">0</span><span class="qs warn">待确认</span></div>
+            <div class="qual"><span class="qk">宏观最新点位</span><span class="qv num">132</span><span class="qs ok">已到位</span></div>
+            <div class="qual"><span class="qk">新闻事件</span><span class="qv num">12418</span><span class="qs ok">可读</span></div>
+            <div class="qual"><span class="qk">正式外汇覆盖</span><span class="qv num">5/5</span><span class="qs ok">完整</span></div>
+            <div class="qual"><span class="qk">缺失货币对</span><span class="qv num">0</span><span class="qs ok">正常</span></div>
+          </div>
+          <div class="qual-alert">
+            <div class="t">经营口径证据链不完整</div>
+            <div class="d">产品分类损益正式读模型或源批次预览未形成可读结果。先核验总账对账 + 日均配对链路，再下经营判断。</div>
+            <div class="act"><a href="#">复核源预览</a></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 本期关注事项（静态示例） -->
+    <section class="section">
+      <div class="sec-head"><h3>本期关注事项<span style="font-weight:400;font-size:12px;color:var(--ink-3);">（静态示例）</span></h3></div>
+      <div class="watch-grid">
+        <div class="watch">
+          <div class="wt">4月短端缺口压力较大</div>
+          <div class="wd">1年内缺口对负债占比仍处高位，需跟踪滚续与定价。</div>
+        </div>
+        <div class="watch">
+          <div class="wt">发行负债集中度偏高</div>
+          <div class="wd">CD 占发行类负债约八成，结构弹性有限。</div>
+        </div>
+        <div class="watch">
+          <div class="wt">短端缺口已覆盖率 81.8%</div>
+          <div class="wd">覆盖率改善但仍有尾部情景需压力测试。</div>
+        </div>
+        <div class="watch">
+          <div class="wt">异常资产跟踪</div>
+          <div class="wd">按正式读面异常资产清单持续跟踪。</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 贡献：经营贡献与行动项 -->
+    <section class="section">
+      <div class="sec-head"><h3>贡献</h3><span class="sub">经营贡献与行动项</span></div>
+      <p class="sec-lede">产品分类损益行、管理动作和近期日历放在同一层，方便从经营判断进入执行。</p>
+      <div class="contrib-grid">
+        <div>
+          <div class="sec-head" style="margin-bottom:8px;">
+            <h4 style="font-size:13px;">经营贡献（产品分类损益读面）</h4>
+            <a href="#" style="font-size:11.5px;margin-left:auto;">进入产品分类损益</a>
+          </div>
+          <p class="contrib-src">报告日 2026-06-30，数据来自 /ui/pnl/product-category，view=monthly；由总账对账 + 日均配对链路生成，表格直接展示后端产品分类行，不在前端重算合计或改写类别。<br>本表受治理元数据：口径 正式口径 · 质量 正常 · 供应 正常</p>
+          <div class="contrib-meta">
+            <span>总收益（合计）<span class="big num"> 2.13亿元</span></span>
+            <span>当前场景：<span class="num">1.6%</span></span>
+            <span>基准场景：<span class="num">1.6%</span></span>
+            <span>资产 / 负债：<span class="num">2.07 / 0.07</span></span>
+          </div>
+          <table class="pnl num">
+            <thead>
+              <tr>
+                <th>产品分类</th><th>侧别</th><th>综本日均</th><th>人民币FTP</th><th>人民币净收入</th><th>外币净收入</th><th>经营净收入</th><th>加权收益率</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>拆放同业</td><td class="side">资产</td><td>180.09</td><td>0.20</td><td>0.06</td><td>0.07</td><td>0.13</td><td>2.49</td></tr>
+              <tr><td>买入返售</td><td class="side">资产</td><td>263.83</td><td>0.35</td><td class="neg">-0.04</td><td>0.00</td><td class="neg">-0.04</td><td>1.42</td></tr>
+              <tr><td>债券投资</td><td class="side">资产</td><td>3353.18</td><td>4.34</td><td>1.82</td><td>0.08</td><td>1.90</td><td>2.29</td></tr>
+              <tr><td>TPL</td><td class="side">资产</td><td>819.19</td><td>1.08</td><td>0.24</td><td>0.01</td><td>0.25</td><td>1.97</td></tr>
+              <tr><td>AC债券投资</td><td class="side">资产</td><td>1443.68</td><td>1.90</td><td>0.98</td><td>0.01</td><td>0.98</td><td>2.43</td></tr>
+              <tr><td>AC其他投资</td><td class="side">资产</td><td>53.07</td><td>0.03</td><td>0.01</td><td class="neg">-0.04</td><td class="neg">-0.03</td><td>0.89</td></tr>
+              <tr><td>FVOCI</td><td class="side">资产</td><td>1037.24</td><td>1.33</td><td>0.61</td><td>0.10</td><td>0.71</td><td>2.43</td></tr>
+              <tr><td>估值及买卖价差等</td><td class="side">资产</td><td>0.00</td><td>0.00</td><td class="neg">-0.01</td><td>0.00</td><td class="neg">-0.01</td><td>-</td></tr>
+              <tr><td>生息资产</td><td class="side">资产</td><td>2977.91</td><td>3.80</td><td>1.61</td><td>0.14</td><td>1.76</td><td>2.32</td></tr>
+              <tr><td>汇兑损益及衍生</td><td class="side">资产</td><td>0.00</td><td>0.00</td><td>0.01</td><td>0.00</td><td>0.01</td><td>-</td></tr>
+              <tr><td>中间业务收入</td><td class="side">资产</td><td>0.00</td><td>0.00</td><td>0.07</td><td>0.00</td><td>0.07</td><td>-</td></tr>
+              <tr class="total"><td>资产端合计</td><td class="side">资产</td><td>3797.10</td><td>4.88</td><td>1.92</td><td>0.15</td><td>2.07</td><td>2.26</td></tr>
+              <tr><td>同业存放</td><td class="side">负债</td><td>532.12</td><td>0.70</td><td>0.06</td><td>0.00</td><td>0.06</td><td>1.46</td></tr>
+              <tr><td>同业拆入</td><td class="side">负债</td><td>100.70</td><td>0.11</td><td>0.04</td><td>0.03</td><td>0.01</td><td>1.52</td></tr>
+              <tr><td>卖出回购</td><td class="side">负债</td><td>157.64</td><td>0.21</td><td>0.03</td><td class="neg">-0.00</td><td>0.03</td><td>1.37</td></tr>
+              <tr><td>同业存单</td><td class="side">负债</td><td>937.92</td><td>1.23</td><td>0.01</td><td class="neg">-0.00</td><td>0.01</td><td>1.62</td></tr>
+              <tr><td>信用联结票据</td><td class="side">负债</td><td>22.19</td><td>0.03</td><td>0.02</td><td>0.00</td><td>0.02</td><td>2.46</td></tr>
+              <tr class="total"><td>负债端合计</td><td class="side">负债</td><td>1750.57</td><td>2.28</td><td>0.10</td><td>0.03</td><td>0.07</td><td>1.55</td></tr>
+              <tr class="grand"><td colspan="8">全部市场科目 + 投资收益合计：2.13</td></tr>
+            </tbody>
+          </table>
+          <p class="pnl-foot">单位：亿元；加权收益率单位：%。表格直接展示后端产品分类行。</p>
+        </div>
+
+        <!-- 近期经营日历（静态示例） -->
+        <div>
+          <div class="sec-head" style="margin-bottom:8px;">
+            <h4 style="font-size:13px;">近期经营日历<span style="font-weight:400;font-size:11px;color:var(--ink-3);">（静态示例）</span></h4>
+          </div>
+          <div class="cal">
+            <div class="cal-row">
+              <span class="cal-date num">04-18</span>
+              <span class="cal-what">大额同业负债到期</span>
+              <span class="cal-amt num">180亿</span>
+              <span class="cal-sub"><span class="cal-tag hi">高</span><span>提前确认滚续额度</span></span>
+            </div>
+            <div class="cal-row">
+              <span class="cal-date num">04-22</span>
+              <span class="cal-what">同业存单集中缴款</span>
+              <span class="cal-amt num">95亿</span>
+              <span class="cal-sub"><span class="cal-tag">中</span><span>关注发行利差</span></span>
+            </div>
+            <div class="cal-row">
+              <span class="cal-date num">04-28</span>
+              <span class="cal-what">月内缺口复盘会</span>
+              <span class="cal-amt num">—</span>
+              <span class="cal-sub"><span class="cal-tag">—</span><span>—</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="snapshot">视觉样张 · 数据来自真实 API 快照（采集 2026-07-19）</div>
+  </div>
+</div>
+</body>
+</html>

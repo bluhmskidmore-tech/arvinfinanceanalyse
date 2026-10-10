@@ -11,7 +11,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from app.core_finance.macro.helpers import build_curve_history
+from backend.app.core_finance.macro.helpers import build_curve_history
 
 _M16_LOOKBACK_DAYS_3Y = 756
 _M16_LOOKBACK_DAYS_1Y = 252
@@ -105,8 +105,11 @@ def compute_credit_spread_percentile(
         cutoff_1y = date(report_date.year - 1, report_date.month, 28)
 
     today_snap = history_wide[0] if history_wide else {}
+    # 排除当日观测（history_wide[0]/dates_used[0]），避免当日值混入自身对比样本。
+    history_prior = history_wide[1:]
+    dates_prior = dates_used[1:]
     rows_1y_snaps = [
-        h for h, d in zip(history_wide, dates_used, strict=False) if d >= cutoff_1y
+        h for h, d in zip(history_prior, dates_prior, strict=False) if d >= cutoff_1y
     ][: _M16_LOOKBACK_DAYS_1Y]
 
     spreads_out: list[dict[str, Any]] = []
@@ -119,16 +122,17 @@ def compute_credit_spread_percentile(
         if cur is None:
             continue
 
-        hist_3y = [h[field] for h in history_wide if h.get(field) is not None]
+        hist_3y = [h[field] for h in history_prior if h.get(field) is not None]
         hist_1y = [h[field] for h in rows_1y_snaps if h.get(field) is not None]
 
         pct_3y = _calc_percentile(float(cur), hist_3y)
         pct_1y = _calc_percentile(float(cur), hist_1y)
 
-        if pct_3y is not None and pct_3y <= 25:
+        # 固收估值极性：利差分位高=利差宽=信用补偿厚=偏便宜；分位低=利差窄=保护薄=偏贵。
+        if pct_3y is not None and pct_3y >= 75:
             valuation = "偏便宜"
             cheap_count += 1
-        elif pct_3y is not None and pct_3y >= 75:
+        elif pct_3y is not None and pct_3y <= 25:
             valuation = "偏贵"
             expensive_count += 1
         else:
@@ -148,16 +152,16 @@ def compute_credit_spread_percentile(
         )
 
     if expensive_count >= 3:
-        assessment = "多数利差处于历史高位（偏贵），信用债配置价值较低，建议等待利差收窄"
+        assessment = "多数利差处于历史低位，利差保护较薄（偏贵），配置性价比不足"
         overall_valuation = "偏贵"
     elif cheap_count >= 3:
-        assessment = "多数利差处于历史低位（偏便宜），信用债具备配置价值，可逐步加仓"
+        assessment = "多数利差处于历史高位，信用利差补偿较厚（偏便宜），具备配置价值"
         overall_valuation = "偏便宜"
     elif cheap_count > expensive_count:
-        assessment = "利差整体偏低，信用债有一定配置吸引力"
+        assessment = "利差多数处于偏高分位，信用利差补偿相对较厚，有一定配置吸引力"
         overall_valuation = "偏便宜"
     elif expensive_count > cheap_count:
-        assessment = "利差整体偏高，信用债估值不具吸引力"
+        assessment = "利差多数处于偏低分位，利差保护相对较薄，配置性价比不足"
         overall_valuation = "偏贵"
     else:
         assessment = "利差处于历史中位，中性配置"

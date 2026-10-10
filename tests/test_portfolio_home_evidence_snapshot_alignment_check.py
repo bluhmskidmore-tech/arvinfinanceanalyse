@@ -8,7 +8,6 @@ from pathlib import Path
 from scripts.portfolio_home_evidence_snapshot_alignment_check import build_report
 from scripts.portfolio_home_business_owner_approval_packet import (
     OWNER_DECISION_INTAKE_ALIGNMENT_FIELDS,
-    PORTFOLIO_HOME_SCORE_BLOCKERS,
 )
 
 
@@ -67,7 +66,14 @@ def test_portfolio_home_evidence_snapshot_alignment_check_reports_clean_current_
         "status": "clean",
         "blockers": [],
         "unassigned_blockers": [],
-        "covered_blockers": PORTFOLIO_HOME_SCORE_BLOCKERS,
+        "covered_blockers": [
+            "risk_tensor_quality_warning",
+            "krd_contract_decision_required",
+            "bond_matured_outstanding_reconciliation_required",
+            "tyw_liability_maturity_date_remediation_required",
+            "business_owner_approval",
+            "owner_decision_intake_blocked",
+        ],
     }
     assert report["embedded_verifier_summary"] == {
         "expected_state": "blocked",

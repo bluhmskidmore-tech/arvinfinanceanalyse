@@ -1,18 +1,62 @@
+[CmdletBinding()]
 param(
   [ValidateSet("dashboard-home", "product-category-pnl", "balance-analysis", "average-balance", "decision-items", "pnl", "pnl-bridge", "risk-tensor", "bond-dashboard", "bond-analysis", "balance-movement-analysis", "ledger-pnl", "positions", "operations-analysis", "liability-analytics", "market-data", "macro-toolkit", "stock-analysis", "pnl-attribution", "cashflow-projection", "concentration-monitor", "team-performance", "platform-config", "news-events", "kpi-performance")]
   [string]$PageSlug = "product-category-pnl",
 
   [switch]$Run,
   [switch]$DryRun,
+  [switch]$HomeFeedback,
+  [switch]$FrontendFeedback,
+  [string[]]$FrontendTests = @(),
+  [string]$FrontendTestNamePattern = "",
+  [switch]$FrontendTestSerial,
+  [string[]]$LintFiles = @(),
+  [switch]$Typecheck,
   [switch]$SkipMcpContracts,
   [switch]$SkipBrowserSmoke
 )
 
 $ErrorActionPreference = "Stop"
 
+if ($HomeFeedback -and $FrontendFeedback) {
+  throw "HomeFeedback and FrontendFeedback cannot be combined"
+}
+
+if ($HomeFeedback -and $PageSlug -ne "dashboard-home") {
+  throw "HomeFeedback requires -PageSlug dashboard-home"
+}
+
 $root = Split-Path -Parent $PSScriptRoot
 $frontendRoot = Join-Path $root "frontend"
+$feedbackOnly = $HomeFeedback -or $FrontendFeedback
+$FrontendTests = @($FrontendTests | ForEach-Object { $_ -split "," } | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique)
+$LintFiles = @($LintFiles | ForEach-Object { $_ -split "," } | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique)
+$hasFrontendTestNamePattern = -not [string]::IsNullOrWhiteSpace($FrontendTestNamePattern)
+$hasFrontendTestOptions = $hasFrontendTestNamePattern -or $FrontendTestSerial
+if (-not $feedbackOnly -and ($FrontendTests.Count -gt 0 -or $LintFiles.Count -gt 0 -or $Typecheck -or $hasFrontendTestOptions)) {
+  if ($hasFrontendTestOptions) {
+    throw "Frontend test options require -FrontendFeedback or -HomeFeedback"
+  }
+  throw "FrontendTests, LintFiles and Typecheck require -FrontendFeedback or -HomeFeedback"
+}
+if ($hasFrontendTestOptions -and $FrontendTests.Count -eq 0) {
+  throw "FrontendTestNamePattern and FrontendTestSerial require explicit -FrontendTests"
+}
+if ($FrontendFeedback -and $FrontendTests.Count -eq 0 -and $LintFiles.Count -eq 0 -and -not $Typecheck) {
+  throw "FrontendFeedback requires at least one frontend test, lint file or -Typecheck"
+}
+foreach ($selectedFile in (@($FrontendTests) + @($LintFiles))) {
+  $selectedPath = [System.IO.Path]::GetFullPath((Join-Path $frontendRoot $selectedFile))
+  $frontendPrefix = $frontendRoot + [System.IO.Path]::DirectorySeparatorChar
+  if (-not $selectedPath.StartsWith($frontendPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Feedback files must stay within frontend: $selectedFile"
+  }
+  if (-not (Test-Path -LiteralPath $selectedPath -PathType Leaf)) {
+    throw "Feedback targets must name a file: $selectedFile"
+  }
+}
 $playwrightOutputRoot = Join-Path $root ".codex-tmp\playwright-page-results"
+. "$root\scripts\codex-python-helper.ps1"
 
 function Resolve-CodexPytestTempRoot {
   if (-not [string]::IsNullOrWhiteSpace($env:CODEX_PYTEST_BASETEMP_ROOT)) {
@@ -93,15 +137,23 @@ function Test-CodexBrowserSmokeCheck {
 $codexPytestTempRoot = Resolve-CodexPytestTempRoot
 
 Set-Location $root
+$pythonExe = $null
 
 Write-Output "Codex verify page: $PageSlug"
+if ($FrontendFeedback -or ($HomeFeedback -and ($FrontendTests.Count -gt 0 -or $LintFiles.Count -gt 0 -or $Typecheck))) {
+  Write-Output "Frontend feedback only: explicitly selected checks; not page acceptance."
+  Write-Output "Backend/MCP, debt audit, build and browser checks are NOT RUN. Follow frontend/AGENTS.md before delivery."
+} elseif ($HomeFeedback) {
+  Write-Output "Home feedback only: snapshot, report date, first screen and supplemental loading; not page acceptance."
+  Write-Output "Backend/MCP, lint, typecheck, debt audit, build and browser checks are NOT RUN. Follow frontend/AGENTS.md before delivery."
+}
 
 $planOnly = $DryRun -or -not $Run
 
 $checks = @()
 
-if (-not $SkipMcpContracts) {
-  $mcpContractArgs = @("-m", "pytest", "tests/test_project_mcp_servers.py", "-q")
+if (-not $SkipMcpContracts -and -not $feedbackOnly) {
+  $mcpContractArgs = @("-m", "pytest", "tests/test_project_mcp_fast_contracts.py", "-m", "mcp_fast", "-q")
   if ($PageSlug -eq "risk-tensor") {
     $mcpContractArgs = @(
       "-m",
@@ -210,6 +262,18 @@ if (-not $SkipMcpContracts) {
       "tests/test_team_performance_governance_record.py",
       "-q"
     )
+  } elseif ($PageSlug -eq "stock-analysis") {
+    $mcpContractArgs = @(
+      "-m",
+      "pytest",
+      "tests/test_project_mcp_servers.py::test_stock_analysis_trace_bundle_preserves_observational_livermore_boundaries",
+      "tests/test_project_mcp_servers.py::test_lineage_evidence_mcp_maps_stock_analysis_gap_to_observational_livermore_records",
+      "tests/test_codex_page_readiness_gate.py::test_stock_analysis_readiness_exposes_run_commands_without_formal_promotion",
+      "tests/test_stock_analysis_governance_record.py",
+      "tests/test_stock_analysis_owner_evidence_packet.py",
+      "tests/test_stock_analysis_business_owner_approval_status.py",
+      "-q"
+    )
   }
   $checks += @(
     @{
@@ -221,14 +285,20 @@ if (-not $SkipMcpContracts) {
   )
 }
 
-if ($PageSlug -eq "dashboard-home") {
+if ($FrontendFeedback) {
+  # The selected checks below own this feedback plan; no page suite is implied.
+} elseif ($PageSlug -eq "dashboard-home") {
+  if (-not $HomeFeedback) {
+    $checks += @(
+      @{
+        Label = "Dashboard backend snapshot and API contract tests"
+        WorkingDirectory = $root
+        Command = "python"
+        Args = @("-m", "pytest", "tests/test_home_snapshot_endpoint.py", "tests/test_dashboard_api_contract.py", "tests/test_executive_dashboard_endpoints.py", "tests/test_executive_service_contract.py", "-q")
+      }
+    )
+  }
   $checks += @(
-    @{
-      Label = "Dashboard backend snapshot and API contract tests"
-      WorkingDirectory = $root
-      Command = "python"
-      Args = @("-m", "pytest", "tests/test_home_snapshot_endpoint.py", "tests/test_dashboard_api_contract.py", "tests/test_executive_dashboard_endpoints.py", "tests/test_executive_service_contract.py", "-q")
-    },
     @{
       Label = "Dashboard frontend tests"
       WorkingDirectory = $frontendRoot
@@ -237,11 +307,13 @@ if ($PageSlug -eq "dashboard-home") {
         "run",
         "test",
         "--",
-        "src/test/DashboardPage.test.tsx",
+        "src/test/DashboardHomePage.test.tsx",
         "src/features/workbench/pages/useDashboardSnapshotBoundary.test.tsx",
-        "src/features/workbench/dashboard/dashboardHomeModel.test.ts",
-        "src/features/workbench/dashboard/dashboardCockpitHomeModel.test.ts",
-        "src/features/workbench/dashboard/sections/DashboardCockpitHeader.test.tsx"
+        "src/features/workbench/dashboard-home/dashboardHomeSnapshotAdapter.test.ts",
+        "src/features/workbench/dashboard-home/dashboardHomeFirstScreenView.test.ts",
+        "src/features/workbench/dashboard-home/useDashboardHomeFirstScreenViewModel.test.tsx",
+        "src/test/DeferredTerminalHomeContent.test.tsx",
+        "src/features/workbench/dashboard-home/useDashboardHomeMockFallbackGuard.test.tsx"
       )
     }
   )
@@ -1387,6 +1459,45 @@ if ($PageSlug -eq "dashboard-home") {
   throw "Unsupported page slug: $PageSlug"
 }
 
+if ($feedbackOnly) {
+  if ($FrontendTests.Count -gt 0) {
+    $frontendTestArgs = @("run", "test", "--") + $FrontendTests
+    if ($hasFrontendTestNamePattern) {
+      $frontendTestArgs += @("-t", $FrontendTestNamePattern)
+    }
+    if ($FrontendTestSerial) {
+      $frontendTestArgs += @("--maxWorkers", "1", "--no-file-parallelism")
+    }
+    $checks = @(
+      @{
+        Label = "Frontend selected tests"
+        WorkingDirectory = $frontendRoot
+        Command = "npm.cmd"
+        Args = $frontendTestArgs
+      }
+    )
+  }
+  if ($LintFiles.Count -gt 0) {
+    $checks += @(
+      @{
+        Label = "Frontend selected lint"
+        WorkingDirectory = $frontendRoot
+        Command = "node"
+        Args = @("node_modules/eslint/bin/eslint.js") + $LintFiles
+      }
+    )
+  }
+  if ($Typecheck) {
+    $checks += @(
+      @{
+        Label = "Frontend typecheck"
+        WorkingDirectory = $frontendRoot
+        Command = "npm.cmd"
+        Args = @("run", "typecheck")
+      }
+    )
+  }
+} else {
 $checks += @(
   @{
     Label = "Frontend typecheck"
@@ -1407,6 +1518,7 @@ $checks += @(
     Args = @("run", "build")
   }
 )
+}
 
 if ($SkipBrowserSmoke) {
   $checks = @($checks | Where-Object { -not (Test-CodexBrowserSmokeCheck -Check $_) })
@@ -1451,6 +1563,7 @@ foreach ($check in $checks) {
 
   Push-Location $check.WorkingDirectory
   $previousEnv = @{}
+  $checkTimer = [System.Diagnostics.Stopwatch]::StartNew()
   try {
     if ($check.ContainsKey("Env")) {
       foreach ($entry in $check.Env.GetEnumerator()) {
@@ -1458,16 +1571,31 @@ foreach ($check in $checks) {
         [Environment]::SetEnvironmentVariable($entry.Key, [string]$entry.Value, "Process")
       }
     }
-    & $check.Command @($check.Args)
+    $commandToRun = $check.Command
+    if ($isPytestCheck) {
+      if ($null -eq $pythonExe) {
+        $pythonExe = Resolve-CodexPython -RequiredModules @("fastapi", "uvicorn", "dramatiq", "redis", "duckdb", "sqlalchemy", "psycopg", "pytest")
+      }
+      $commandToRun = $pythonExe
+    }
+    & $commandToRun @($check.Args)
     $commandSucceeded = $?
     $exitCode = $LASTEXITCODE
     if (-not $commandSucceeded) {
       if ($null -eq $exitCode) {
         $exitCode = 1
       }
+      if ($feedbackOnly) {
+        Write-Output "[Result] $($check.Label): failed (exit $exitCode)"
+      }
       throw "$($check.Label) failed with exit code $exitCode"
     }
+    if ($feedbackOnly) {
+      Write-Output "[Result] $($check.Label): passed (exit $exitCode)"
+    }
   } finally {
+    $checkTimer.Stop()
+    Write-Output ("[Timing] {0}: {1:F2}s" -f $check.Label, $checkTimer.Elapsed.TotalSeconds)
     foreach ($entry in $previousEnv.GetEnumerator()) {
       [Environment]::SetEnvironmentVariable($entry.Key, $entry.Value, "Process")
     }
@@ -1478,5 +1606,11 @@ foreach ($check in $checks) {
 if ($planOnly) {
   Write-Output "Codex verify page dry run complete. Pass -Run to execute checks."
 } else {
-  Write-Output "Codex verify page checks passed."
+  if ($FrontendFeedback) {
+    Write-Output "Frontend feedback checks passed; not page acceptance."
+  } elseif ($HomeFeedback) {
+    Write-Output "Home feedback checks passed; not page acceptance."
+  } else {
+    Write-Output "Codex verify page checks passed."
+  }
 }

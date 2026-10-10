@@ -30,6 +30,7 @@ def calculate_spreads(market_data: dict[str, Any]) -> dict[str, float | None]:
     return {
         "ncd_treasury_spread_1y": _pct_diff_bp(d.get("ncd_aaa_1y"), d.get("treasury_1y")),
         "term_spread_10y_1y": _pct_diff_bp(d.get("treasury_10y"), d.get("treasury_1y")),
+        "term_spread_10y_2y": _pct_diff_bp(d.get("treasury_10y"), d.get("treasury_2y")),
         "term_spread_10y_5y": _pct_diff_bp(d.get("treasury_10y"), d.get("treasury_5y")),
         "credit_spread_aaa_3y": _pct_diff_bp(d.get("credit_aaa_3y"), d.get("treasury_3y")),
         "cdb_treasury_spread_5y": _pct_diff_bp(d.get("cdb_5y"), d.get("treasury_5y")),

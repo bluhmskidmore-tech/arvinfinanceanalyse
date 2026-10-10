@@ -1,0 +1,41 @@
+{
+  "cssPath": "frontend/src/features/stock-analysis/pages/StockAnalysisDeepResearch.css",
+  "tsxFiles": [
+    "frontend/src/features/stock-analysis/pages/StockAnalysisPageImpl.tsx",
+    "frontend/src/features/stock-analysis/components/StockAnalysisDeepZoneHeader.tsx",
+    "frontend/src/features/stock-analysis/components/StockAnalysisDeepSelectionOverview.tsx",
+    "frontend/src/features/stock-analysis/components/StockAnalysisObservationPreview.tsx",
+    "frontend/src/features/stock-analysis/components/StockAnalysisObservationClosurePanel.tsx",
+    "frontend/src/features/stock-analysis/components/StockAnalysisConsensusFirstScreen.tsx",
+    "frontend/src/features/stock-analysis/components/StockAnalysisKlineRadarPanel.tsx",
+    "frontend/src/features/stock-analysis/components/StockAnalysisStrategyLensSection.tsx",
+    "frontend/src/features/stock-analysis/components/StockAnalysisStatusPrimitives.tsx",
+    "frontend/src/features/stock-analysis/components/StockAnalysisWorkbenchDigest.tsx",
+    "frontend/src/features/stock-analysis/components/StockAnalysisRiskExitRows.tsx",
+    "frontend/src/features/stock-analysis/components/StockAnalysisTabs.tsx",
+    "frontend/src/features/stock-analysis/components/StrategyModuleCard.tsx",
+    "frontend/src/features/stock-analysis/lib/stockAnalysisPageChrome.tsx"
+  ],
+  "wildcards": [
+    "stock-analysis-page__deep-zone-head",
+    "stock-analysis-page__compact-status-tile",
+    "stock-analysis-page__compact-status-tile--accent",
+    "stock-analysis-strategy-module-card__detail--collapsed",
+    "mt-2",
+    "ant-collapse",
+    "ant-collapse-header",
+    "ant-tabs-content-holder",
+    "ant-tabs-nav",
+    "ant-tabs-nav-wrap",
+    "ant-tabs-tab",
+    "ant-tabs-tab-active",
+    "ant-tabs-tab-btn",
+    "ant-tabs-tabpane-active"
+  ],
+  "evidenceMode": "literal",
+  "finalMarker": null,
+  "mockUrl": "http://127.0.0.1:5897/stock-analysis",
+  "realUrl": "http://localhost:5888/stock-analysis",
+  "waitSelector": "[data-testid=\"stock-analysis-deep-research-summary\"]",
+  "workDir": null
+}

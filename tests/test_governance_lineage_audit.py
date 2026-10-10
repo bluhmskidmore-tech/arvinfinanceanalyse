@@ -82,3 +82,67 @@ def test_audit_governance_lineage_reports_dirty_rows_without_mutating_files(tmp_
 
     assert build_run_path.read_text(encoding="utf-8") == original_build_run
     assert manifest_path.read_text(encoding="utf-8") == original_manifest
+
+
+def test_audit_governance_lineage_treats_valid_json_fingerprint_as_one_version(tmp_path):
+    module = load_module(
+        "scripts.audit_governance_lineage",
+        "scripts/audit_governance_lineage.py",
+    )
+
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir()
+    _write_jsonl(
+        governance_dir / "cache_build_run.jsonl",
+        [
+            {
+                "cache_key": "pnl:by-business:precompute",
+                "source_version": (
+                    'sv_pnl_by_business_precompute_v4:'
+                    '{"as_of_date":"2026-06-30",'
+                    '"report_dates":["2026-05-31","2026-06-30"]}'
+                ),
+                "rule_version": "rv_clean",
+            },
+            {
+                "cache_key": "malformed.fingerprint",
+                "source_version": 'sv_broken:{"as_of_date":"2026-06-30","report_dates":}',
+                "rule_version": "rv_clean",
+            },
+            {
+                "cache_key": "joined.versions",
+                "source_version": "sv_a,sv_b",
+                "rule_version": "rv_clean",
+            },
+            {
+                "cache_key": "structured.rule.version",
+                "source_version": "sv_clean",
+                "rule_version": 'rv_x:{"a":1,"b":2}',
+            },
+            {
+                "cache_key": "noncanonical.fingerprint",
+                "source_version": 'sv_noncanonical:{"b":2, "a":1}',
+                "rule_version": "rv_clean",
+            },
+            {
+                "cache_key": "array.fingerprint",
+                "source_version": "sv_array:[1,2]",
+                "rule_version": "rv_clean",
+            },
+        ],
+    )
+
+    summary = module.audit_governance_lineage(governance_dir)
+
+    assert summary["rows_scanned"] == 6
+    assert summary["dirty_rows"] == 5
+    assert {
+        item["cache_key"]
+        for item in summary["findings"]
+    } == {
+        "array.fingerprint",
+        "joined.versions",
+        "malformed.fingerprint",
+        "noncanonical.fingerprint",
+        "structured.rule.version",
+    }

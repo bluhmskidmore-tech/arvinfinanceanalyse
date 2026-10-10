@@ -4,12 +4,12 @@ from dataclasses import dataclass
 
 import duckdb
 import pandas as pd
-from backend.app.core_finance.macro.toolkit.system_sources import load_series_by_alias, resolve_system_duckdb_path
-from backend.app.repositories.cffex_member_rank_repo import (
+from backend.app.core_finance.macro.toolkit.cffex_member_rank_shared import (
     load_member_rank_frame,
     normalize_cffex_contract,
     normalize_trade_date,
 )
+from backend.app.core_finance.macro.toolkit.system_sources import load_series_by_alias, resolve_system_duckdb_path
 
 
 @dataclass

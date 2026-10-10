@@ -1,465 +1,315 @@
-import { useMemo } from "react";
-import { Link } from "react-router-dom";
-import { Tabs } from "antd";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useLocation } from "react-router-dom";
+import { ReloadOutlined, SearchOutlined } from "@ant-design/icons";
 
-import dhStyles from "../dashboard-home/dashboardHome.module.css";
-import type { ModuleHomeTone, ModuleHomeView } from "./moduleHomeModel";
+import { EM_DASH } from "../../../utils/format";
+import type {
+  ModuleHomeSourceQueries,
+  ModuleHomeView,
+} from "./moduleHomeModel";
 import type { ModuleWorkbenchHomeConfig } from "./moduleHomeConfig";
-import { MarketActionQueue } from "./MarketActionQueue";
-import { MarketDepthPanel } from "./MarketDepthPanel";
-import { MarketDecisionMatrix } from "./MarketDecisionMatrix";
-import { MarketRateLadder } from "./MarketKeyRateCard";
-import MarketMacroToolkitSection from "./MarketMacroToolkitSection";
-import { MarketStructureTabPanel } from "./MarketStructureTabPanel";
-import marketStyles from "./marketHome.module.css";
+import { MarketBackendDataWorkbench } from "./MarketBackendDataWorkbench";
+import { MarketFinancialChartsWorkbench } from "./MarketFinancialChartsWorkbench";
+import { MarketOverviewDenseFirstScreen } from "./MarketOverviewDenseFirstScreen";
+import { useMarketChartPalette } from "./marketChartPalette";
+import type { MarketFinancialChartSection } from "./marketFinancialChartsModel";
+import styles from "./marketHomeNocturne.module.css";
 
-const MARKET_TABS = [
-  { key: "formal-rate-series", label: "正式利率序列" },
-  { key: "catalog-overview", label: "数据目录" },
-  { key: "latest-macro-snapshot", label: "跨资产快讯" },
+const MARKET_CHAPTERS = [
+  { id: "market-overview-judgment", label: "市场观察" },
+  { id: "market-risk-observation", label: "风险观察" },
+  { id: "market-overview-evidence", label: "宏观与组合" },
+  { id: "market-financial-charts-all", label: "专题图表" },
+  { id: "market-backend-data-all", label: "全部行情" },
 ] as const;
 
-const DETAIL_PANEL_TEST_IDS: Record<string, string> = {
-  "yield-curve-quotes": "module-home-yield-curve",
-  "latest-macro-snapshot": "module-home-macro-snapshot",
-  "formal-rate-series": "module-home-formal-rates",
-  "catalog-overview": "module-home-catalog-summary",
-};
-
-function panelByKey(panels: ModuleHomeView["detailPanels"], key: string) {
-  return panels?.find((panel) => panel.key === key);
+type MarketChapterId = (typeof MARKET_CHAPTERS)[number]["id"];
+const HOME_RETURN_STATE_KEY = "moss:market-home:return-state";
+type MarketReturnState = { search: string; openDetails: string[]; scrollY: number; focusId: string };
+function readReturnState(): MarketReturnState | null {
+  try {
+    const value: unknown = JSON.parse(sessionStorage.getItem(HOME_RETURN_STATE_KEY) || "null");
+    if (!value || typeof value !== "object") return null;
+    const state = value as Partial<MarketReturnState>;
+    return typeof state.search === "string" && Array.isArray(state.openDetails) && state.openDetails.every((key) => typeof key === "string") && typeof state.scrollY === "number" && Number.isFinite(state.scrollY) && typeof state.focusId === "string" ? state as MarketReturnState : null;
+  } catch { return null; }
 }
-
-function toneClass(tone: ModuleHomeTone) {
-  if (tone === "watch") return dhStyles.dhMuted;
-  if (tone === "error") return dhStyles.dhUpRed;
-  return "";
-}
-
-function statePillClass(tone: ModuleHomeTone) {
-  if (tone === "error") return `${dhStyles.dhStatusPill} ${dhStyles.dhStatusPillWarning}`;
-  if (tone === "watch") return `${dhStyles.dhStatusPill} ${dhStyles.dhStatusPillWarning}`;
-  return dhStyles.dhStatusPill;
-}
-
-function evidenceSegments(value: string | undefined) {
-  const text = value?.trim();
-  if (!text || text === "-") return [];
-  return text.match(/[^；;。]+[；;。]?/g)?.map((part) => part.trim()).filter(Boolean) ?? [text];
-}
-
-function sourceSegments(value: string | undefined) {
-  return value?.split(/\s+\/\s+/).map((part) => part.trim()).filter(Boolean) ?? [];
-}
-
-function compactMarketParts(parts: Array<string | undefined | null>) {
-  return parts.map((part) => part?.trim()).filter((part): part is string => Boolean(part && part !== "-"));
-}
-
-type MarketDetailPanel = NonNullable<ModuleHomeView["detailPanels"]>[number];
-
-function findMarketRow(panel: MarketDetailPanel | undefined, patterns: string[]) {
-  return panel?.rows.find((row) => patterns.some((pattern) => `${row.key} ${row.label} ${row.source}`.includes(pattern)));
-}
-
-function marketCue(rateParts: string[], crossAssetLabel: string | undefined) {
-  const crossAssetText = crossAssetLabel ?? "跨资产信号";
-  if (rateParts.length === 0) {
-    return `先确认利率与流动性信号是否已返回，再看${crossAssetText}对债市判断的传导。`;
-  }
-  return `先确认 ${rateParts.join(" 与 ")}，再看${crossAssetText}对债市判断的传导。`;
-}
+function detailKey(detail: HTMLDetailsElement) { return detail.id || detail.dataset.testid || detail.querySelector("summary")?.textContent || ""; }
 
 type MarketHomeLayoutProps = {
   view: ModuleHomeView;
   config: ModuleWorkbenchHomeConfig;
-  latestTradeDate: string;
+  tapeDateRange: string;
   formalTradeDate: string;
+  isRefreshing: boolean;
+  refreshStatus: string;
+  refreshError: string;
+  queries: ModuleHomeSourceQueries;
+  onBackendActiveKeyChange: (key: string) => void;
+  onChartsVisible: () => void;
+  onChartSectionsChange: (keys: MarketFinancialChartSection["key"][]) => void;
+  onRefreshData: () => void;
 };
+
+function isMarketChapterId(value: string): value is MarketChapterId {
+  return MARKET_CHAPTERS.some((chapter) => chapter.id === value);
+}
 
 export default function MarketHomeLayout({
   view,
   config,
-  latestTradeDate,
+  tapeDateRange,
   formalTradeDate,
+  isRefreshing,
+  refreshStatus,
+  refreshError,
+  queries,
+  onBackendActiveKeyChange,
+  onChartsVisible,
+  onChartSectionsChange,
+  onRefreshData,
 }: MarketHomeLayoutProps) {
-  const stateTone: ModuleHomeTone =
-    view.stateLabel === "读取失败" ? "error" : view.stateLabel === "读取中" ? "muted" : "ok";
+  const location = useLocation();
+  const pageRootRef = useRef<HTMLDivElement>(null);
+  const chartPalette = useMarketChartPalette(pageRootRef);
+  const returnState = useRef(readReturnState());
+  const restored = useRef(false);
+  const [searchValue, setSearchValue] = useState(() => returnState.current?.search ?? "");
+  const [activeChapter, setActiveChapter] = useState<MarketChapterId>(() => {
+    const hashChapter = location.hash.slice(1);
+    return isMarketChapterId(hashChapter)
+      ? hashChapter
+      : "market-overview-judgment";
+  });
 
-  const primaryBriefing = view.briefings[0];
-  const secondaryBriefings = view.briefings.slice(1);
-  const keyRatePanel = panelByKey(view.detailPanels, "key-rate-snapshot");
-  const yieldCurvePanel = panelByKey(view.detailPanels, "yield-curve-quotes");
-  const macroPanel = panelByKey(view.detailPanels, "latest-macro-snapshot");
-  const formalPanel = panelByKey(view.detailPanels, "formal-rate-series");
-  const catalogPanel = panelByKey(view.detailPanels, "catalog-overview");
-  const macroOverviewPanel = panelByKey(view.detailPanels, "macro-toolkit-overview");
-  const macroSignalPanel = panelByKey(view.detailPanels, "macro-toolkit-signals");
-  const macroCapabilityPanel = panelByKey(view.detailPanels, "macro-toolkit-capabilities");
-  const macroIndicatorPanel = panelByKey(view.detailPanels, "macro-toolkit-indicators");
-  const macroStrategyPanel = panelByKey(view.detailPanels, "macro-toolkit-strategies");
-  const macroAShareRiskPanel = panelByKey(view.detailPanels, "macro-toolkit-a-share-risk");
-  const macroHasonPanel = panelByKey(view.detailPanels, "macro-toolkit-hason");
-  const macroShadowPanel = panelByKey(view.detailPanels, "macro-toolkit-shadow");
-  const macroRuntimePanel = panelByKey(view.detailPanels, "macro-toolkit-runtime");
-  const isMarketTerminalDefaultEmpty = formalPanel
-    ? formalPanel.rows.length === 0 &&
-      (!formalPanel.chart || formalPanel.chart.categories.length === 0)
-    : false;
-  const tenYearRow = findMarketRow(keyRatePanel, ["10Y", "10年", "十年"]);
-  const liquidityRow = findMarketRow(keyRatePanel, ["DR007", "SHIBOR", "shibor"]);
-  const crossAssetRow = macroPanel?.rows[0];
-  const macroStanceRow =
-    macroOverviewPanel?.rows.find((row) => row.key.includes("stance") || row.label.includes("结论")) ??
-    macroOverviewPanel?.rows[0];
-  const marketPulse = [
-    {
-      key: "ten-year",
-      label: "10Y国债",
-      value: tenYearRow?.value ?? "待返回",
-      detail: compactMarketParts([tenYearRow?.detail, tenYearRow?.tradeDate]).join(" / "),
-      tone: tenYearRow?.tone ?? keyRatePanel?.tone ?? "muted",
-    },
-    {
-      key: "liquidity",
-      label: liquidityRow?.label ?? "流动性",
-      value: liquidityRow?.value ?? "待返回",
-      detail: compactMarketParts([liquidityRow?.detail, liquidityRow?.tradeDate]).join(" / "),
-      tone: liquidityRow?.tone ?? keyRatePanel?.tone ?? "muted",
-    },
-    {
-      key: "cross-asset",
-      label: crossAssetRow?.label ?? "跨资产",
-      value: crossAssetRow?.value ?? "待返回",
-      detail: compactMarketParts([crossAssetRow?.detail, crossAssetRow?.tradeDate]).join(" / "),
-      tone: crossAssetRow?.tone ?? macroPanel?.tone ?? "muted",
-    },
-    {
-      key: "macro",
-      label: "宏观信号",
-      value: macroStanceRow?.value ?? macroStanceRow?.label ?? "观察",
-      detail: compactMarketParts([macroStanceRow?.detail, macroStanceRow?.tradeDate]).join(" / "),
-      tone: macroStanceRow?.tone ?? macroOverviewPanel?.tone ?? "muted",
-    },
-  ];
-  const sourceScopeSegments = sourceSegments(view.sourceScope);
-  const marketKpis = marketPulse.slice(0, 3);
-  const marketReadingOrder = "先看利率曲线与流动性，再看跨资产传导，必要时进入下钻复核。";
-  const marketJudgementCue = marketCue(
-    compactMarketParts([tenYearRow ? "10Y" : null, liquidityRow?.label]),
-    crossAssetRow?.label,
-  );
+  function rememberReturnState(event: MouseEvent<HTMLDivElement>) {
+    const anchor = event.target instanceof Element ? event.target.closest("a") : null;
+    const href = anchor?.getAttribute("href");
+    if (!href || !href.includes("origin=market-overview")) return;
+    const section = new URL(href, window.location.origin).searchParams.get("return_section");
+    const state: MarketReturnState = {
+      search: searchValue,
+      openDetails: Array.from(pageRootRef.current?.querySelectorAll<HTMLDetailsElement>("details[open]") ?? []).map(detailKey),
+      scrollY: window.scrollY,
+      focusId: section === "events" ? "market-home-events-trigger" : section === "macro" ? "market-home-macro-trigger" : "market-risk-observation",
+    };
+    try { sessionStorage.setItem(HOME_RETURN_STATE_KEY, JSON.stringify(state)); } catch { /* Storage may be disabled; normal navigation still works. */ }
+  }
 
-  const tabItems = useMemo(() => {
-    const map = new Map(view.detailPanels?.map((panel) => [panel.key, panel]) ?? []);
-    return MARKET_TABS.map((tab) => {
-      const panel = map.get(tab.key);
-      return {
-        key: tab.key,
-        label: tab.label,
-        children: panel ? (
-          <MarketStructureTabPanel panel={panel} />
-        ) : (
-          <p className={marketStyles.panelEmpty}>暂无数据</p>
-        ),
-      };
+  useEffect(() => {
+    const state = returnState.current;
+    if (restored.current || !state || !queries.marketSnapshot?.data) return;
+    const frame = requestAnimationFrame(() => {
+      restored.current = true;
+      pageRootRef.current?.querySelectorAll<HTMLDetailsElement>("details").forEach((detail) => { if (state.openDetails.includes(detailKey(detail))) detail.open = true; });
+      if (state.openDetails.includes("market-financial-charts-all")) onChartsVisible();
+      const target = document.getElementById(state.focusId);
+      (target?.matches("button, a, input") ? target : target?.querySelector<HTMLElement>("button, a"))?.focus({ preventScroll: true });
+      window.scrollTo({ top: state.scrollY, behavior: "instant" });
+      try { sessionStorage.removeItem(HOME_RETURN_STATE_KEY); } catch { /* Optional restoration only. */ }
     });
-  }, [view.detailPanels]);
+    return () => cancelAnimationFrame(frame);
+  }, [onChartsVisible, queries.marketSnapshot?.data]);
+
+  useEffect(() => {
+    const hashChapter = location.hash.slice(1);
+    if (isMarketChapterId(hashChapter)) {
+      const chapter = document.getElementById(hashChapter);
+      if (chapter instanceof HTMLDetailsElement) chapter.open = true;
+      setActiveChapter(hashChapter);
+      if (hashChapter === "market-financial-charts-all") onChartsVisible();
+    } else if (location.hash === "") {
+      setActiveChapter("market-overview-judgment");
+    }
+  }, [location.hash, onChartsVisible]);
+
+  useEffect(() => {
+    const chapterElements = MARKET_CHAPTERS.map((chapter) =>
+      document.getElementById(chapter.id),
+    ).filter((element): element is HTMLElement => Boolean(element));
+
+    if (chapterElements.length === 0 || !("IntersectionObserver" in window)) {
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const nearestVisibleChapter = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort(
+            (left, right) =>
+              Math.abs(left.boundingClientRect.top) -
+              Math.abs(right.boundingClientRect.top),
+          )[0];
+
+        if (
+          nearestVisibleChapter &&
+          isMarketChapterId(nearestVisibleChapter.target.id)
+        ) {
+          setActiveChapter(nearestVisibleChapter.target.id);
+          if (
+            nearestVisibleChapter.target.id === "market-financial-charts-all" &&
+            nearestVisibleChapter.target instanceof HTMLDetailsElement &&
+            nearestVisibleChapter.target.open
+          ) {
+            onChartsVisible();
+          }
+        }
+      },
+      {
+        rootMargin: "-10% 0px -72% 0px",
+        threshold: [0, 0.01, 0.2],
+      },
+    );
+
+    chapterElements.forEach((element) => observer.observe(element));
+    return () => observer.disconnect();
+  }, [onChartsVisible]);
+
+  const statusTitle = [view.stateDetail, view.marketDeskIntel?.curveShapeLabel]
+    .filter(Boolean)
+    .join(" · ");
+  const refreshFeedback = refreshError || refreshStatus;
 
   return (
-    <>
-      <header data-testid="module-home-toolbar" className={`${dhStyles.dhTopbar} ${marketStyles.marketTopbar}`}>
-        <div className={`${dhStyles.dhTopbarLeft} ${marketStyles.marketTopbarLeft}`}>
-          <div className={dhStyles.dhTitleBrand}>
-            <span className={dhStyles.dhTitleBar} aria-hidden="true" />
-            <h1 className={dhStyles.dhTitle}>{view.title}</h1>
+    <div className={styles.pageRoot} data-state={view.dataState} ref={pageRootRef} onClickCapture={rememberReturnState}>
+      <header className={styles.topbar} data-testid="module-home-toolbar">
+        <div className={styles.topbarLeft}>
+          <div className={styles.headingLine}>
+            <h1 className={styles.pageTitle}>市场总览</h1>
+            <span
+              className={styles.statusPill}
+              data-testid="module-home-market-dense-status"
+              data-tone={refreshError ? "error" : view.dataState}
+              title={statusTitle || undefined}
+            >
+              <i aria-hidden="true" />
+              {isRefreshing ? "刷新中" : view.stateLabel}
+            </span>
           </div>
-          <div className={marketStyles.topbarCopy}>
-            <p className={marketStyles.topbarSummary}>{view.question}</p>
-            <p className={marketStyles.topbarScope}>{marketReadingOrder}</p>
+          <div
+            className={styles.tradeDates}
+            data-testid="module-home-market-dense-date"
+          >
+            <span>
+              行情区间
+              <strong>{tapeDateRange || EM_DASH}</strong>
+            </span>
+            <span>
+              正式序列
+              <strong>{formalTradeDate || EM_DASH}</strong>
+            </span>
           </div>
         </div>
         <div
-          className={`${dhStyles.dhTopbarRight} ${marketStyles.marketTopbarMeta}`}
-          data-testid="module-home-market-topbar-audit-meta"
-          hidden
+          className={styles.topbarRight}
+          data-testid="module-home-market-dense-utility"
         >
-          <span className={statePillClass(stateTone)} data-tone={stateTone}>
-            {view.stateLabel}
-          </span>
-          <span className={dhStyles.dhDateLabel}>最新行情日</span>
-          <span className={`${dhStyles.dhNum} ${marketStyles.topbarDate}`}>{latestTradeDate || "—"}</span>
-          <span className={dhStyles.dhDateLabel}>正式序列日</span>
-          <span className={`${dhStyles.dhNum} ${marketStyles.topbarDate}`}>{formalTradeDate || "—"}</span>
+          {refreshFeedback ? (
+            <span
+              className={styles.refreshFeedback}
+              role="status"
+              data-tone={refreshError ? "error" : "ok"}
+              title={refreshFeedback}
+            >
+              {refreshFeedback}
+            </span>
+          ) : null}
+          <label
+            className={styles.searchBox}
+            data-testid="module-home-market-dense-search"
+          >
+            <SearchOutlined aria-hidden="true" />
+            <span className={styles.visuallyHidden}>
+              搜索指标、图表或事件
+            </span>
+            <input
+              value={searchValue}
+              placeholder="搜索指标、图表、事件或代码"
+              onChange={(event) => setSearchValue(event.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            className={styles.refreshButton}
+            data-testid="module-home-market-dense-refresh"
+            disabled={isRefreshing}
+            aria-busy={isRefreshing || undefined}
+            onClick={() => void onRefreshData()}
+          >
+            <ReloadOutlined aria-hidden="true" />
+            刷新数据
+          </button>
         </div>
       </header>
 
-      <main className={`${dhStyles.dhMain} ${marketStyles.marketPageMain}`}>
-        <section
-          data-testid="module-home-market-cockpit"
-          className={marketStyles.marketInstitutionalCockpit}
-        >
-          <section
-            data-testid="module-home-market-primary-grid"
-            className={marketStyles.marketPrimaryGrid}
+      <div className={styles.main}>
+        <MarketOverviewDenseFirstScreen
+          view={view}
+          queries={queries}
+          searchValue={searchValue}
+          chartPalette={chartPalette}
+          chapterNav={<nav
+        aria-label={`${config.title}章节导航`}
+        className={styles.chapterNav}
+        data-testid="module-home-market-chapter-nav"
+      >
+        {MARKET_CHAPTERS.map((chapter) => (
+          <a
+            aria-current={activeChapter === chapter.id ? "location" : undefined}
+            className={styles.chapterNavLink}
+            data-active={activeChapter === chapter.id ? "true" : "false"}
+            href={`#${chapter.id}`}
+            key={chapter.id}
+            onClick={() => {
+              const target = document.getElementById(chapter.id);
+              if (target instanceof HTMLDetailsElement) target.open = true;
+              setActiveChapter(chapter.id);
+              if (chapter.id === "market-financial-charts-all") onChartsVisible();
+            }}
           >
-            <div className={marketStyles.marketPrimaryColumn}>
-              <section className={marketStyles.decisionSection}>
-                <section data-testid="module-home-briefing" className={`${dhStyles.dhHero} ${marketStyles.marketHero}`}>
-          {primaryBriefing ? (
-            <article className={`${dhStyles.dhCard} ${dhStyles.dhTerminalJudgement} ${marketStyles.judgementCard}`}>
-              <span className={dhStyles.dhTerminalEyebrow}>本日市场判断</span>
-              <h2>{primaryBriefing.conclusion}</h2>
-              <p className={`${dhStyles.dhImpact} ${marketStyles.marketHeroEvidence}`} data-testid="module-home-market-hero-evidence">
-                <span>{marketJudgementCue}</span>
-              </p>
-              <div className={`${dhStyles.dhTerminalJudgementFoot} ${marketStyles.marketHeroMeta}`} data-testid="module-home-market-hero-meta" hidden>
-                <span>{view.stateDetail}</span>
-                <span>{primaryBriefing.evidence}</span>
-                <span className={marketStyles.marketHeroSources}>
-                  {sourceScopeSegments.length > 0
-                    ? sourceScopeSegments.map((part, index) => <em key={part}>{index > 0 ? ` / ${part}` : part}</em>)
-                    : <em>{view.sourceScope}</em>}
-                </span>
-              </div>
-            </article>
-          ) : null}
-          <article
-            data-testid="module-home-kpi-strip"
-            className={`${dhStyles.dhCard} ${marketStyles.marketKpiBox}`}
-          >
-            {marketKpis.map((item) => (
-              <div className={`${dhStyles.dhMetricTile} ${marketStyles.marketKpiTile}`} data-tone={item.tone} key={item.key}>
-                <div className={dhStyles.dhMetricLabel}>{item.label}</div>
-                <div className={`${dhStyles.dhMetricValue} ${dhStyles.dhNum} ${toneClass(item.tone)}`}>
-                  {item.value}
-                </div>
-                <div className={dhStyles.dhChange}>
-                  <span className={`${dhStyles.dhMuted} ${marketStyles.marketKpiDetail}`} data-testid={`module-home-market-kpi-${item.key}-detail`}>
-                    {evidenceSegments(item.detail).map((part) => (
-                      <em key={part}>{part}</em>
-                    ))}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </article>
-                </section>
-
-                {secondaryBriefings.length > 0 ? (
-                  <section className={`${marketStyles.insightRow} ${marketStyles.marketAuditOnly}`} hidden>
-                    {secondaryBriefings.map((item) => (
-                      <article className={marketStyles.insightCell} key={item.title}>
-                        <span className={marketStyles.insightLabel}>{item.title}</span>
-                        <p className={marketStyles.insightCopy}>{item.conclusion}</p>
-                        <span className={`${marketStyles.insightEvidence} ${marketStyles.marketAuditOnly}`} hidden>
-                          {item.evidence}
-                        </span>
-                      </article>
-                    ))}
-                  </section>
-                ) : null}
-
-                <MarketDecisionMatrix
-                  view={view}
-                  latestTradeDate={latestTradeDate}
-                  formalTradeDate={formalTradeDate}
-                  keyRatePanel={keyRatePanel}
-                  yieldCurvePanel={yieldCurvePanel}
-                  macroPanel={macroPanel}
-                  formalPanel={formalPanel}
-                  catalogPanel={catalogPanel}
-                  macroOverviewPanel={macroOverviewPanel}
-                />
-
-                <MarketActionQueue
-                  view={view}
-                  keyRatePanel={keyRatePanel}
-                  yieldCurvePanel={yieldCurvePanel}
-                  macroPanel={macroPanel}
-                />
-
-              </section>
-            </div>
-
-            <aside
-              data-testid="module-home-market-evidence-rail"
-              className={marketStyles.evidenceRail}
-            >
-              <div className={marketStyles.evidenceRailHeader}>
-                <span>市场快照</span>
-                <strong data-tone={stateTone} hidden>
-                  {view.stateLabel}
-                </strong>
-              </div>
-              <p
-                className={marketStyles.evidenceRailState}
-                data-testid="module-home-market-evidence-rail-state"
-                hidden
-              >
-                行情 {latestTradeDate || "—"}，正式序列 {formalTradeDate || "—"}；{view.stateLabel}。
-              </p>
-
-              <div className={marketStyles.evidenceRailMetricGrid} data-testid="module-home-market-evidence-rail-metrics">
-                {marketKpis.map((item) => (
-                  <div className={marketStyles.evidenceRailMetric} data-tone={item.tone} key={item.key}>
-                    <span>{item.label}</span>
-                    <strong className={dhStyles.dhNum}>{item.value}</strong>
-                  </div>
-                ))}
-              </div>
-
-              <section
-                className={marketStyles.evidenceRailCard}
-                data-testid="module-home-market-audit-status"
-                hidden
-              >
-                <span className={marketStyles.evidenceRailLabel}>约束检查结果</span>
-                <div className={marketStyles.evidenceRailStatusList}>
-                  {view.statuses.slice(0, 5).map((item) => (
-                    <span data-tone={item.tone} key={item.key}>
-                      <b>{item.label}</b>
-                      <em>{item.value || item.detail || "待返回"}</em>
-                    </span>
-                  ))}
-                </div>
-              </section>
-
-              <nav className={marketStyles.evidenceRailActionList} aria-label="市场模块入口">
-                <Link to="/market-data" className={marketStyles.evidenceRailLink}>
-                  市场数据
-                </Link>
-                <Link to="/macro-toolkit" className={marketStyles.evidenceRailLink}>
-                  宏观工具
-                </Link>
-                <Link to="/cross-asset" className={marketStyles.evidenceRailLink}>
-                  跨资产
-                </Link>
-              </nav>
-            </aside>
-          </section>
-
-        <section className={marketStyles.marketWorkbenchSection}>
-          <div className={dhStyles.dhSectionTitle}>
-            <span>市场工作台</span>
-            <Link to="/market-data" className={dhStyles.dhLink}>
-              完整市场数据 →
-            </Link>
+            {chapter.label}
+          </a>
+        ))}
+        <details className={styles.marketFunctions}>
+          <summary>市场功能</summary>
+          <div>
+            <a href="#market-financial-charts-all" onClick={() => { const target = document.getElementById("market-financial-charts-all"); if (target instanceof HTMLDetailsElement) target.open = true; onChartsVisible(); }}>十二项专题图表</a>
+            <a href="#market-backend-data-all" onClick={() => { const target = document.getElementById("market-backend-data-all"); if (target instanceof HTMLDetailsElement) target.open = true; }}>全部行情与来源</a>
+            <a href="/macro-toolkit">宏观工具与刷新核验</a>
+            <a href="/news-events">新闻事件</a>
           </div>
-          <div className={marketStyles.workGrid}>
-          {keyRatePanel ? <MarketRateLadder panel={keyRatePanel} viewAllPath="/market-data" /> : null}
-          <div
-            data-testid="module-home-market-terminal"
-            className={`${dhStyles.dhCard} ${marketStyles.terminalCard} ${
-              isMarketTerminalDefaultEmpty ? marketStyles.marketCompactEmptyTerminal : ""
-            }`}
-          >
-            <div className={dhStyles.dhSectionTitle}>
-              <span>行情序列</span>
-            </div>
-            <Tabs defaultActiveKey="formal-rate-series" items={tabItems} />
-          </div>
-          </div>
-        </section>
-
-        <section className={marketStyles.depthSection}>
-          <div className={dhStyles.dhSectionTitle}>
-            <span>市场深度</span>
-          </div>
-          <div className={marketStyles.depthQuad}>
-            {yieldCurvePanel ? (
-              <MarketDepthPanel
-                panel={yieldCurvePanel}
-                testId={DETAIL_PANEL_TEST_IDS[yieldCurvePanel.key]}
-              />
-            ) : null}
-            {macroPanel ? (
-              <MarketDepthPanel panel={macroPanel} testId={DETAIL_PANEL_TEST_IDS[macroPanel.key]} />
-            ) : null}
-            {formalPanel ? (
-              <MarketDepthPanel
-                panel={formalPanel}
-                testId={DETAIL_PANEL_TEST_IDS[formalPanel.key]}
-                compact
-              />
-            ) : null}
-            {catalogPanel ? (
-              <MarketDepthPanel
-                panel={catalogPanel}
-                testId={DETAIL_PANEL_TEST_IDS[catalogPanel.key]}
-                compact
-              />
-            ) : null}
-          </div>
-        </section>
-
-        <MarketMacroToolkitSection
-          overviewPanel={macroOverviewPanel}
-          signalPanel={macroSignalPanel}
-          capabilityPanel={macroCapabilityPanel}
-          indicatorPanel={macroIndicatorPanel}
-          strategyPanel={macroStrategyPanel}
-          aShareRiskPanel={macroAShareRiskPanel}
-          hasonPanel={macroHasonPanel}
-          shadowPanel={macroShadowPanel}
-          runtimePanel={macroRuntimePanel}
+        </details>
+      </nav>}
         />
-
-        <section className={marketStyles.navigationSection}>
-        <section data-testid="module-home-observation" className={marketStyles.observationSection}>
-          <div className={dhStyles.dhSectionTitle}>
-            <span>观察入口</span>
-          </div>
-          <div className={marketStyles.observationGrid}>
-            <Link className={`${dhStyles.dhCard} ${marketStyles.observationCard}`} to="/cross-asset">
-              <strong>跨资产驱动</strong>
-              <span className={marketStyles.observationBadge}>观察口径</span>
-              <p>宏观、汇率与权益向债券组合的传导解释。</p>
-            </Link>
-            <Link className={`${dhStyles.dhCard} ${marketStyles.observationCard}`} to="/news-events">
-              <strong>新闻事件</strong>
-              <span className={marketStyles.observationBadge}>已开放</span>
-              <p>Choice 新闻事件、回调异常与事件列表摘要。</p>
-            </Link>
-            <Link className={`${dhStyles.dhCard} ${marketStyles.observationCard}`} to="/macro-toolkit">
-              <strong>宏观工具</strong>
-              <span className={marketStyles.observationBadge}>工具口径</span>
-              <p>脚本注册表、信号卡片与能力模块完整页。</p>
-            </Link>
-          </div>
-        </section>
-
-        <section data-testid="module-home-drilldowns" className={marketStyles.drillSection}>
-          <div className={dhStyles.dhSectionTitle}>
-            <span>模块下钻</span>
-          </div>
-          <div className={marketStyles.drillGrid}>
-            {config.drilldowns.map((item) => {
-              const isCurrentHome = item.key === "market-overview";
-              return (
-                <Link
-                  key={item.key}
-                  to={item.path}
-                  aria-current={isCurrentHome ? "page" : undefined}
-                  className={`${marketStyles.drillLink} ${isCurrentHome ? marketStyles.drillLinkCurrent : ""}`}
-                  title={item.description}
-                >
-                  <b>{item.label}</b>
-                  <em>{isCurrentHome ? "当前首页" : item.statusLabel}</em>
-                  <span className={marketStyles.drillDesc}>{item.description}</span>
-                </Link>
-              );
-            })}
-          </div>
-          {view.dataNote.lines.length > 0 ? (
-            <p className={marketStyles.dataNote} data-testid="module-home-data-note">
-              {view.dataNote.lines.join(" ")}
-            </p>
-          ) : null}
-        </section>
-        </section>
-        </section>
-      </main>
-    </>
+        <details
+          id="market-financial-charts-all"
+          className={styles.secondaryDetails}
+          onToggle={(event) => {
+            if (event.currentTarget.open) onChartsVisible();
+          }}
+        >
+          <summary>
+            <strong>专题图表</strong>
+            <span>利率、跨资产、宏观、策略与事件</span>
+          </summary>
+          <MarketFinancialChartsWorkbench
+            queries={queries}
+            chartPalette={chartPalette}
+            onChartSectionsChange={onChartSectionsChange}
+          />
+        </details>
+        <details id="market-backend-data-all" className={styles.secondaryDetails}>
+          <summary>
+            <strong>全部行情</strong>
+            <span>行情明细、数据来源与质量</span>
+          </summary>
+          <MarketBackendDataWorkbench
+            queries={queries}
+            onActiveKeyChange={onBackendActiveKeyChange}
+          />
+        </details>
+      </div>
+    </div>
   );
 }

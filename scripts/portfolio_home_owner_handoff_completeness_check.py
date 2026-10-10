@@ -13,7 +13,9 @@ from scripts.check_portfolio_home_business_owner_approval import DEFAULT_TEMPLAT
 from scripts.portfolio_home_closure_artifact_summary import (  # noqa: E402
     artifact_required_now,
 )
-from scripts.portfolio_home_closure_scorecard import VERIFICATION_COMMANDS  # noqa: E402
+from scripts.portfolio_home_closure_scorecard import (  # noqa: E402
+    _render_verification_commands,
+)
 from scripts.portfolio_home_full_closure_evidence import (  # noqa: E402
     DEFAULT_DUCKDB,
     DEFAULT_REPORT_DATE,
@@ -40,11 +42,23 @@ OWNER_INPUT_SUMMARY_COMMAND = (
     "python scripts/portfolio_home_owner_input_needed_summary.py --limit 3 "
     "--output docs/portfolio/portfolio-home-owner-input-needed-summary.json --check-current"
 )
-SCORECARD_VERIFICATION_COMMANDS = {
-    str(command.get("command"))
-    for command in VERIFICATION_COMMANDS
-    if isinstance(command, dict) and command.get("command")
-}
+def _scorecard_verification_commands(report_date: str) -> set[str]:
+    """Return the canonical commands emitted for the selected report date.
+
+    The scorecard renders report-date arguments into its owner-facing command
+    list. Date-independent commands remain unchanged in the rendered list;
+    date-sensitive commands must retain the selected report date.
+    """
+
+    return {
+        str(command.get("command"))
+        for command in _render_verification_commands(report_date)
+        if isinstance(command, dict) and command.get("command")
+    }
+
+
+def _recheck_command_allowlisted(command: str, *, report_date: str) -> bool:
+    return command in _scorecard_verification_commands(report_date)
 
 
 def _list(value: object) -> list[object]:
@@ -111,6 +125,7 @@ def _route_check(
     *,
     docs_root: Path,
     artifact_current_summary: dict[str, object],
+    report_date: str,
 ) -> dict[str, object]:
     owner = str(route.get("owner") or "unknown_owner")
     blockers: list[str] = []
@@ -128,7 +143,7 @@ def _route_check(
     unallowlisted_recheck_commands = [
         command
         for command in recheck_commands
-        if command not in SCORECARD_VERIFICATION_COMMANDS
+        if not _recheck_command_allowlisted(command, report_date=report_date)
     ]
     if unallowlisted_recheck_commands:
         blockers.append(f"{owner}_recheck_commands_unallowlisted")
@@ -186,6 +201,7 @@ def handoff_completeness_report(
     routes = _list(summary.get("owner_routes"))
     coverage = _owner_route_coverage(routes)
     artifact_current_summary = _dict(summary.get("export_current_summary"))
+    report_date = str(summary.get("report_date") or DEFAULT_REPORT_DATE)
     if "business_owner_approval_template" not in artifact_current_summary:
         artifact_current_summary["business_owner_approval_template"] = {
             "status": "present",
@@ -231,6 +247,7 @@ def handoff_completeness_report(
             route=route,
             docs_root=docs_root,
             artifact_current_summary=artifact_current_summary,
+            report_date=report_date,
         )
         for route in routes
         if isinstance(route, dict)

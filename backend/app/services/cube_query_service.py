@@ -4,7 +4,12 @@ import re
 import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from datetime import date
 
+from backend.app.core_finance.config.product_category_mapping import (
+    build_default_product_category_config,
+    build_product_category_config_for_report_date,
+)
 from backend.app.repositories.cube_query_repo import CubeQueryRepository
 from backend.app.schemas.cube_query import CubeQueryRequest, CubeQueryResponse, DrillPath
 from backend.app.services.formal_result_runtime import build_formal_result_meta
@@ -41,6 +46,7 @@ class CubeQueryService:
         ],
         "pnl": ["invest_type_std", "accounting_basis", "portfolio_name", "cost_center"],
         "balance": [
+            "currency_basis",
             "asset_class",
             "invest_type_std",
             "accounting_basis",
@@ -63,8 +69,8 @@ class CubeQueryService:
     CACHE_VERSIONS = {
         "bond_analytics": "cv_cube_query_bond_analytics_v1",
         "pnl": "cv_cube_query_pnl_v1",
-        "balance": "cv_cube_query_balance_v1",
-        "product_category": "cv_cube_query_product_category_v1",
+        "balance": "cv_cube_query_balance_v2",
+        "product_category": "cv_cube_query_product_category_v2",
     }
     DEFAULT_SOURCE_VERSIONS = {
         "bond_analytics": "sv_cube_bond_analytics_empty",
@@ -94,8 +100,18 @@ class CubeQueryService:
         return {
             "fact_table": fact_table,
             "dimensions": list(cls.ALLOWED_DIMENSIONS[fact_table]),
-            "measures": list(cls.ORDERED_MEASURES),
+            "measures": ["sum"] if fact_table == "product_category" else list(cls.ORDERED_MEASURES),
             "measure_fields": list(cls.ALLOWED_MEASURE_FIELDS[fact_table]),
+            "required_filters": (
+                {"currency_basis": ["CNY"]} if fact_table == "balance"
+                else {
+                    "view": ["monthly", "qtd", "ytd", "year_to_report_month_end"],
+                    "category_id": [str(item["id"]) for item in build_default_product_category_config()]
+                    + ["asset_total", "liability_total", "grand_total"],
+                }
+                if fact_table == "product_category" else {}
+            ),
+            "analytical_only": fact_table in {"balance", "product_category"},
         }
 
     def execute(self, request: CubeQueryRequest, duckdb_path: str) -> CubeQueryResponse:
@@ -106,6 +122,11 @@ class CubeQueryService:
         dimensions = self.validate_dimensions(request)
         filters = self.validate_filters(request)
         measure_specs = self.parse_measures(request)
+        if request.fact_table in {"balance", "product_category"}:
+            raise RuntimeError(
+                "Cube formal use is not promoted for balance/product_category. "
+                "Use basis=analytical with explicit single-value filters for analysis only."
+            )
         where_sql, where_params = self.build_where_clause(request.report_date, filters)
         repo = self._repo_factory(duckdb_path)
         matching_row_count = self.matching_row_count(repo, table_name, where_sql, where_params)
@@ -178,6 +199,18 @@ class CubeQueryService:
                 "Unsupported filters for "
                 f"{request.fact_table}: {', '.join(invalid_filters)}"
             )
+        if request.fact_table == "balance" and request.filters.get("currency_basis") != ["CNY"]:
+            raise ValueError("balance requires explicit filters.currency_basis=['CNY']; exactly one CNY basis is supported.")
+        if request.fact_table == "product_category":
+            views = request.filters.get("view", [])
+            if len(views) != 1 or views[0] not in {"monthly", "qtd", "ytd", "year_to_report_month_end"}:
+                raise ValueError("product_category requires exactly one supported filters.view.")
+            categories = request.filters.get("category_id", [])
+            known_categories = {
+                str(item["id"]) for item in build_product_category_config_for_report_date(date.fromisoformat(request.report_date))
+            } | {"asset_total", "liability_total", "grand_total"}
+            if len(categories) != 1 or categories[0] not in known_categories:
+                raise ValueError("product_category requires exactly one configured filters.category_id; category sets are not supported.")
         normalized: dict[str, list[str]] = {}
         for name, raw_values in request.filters.items():
             values = [str(value) for value in raw_values if str(value) != ""]
@@ -186,6 +219,11 @@ class CubeQueryService:
         return normalized
 
     def parse_measures(self, request: CubeQueryRequest) -> list[_MeasureSpec]:
+        if request.fact_table == "product_category":
+            if [value.strip() for value in request.measures] != ["sum(business_net_income)"]:
+                raise ValueError("product_category only supports sum(business_net_income) as a single preaggregated row read.")
+            # Preserve the landed request spelling while reading the existing metric.
+            return [_MeasureSpec(alias="business_net_income", sql="business_net_income")]
         allowed_fields = self.ALLOWED_MEASURE_FIELDS[request.fact_table]
         aliases: set[str] = set()
         specs: list[_MeasureSpec] = []
@@ -277,9 +315,11 @@ class CubeQueryService:
         order_by: Sequence[str],
         limit: int,
         offset: int,
+        *,
+        preaggregated: bool = False,
     ) -> list[dict[str, object]]:
         select_parts = list(dimensions) + [f"{spec.sql} as {spec.alias}" for spec in measure_specs]
-        group_sql = f" group by {', '.join(dimensions)}" if dimensions else ""
+        group_sql = f" group by {', '.join(dimensions)}" if dimensions and not preaggregated else ""
         order_sql = self._build_order_by(order_by, dimensions, measure_specs)  # stays private: internal-only helper
         rows = repo.fetchall(
             f"""
@@ -321,11 +361,12 @@ class CubeQueryService:
         filters: dict[str, list[str]],
     ) -> list[DrillPath]:
         drill_paths: list[DrillPath] = []
+        fixed_filters = {"currency_basis"} if request.fact_table == "balance" else {"view", "category_id"} if request.fact_table == "product_category" else set()
         for dimension in dimensions:
             where_sql, where_params = self.build_where_clause(
                 request.report_date,
                 filters,
-                skip_dimension=dimension,
+                skip_dimension=None if dimension in fixed_filters else dimension,
             )
             rows = repo.fetchall(
                 f"""

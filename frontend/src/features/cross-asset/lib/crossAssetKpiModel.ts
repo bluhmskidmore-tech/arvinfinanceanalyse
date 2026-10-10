@@ -1,4 +1,8 @@
-import type { ChoiceMacroLatestPoint, ChoiceMacroRecentPoint } from "../../../api/contracts";
+import type { ChoiceMacroLatestPoint } from "../../../api/contracts";
+import { EM_DASH, fixedOrDash, pctOrDash, signedFixedOrDash } from "../../../pageModel";
+
+/** KPI 来源标注：预计算利差序列未下发时写入既有来源位。 */
+export const PRECOMPUTED_SPREAD_MISSING_NOTE = "后端预计算序列缺失";
 
 export type CrossAssetKpiFormat = "percent" | "bp" | "index" | "fx" | "plain";
 
@@ -9,25 +13,30 @@ export type CrossAssetSingleSlot = {
   label: string;
   format: CrossAssetKpiFormat;
   tag: string;
+  displayUnit?: string;
   candidateSeriesIds: readonly string[];
 };
 
 export type CrossAssetSpreadSlot = {
   kind: "spread";
   key: string;
-  /** 中债10Y − 美债10Y（美债序列入库后自动启用） */
+  /** 中美10Y 利差（仅消费后端预计算 bp 序列） */
   labelCnUs: string;
-  /** 目录暂无美债时的国内代理：国开10Y − 国债10Y */
-  labelDomesticFallback: string;
   tag: string;
-  /** 发布方直接给出的中美10Y利差(bp)，优先于两收益率相减 */
+  /**
+   * 后端预计算中美10Y利差(bp)。
+   * `EM1` 为 Choice 目录核心序列；`CA.CN_US_SPREAD` 为工作台 ticker 同口径公共补充预计算序列。
+   * 缺失时 KPI 显示 EM_DASH，禁止前端用两条收益率相减重算。
+   */
   precomputedCnUsBpIds: readonly string[];
-  cnGov10yIds: readonly string[];
-  usGov10yIds: readonly string[];
-  cdb10yIds: readonly string[];
 };
 
 export type CrossAssetKpiSlot = CrossAssetSingleSlot | CrossAssetSpreadSlot;
+
+/** Zero-centered scores are evidence, not asset levels: no return, vol, correlation, or base-100 transforms. */
+export function isAssetLevelKpiKey(key: string): boolean {
+  return key !== "financial_conditions";
+}
 
 export const CROSS_ASSET_KPI_SLOTS: CrossAssetKpiSlot[] = [
   {
@@ -50,12 +59,8 @@ export const CROSS_ASSET_KPI_SLOTS: CrossAssetKpiSlot[] = [
     kind: "spread",
     key: "gov_spread",
     labelCnUs: "中美10Y利差",
-    labelDomesticFallback: "国开-国债10Y",
     tag: "利差",
-    precomputedCnUsBpIds: ["EM1"],
-    cnGov10yIds: ["E1000180", "EMM00166466", "CA.CN_GOV_10Y"],
-    usGov10yIds: ["E1003238", "EMG00001310", "CA.US_GOV_10Y"],
-    cdb10yIds: ["EMM00166502"],
+    precomputedCnUsBpIds: ["EM1", "CA.CN_US_SPREAD"],
   },
   {
     kind: "single",
@@ -71,7 +76,17 @@ export const CROSS_ASSET_KPI_SLOTS: CrossAssetKpiSlot[] = [
     label: "金融条件指数",
     format: "plain",
     tag: "风险情绪",
-    candidateSeriesIds: ["EMM01843735", "CA.CSI300"],
+    displayUnit: "z-score",
+    candidateSeriesIds: ["EMM01843735"],
+  },
+  {
+    kind: "single",
+    key: "csi300",
+    label: "沪深300指数",
+    format: "index",
+    tag: "权益风险偏好",
+    displayUnit: "point",
+    candidateSeriesIds: ["CA.CSI300"],
   },
   {
     kind: "single",
@@ -144,7 +159,7 @@ export type ResolvedCrossAssetKpi = {
   label: string;
   format: CrossAssetKpiFormat;
   tag: string;
-  /** 单序列时为该 id；利差时为合成键 */
+  /** 单序列时为该 id；利差为预计算序列 id，缺失为 `gov_spread:missing` */
   resolvedSeriesId: string;
   sourceKind: "choice" | "public" | "derived" | "missing";
   vendorName?: string | null;
@@ -156,6 +171,19 @@ export type ResolvedCrossAssetKpi = {
   changeLabel: string;
   changeTone: "positive" | "negative" | "warning" | "default";
   sparkline: number[];
+  /**
+   * Date-bearing observations used by pairwise analytics.
+   * Optional for compatibility with presentation-only fixtures; correlation
+   * calculations must treat a missing value as unavailable, never positional.
+   */
+  sparklinePoints?: CrossAssetDatedValue[];
+  /** 缺预计算序列等缺口说明，写入既有来源/说明标注位。 */
+  missingNote?: string;
+};
+
+export type CrossAssetDatedValue = {
+  tradeDate: string;
+  value: number;
 };
 
 function pickPoint(
@@ -192,68 +220,15 @@ function sourceKindFromSeriesId(seriesId: string): ResolvedCrossAssetKpi["source
   return "missing";
 }
 
-function latestTradeDate(points: Array<ChoiceMacroLatestPoint | undefined>) {
-  const dates = points
-    .map((point) => point?.trade_date)
-    .filter((tradeDate): tradeDate is string => Boolean(tradeDate));
-  return dates.length > 0 ? dates.sort((left, right) => right.localeCompare(left))[0] : null;
-}
-
-function formatPercent(n: number) {
-  return `${n.toFixed(2)}%`;
-}
-
-function formatBpFromNumber(n: number) {
-  const sign = n > 0 ? "+" : "";
-  return `${sign}${n.toFixed(1)}bp`;
-}
-
-function formatFx(n: number) {
-  return n.toFixed(4);
-}
-
-function sparklineFromPoint(point: ChoiceMacroLatestPoint | undefined): number[] {
-  if (!point?.recent_points?.length) {
+function sparklinePointsFromPoint(point: ChoiceMacroLatestPoint | undefined): CrossAssetDatedValue[] {
+  if (!point?.recent_points?.length || point.value_numeric == null || !Number.isFinite(point.value_numeric)) {
     return [];
   }
   const sorted = [...point.recent_points].sort((a, b) => a.trade_date.localeCompare(b.trade_date));
-  return sorted.map((p) => p.value_numeric);
-}
-
-function mergeRecentByDate(
-  left: ChoiceMacroRecentPoint[],
-  right: ChoiceMacroRecentPoint[],
-): { dates: string[]; leftV: number[]; rightV: number[] } {
-  const rm = new Map(right.map((p) => [p.trade_date, p.value_numeric]));
-  const sorted = [...left].sort((a, b) => a.trade_date.localeCompare(b.trade_date));
-  const dates: string[] = [];
-  const leftV: number[] = [];
-  const rightV: number[] = [];
-  for (const p of sorted) {
-    const rv = rm.get(p.trade_date);
-    if (rv != null) {
-      dates.push(p.trade_date);
-      leftV.push(p.value_numeric);
-      rightV.push(rv);
-    }
-  }
-  return { dates, leftV, rightV };
-}
-
-/** 两收益率(%)之差 → bp */
-function toSpreadBp(minuendPct: number, subtrahendPct: number) {
-  return (minuendPct - subtrahendPct) * 100;
-}
-
-function spreadSparklineFromPoints(
-  hi: ChoiceMacroLatestPoint | undefined,
-  lo: ChoiceMacroLatestPoint | undefined,
-): number[] {
-  if (!hi?.recent_points?.length || !lo?.recent_points?.length) {
-    return [];
-  }
-  const { leftV, rightV } = mergeRecentByDate(hi.recent_points, lo.recent_points);
-  return leftV.map((lv, i) => toSpreadBp(lv, rightV[i]));
+  // Pairwise analytics and undated sparklines require complete observations.
+  if (sorted.some((p) => p.value_numeric == null || !Number.isFinite(p.value_numeric))) return [];
+  return sorted.flatMap((p) => typeof p.value_numeric === "number"
+    ? [{ tradeDate: p.trade_date, value: p.value_numeric }] : []);
 }
 
 function spreadLatestChange(sparkline: number[]): number | null {
@@ -267,7 +242,7 @@ function toneForChange(
   format: CrossAssetKpiFormat,
   delta: number | null | undefined,
 ): ResolvedCrossAssetKpi["changeTone"] {
-  if (delta == null || Number.isNaN(delta)) {
+  if (delta == null || !Number.isFinite(delta)) {
     return "default";
   }
   if (format === "bp") {
@@ -296,48 +271,70 @@ function changeLabelForSlot(
   format: CrossAssetKpiFormat,
   delta: number | null | undefined,
 ): string {
-  if (delta == null || Number.isNaN(delta)) {
-    return "—";
+  if (delta == null || !Number.isFinite(delta)) {
+    return EM_DASH;
   }
   if (format === "percent") {
-    const sign = delta > 0 ? "+" : "";
-    const bp = delta * 100;
-    return `${sign}${bp.toFixed(1)}bp`;
+    // 收益率日变动以 bp 展示；delta 与 delta*100 同号，"+" 边界（严格正）不变。
+    return `${signedFixedOrDash(delta * 100, 1)}bp`;
   }
   if (format === "bp") {
-    return formatBpFromNumber(delta);
+    return `${signedFixedOrDash(delta, 1)}bp`;
   }
-  if (format === "index" || format === "plain") {
+  if (format === "index") {
+    const sign = delta > 0 ? "+" : "";
+    return `${sign}${delta.toLocaleString("zh-CN", { maximumFractionDigits: 2 })}点`;
+  }
+  if (format === "plain") {
     const sign = delta > 0 ? "+" : "";
     return `${sign}${delta.toLocaleString("zh-CN", { maximumFractionDigits: 2 })}`;
   }
   if (format === "fx") {
-    const sign = delta > 0 ? "+" : "";
-    return `${sign}${delta.toFixed(4)}`;
+    return signedFixedOrDash(delta, 4);
   }
   return String(delta);
 }
 
 function valueLabelForSlot(
   format: CrossAssetKpiFormat,
-  value: number | undefined,
+  value: number | null | undefined,
 ): string {
-  if (value == null || Number.isNaN(value)) {
-    return "—";
+  if (value == null || !Number.isFinite(value)) {
+    return EM_DASH;
   }
   if (format === "percent") {
-    return formatPercent(value);
+    return pctOrDash(value, 2);
   }
   if (format === "bp") {
     return `${value.toFixed(0)}bp`;
   }
   if (format === "fx") {
-    return formatFx(value);
+    return fixedOrDash(value, 4);
   }
   if (format === "index") {
-    return value.toFixed(1);
+    return `${value.toFixed(1)}点`;
   }
   return value.toLocaleString("zh-CN", { maximumFractionDigits: 2 });
+}
+
+function missingSpreadKpi(slot: CrossAssetSpreadSlot): ResolvedCrossAssetKpi {
+  return {
+    key: slot.key,
+    label: slot.labelCnUs,
+    format: "bp",
+    tag: slot.tag,
+    resolvedSeriesId: `${slot.key}:missing`,
+    sourceKind: "missing",
+    vendorName: null,
+    tradeDate: null,
+    unit: null,
+    valueLabel: EM_DASH,
+    changeLabel: EM_DASH,
+    changeTone: "default",
+    sparkline: [],
+    sparklinePoints: [],
+    missingNote: PRECOMPUTED_SPREAD_MISSING_NOTE,
+  };
 }
 
 function resolveSpreadSlot(
@@ -345,112 +342,53 @@ function resolveSpreadSlot(
   byId: Map<string, ChoiceMacroLatestPoint>,
 ): ResolvedCrossAssetKpi {
   const preBp = pickPoint(byId, slot.precomputedCnUsBpIds);
-  if (preBp) {
-    const sparkline = sparklineFromPoint(preBp);
-    const delta = spreadLatestChange(sparkline);
-    return {
-      key: slot.key,
-      label: slot.labelCnUs,
-      format: "bp",
-      tag: slot.tag,
-      resolvedSeriesId: preBp.series_id,
-      sourceKind: sourceKindFromSeriesId(preBp.series_id),
-      vendorName: preBp.vendor_name,
-      tradeDate: preBp.trade_date,
-      unit: preBp.unit,
-      valueLabel: valueLabelForSlot("bp", preBp.value_numeric),
-      changeLabel: changeLabelForSlot("bp", delta),
-      changeTone: toneForChange("bp", delta),
-      sparkline,
-    };
+  if (!preBp) {
+    return missingSpreadKpi(slot);
   }
-
-  const cn = pickPoint(byId, slot.cnGov10yIds);
-  const us = pickPoint(byId, slot.usGov10yIds);
-  const cdb = pickPoint(byId, slot.cdb10yIds);
-
-  let label = slot.labelDomesticFallback;
-  let hi: ChoiceMacroLatestPoint | undefined;
-  let lo: ChoiceMacroLatestPoint | undefined;
-  let resolvedId = `${slot.key}:domestic`;
-
-  if (cn && us) {
-    label = slot.labelCnUs;
-    hi = cn;
-    lo = us;
-    resolvedId = `${slot.key}:cn_us`;
-  } else if (cdb && cn) {
-    label = slot.labelDomesticFallback;
-    hi = cdb;
-    lo = cn;
-    resolvedId = `${slot.key}:cdb_gov`;
-  }
-
-  if (!hi || !lo) {
-    return {
-      key: slot.key,
-      label: slot.labelCnUs,
-      format: "bp",
-      tag: slot.tag,
-      resolvedSeriesId: `${slot.key}:missing`,
-      sourceKind: "missing",
-      vendorName: null,
-      tradeDate: null,
-      unit: null,
-      valueLabel: "—",
-      changeLabel: "—",
-      changeTone: "default",
-      sparkline: [],
-    };
-  }
-
-  const vBp = toSpreadBp(hi.value_numeric, lo.value_numeric);
-  const sparkline = spreadSparklineFromPoints(hi, lo);
+  const sparklinePoints = sparklinePointsFromPoint(preBp);
+  const sparkline = sparklinePoints.map((point) => point.value);
   const delta = spreadLatestChange(sparkline);
-
   return {
     key: slot.key,
-    label,
+    label: slot.labelCnUs,
     format: "bp",
     tag: slot.tag,
-    resolvedSeriesId: resolvedId,
-    sourceKind: sourceKindFromSeriesId(resolvedId),
-    vendorName: null,
-    tradeDate: latestTradeDate([hi, lo]),
-    unit: "bp",
-    valueLabel: valueLabelForSlot("bp", vBp),
+    resolvedSeriesId: preBp.series_id,
+    sourceKind: sourceKindFromSeriesId(preBp.series_id),
+    vendorName: preBp.vendor_name,
+    tradeDate: preBp.trade_date,
+    unit: preBp.unit,
+    valueLabel: valueLabelForSlot("bp", preBp.value_numeric),
     changeLabel: changeLabelForSlot("bp", delta),
     changeTone: toneForChange("bp", delta),
     sparkline,
+    sparklinePoints,
   };
 }
 
 function resolveSingleSlot(slot: CrossAssetSingleSlot, byId: Map<string, ChoiceMacroLatestPoint>): ResolvedCrossAssetKpi {
   const point = pickPoint(byId, slot.candidateSeriesIds);
   const id = point?.series_id ?? slot.candidateSeriesIds[0] ?? slot.key;
-  const delta = point?.latest_change ?? null;
-  let label = slot.key === "money_market_7d" && point?.series_id === "CA.DR007" ? "DR007" : slot.label;
-  let tag = slot.tag;
-  if (slot.key === "financial_conditions" && point?.series_id === "CA.CSI300") {
-    label = "沪深300指数";
-    tag = "权益风险偏好";
-  }
+  const delta = point?.value_numeric != null && Number.isFinite(point.value_numeric) ? point.latest_change ?? null : null;
+  const label = slot.key === "money_market_7d" && point?.series_id === "CA.DR007" ? "DR007" : slot.label;
+  const sparklinePoints = sparklinePointsFromPoint(point);
   return {
     key: slot.key,
     label,
     format: slot.format,
-    tag,
+    tag: slot.tag,
     resolvedSeriesId: id,
     sourceKind: sourceKindFromSeriesId(id),
     vendorName: point?.vendor_name,
     tradeDate: point?.trade_date ?? null,
-    unit: point?.unit ?? null,
+    unit: slot.displayUnit ?? point?.unit ?? null,
     qualityFlag: point?.quality_flag,
     refreshTier: point?.refresh_tier,
     valueLabel: valueLabelForSlot(slot.format, point?.value_numeric),
     changeLabel: changeLabelForSlot(slot.format, delta),
     changeTone: toneForChange(slot.format, delta),
-    sparkline: sparklineFromPoint(point),
+    sparkline: sparklinePoints.map((sparklinePoint) => sparklinePoint.value),
+    sparklinePoints,
   };
 }
 
@@ -467,7 +405,8 @@ export function resolveCrossAssetKpis(series: ChoiceMacroLatestPoint[]): Resolve
 export type CrossAssetTrendLine = { name: string; dates: string[]; values: number[] };
 
 /** Same trade_date can appear more than once from upstream; keep last and enforce strictly increasing x. */
-function dedupeDateSeries(dates: string[], values: number[]): Pick<CrossAssetTrendLine, "dates" | "values"> {
+function dedupeDateSeries(dates: string[], values: (number | null)[]): Pick<CrossAssetTrendLine, "dates" | "values"> {
+  if (values.some((value) => value == null || !Number.isFinite(value))) return { dates: [], values: [] };
   const byDate = new Map<string, number>();
   for (let i = 0; i < dates.length; i += 1) {
     const d = dates[i];
@@ -495,15 +434,6 @@ export function maxCrossAssetHeadlineTradeDate(series: ChoiceMacroLatestPoint[])
     const preBp = pickPoint(byId, slot.precomputedCnUsBpIds);
     if (preBp) {
       dates.push(preBp.trade_date);
-      continue;
-    }
-    const cn = pickPoint(byId, slot.cnGov10yIds);
-    const us = pickPoint(byId, slot.usGov10yIds);
-    const cdb = pickPoint(byId, slot.cdb10yIds);
-    if (cn && us) {
-      dates.push(cn.trade_date, us.trade_date);
-    } else if (cdb && cn) {
-      dates.push(cdb.trade_date, cn.trade_date);
     }
   }
   if (dates.length === 0) {
@@ -518,6 +448,9 @@ export function crossAssetTrendLines(series: ChoiceMacroLatestPoint[]): CrossAss
 
   for (const slot of CROSS_ASSET_KPI_SLOTS) {
     if (slot.kind === "single") {
+      if (!isAssetLevelKpiKey(slot.key)) {
+        continue;
+      }
       const p = pickPoint(byId, slot.candidateSeriesIds);
       if (!p?.recent_points?.length) {
         continue;
@@ -534,45 +467,15 @@ export function crossAssetTrendLines(series: ChoiceMacroLatestPoint[]): CrossAss
     }
 
     const preBp = pickPoint(byId, slot.precomputedCnUsBpIds);
-    if (preBp?.recent_points?.length) {
-      const sorted = [...preBp.recent_points].sort((a, b) => a.trade_date.localeCompare(b.trade_date));
-      lines.push({
-        name: slot.labelCnUs,
-        ...dedupeDateSeries(
-          sorted.map((x) => x.trade_date),
-          sorted.map((x) => x.value_numeric),
-        ),
-      });
+    if (!preBp?.recent_points?.length) {
       continue;
     }
-
-    const cn = pickPoint(byId, slot.cnGov10yIds);
-    const us = pickPoint(byId, slot.usGov10yIds);
-    const cdb = pickPoint(byId, slot.cdb10yIds);
-    let hi: ChoiceMacroLatestPoint | undefined;
-    let lo: ChoiceMacroLatestPoint | undefined;
-    let name = slot.labelDomesticFallback;
-    if (cn && us) {
-      hi = cn;
-      lo = us;
-      name = slot.labelCnUs;
-    } else if (cdb && cn) {
-      hi = cdb;
-      lo = cn;
-      name = slot.labelDomesticFallback;
-    }
-    if (!hi?.recent_points?.length || !lo?.recent_points?.length) {
-      continue;
-    }
-    const { dates, leftV, rightV } = mergeRecentByDate(hi.recent_points, lo.recent_points);
-    if (dates.length === 0) {
-      continue;
-    }
+    const sorted = [...preBp.recent_points].sort((a, b) => a.trade_date.localeCompare(b.trade_date));
     lines.push({
-      name,
+      name: slot.labelCnUs,
       ...dedupeDateSeries(
-        dates,
-        leftV.map((lv, i) => toSpreadBp(lv, rightV[i])),
+        sorted.map((x) => x.trade_date),
+        sorted.map((x) => x.value_numeric),
       ),
     });
   }

@@ -1,0 +1,55 @@
+
+
+.workbench-main-column .ant-table-wrapper {
+  contain: inline-size;
+  overflow-x: hidden;
+}
+
+.workbench-main-column .ant-table {
+  overflow-x: hidden;
+}
+
+.workbench-main-column .ant-table-container {
+  overflow-x: auto;
+}
+
+.workbench-main-column .ant-tabs-nav {
+  overflow: hidden;
+}
+
+.workbench-main-column .ant-tabs-nav-wrap {
+  contain: inline-size;
+  overflow: hidden;
+}
+
+.workbench-agent-dialog .ant-modal-body {
+  max-height: 78vh;
+  overflow-y: auto;
+  padding-top: 8px;
+}
+
+
+
+.dashboard-cockpit-business-strip .dashboard-core-metric-card.ant-card {
+  box-shadow: none;
+}
+
+.dashboard-cockpit-business-strip .dashboard-core-metric-card.ant-card .ant-card-body {
+  padding: 10px !important;
+}
+
+@media (max-width: 720px) {
+
+  .workbench-main-column .ant-table table {
+    min-width: 100% !important;
+    width: 100% !important;
+  }
+}
+
+@media (max-width: 720px) {
+
+  .workbench-main-column .ant-table col {
+    min-width: 0 !important;
+    width: auto !important;
+  }
+}

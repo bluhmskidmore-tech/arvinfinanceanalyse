@@ -1,27 +1,36 @@
+import subprocess
 from dataclasses import replace
 from pathlib import Path
-import subprocess
 
 import duckdb
 import pytest
 
 from tests.helpers import ROOT, load_module
 
+# Configuration and mocked lifecycle tests do not require installed PostgreSQL binaries.
+
 EXPECTED_DEV_USER_SCOPE_GRANTS = {
     ("*", None, "choice_news.data", "read"),
     ("anonymous", "viewer", "accounting_asset_movement", "read"),
+    ("anonymous", "viewer", "adb_analysis", "read"),
     ("anonymous", "viewer", "balance_analysis", "read"),
     ("anonymous", "viewer", "bond_analytics", "read"),
     ("anonymous", "viewer", "bond_dashboard", "read"),
     ("anonymous", "viewer", "cashflow_projection", "read"),
     ("anonymous", "viewer", "dashboard", "read"),
     ("anonymous", "viewer", "executive", "read"),
+    ("anonymous", "viewer", "agent", "read"),
+    ("anonymous", "viewer", "kpi", "read"),
     ("anonymous", "viewer", "ledger_pnl", "read"),
+    ("anonymous", "viewer", "macro_bond_linkage", "read"),
     ("anonymous", "viewer", "macro_toolkit", "read"),
     ("anonymous", "viewer", "macro_vendor", "read"),
+    ("anonymous", "viewer", "market_data_ncd_proxy", "read"),
     ("anonymous", "viewer", "pnl_attribution", "read"),
     ("anonymous", "viewer", "product_category_pnl", "read"),
+    ("anonymous", "viewer", "qdb_gl_monthly_analysis", "read"),
     ("anonymous", "viewer", "research_calendar", "read"),
+    ("anonymous", "viewer", "risk_tensor", "read"),
 }
 
 
@@ -31,7 +40,7 @@ def test_dev_postgres_cluster_builds_expected_local_layout():
         "scripts/dev_postgres_cluster.py",
     )
 
-    config = module.build_cluster_config(ROOT)
+    config = module.build_cluster_config(ROOT, pg_bin_dir=ROOT / "pgbin")
 
     assert config.repo_root == ROOT
     assert config.cluster_root == ROOT / "tmp-governance" / "pgdev"
@@ -57,7 +66,23 @@ def test_dev_postgres_cluster_seeds_home_page_read_scopes():
     assert seeded_scopes == EXPECTED_DEV_USER_SCOPE_GRANTS
 
 
-def test_dev_postgres_cluster_env_mapping_prefers_seeded_storage_root(tmp_path):
+@pytest.fixture
+def default_storage_environment(monkeypatch):
+    """Default-path cases own their configuration instead of inheriting runner paths."""
+    for key in (
+        "MOSS_DUCKDB_PATH",
+        "MOSS_GOVERNANCE_PATH",
+        "MOSS_DATA_INPUT_ROOT",
+        "MOSS_LOCAL_ARCHIVE_PATH",
+        "MOSS_FINANCIAL_PUBLICATION_ROOT",
+        "MOSS_BALANCE_ANALYSIS_PUBLICATION_ROOT",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+
+def test_dev_postgres_cluster_env_mapping_prefers_seeded_storage_root(
+    tmp_path, default_storage_environment,
+):
     module = load_module(
         "scripts.dev_postgres_cluster",
         "scripts/dev_postgres_cluster.py",
@@ -70,11 +95,12 @@ def test_dev_postgres_cluster_env_mapping_prefers_seeded_storage_root(tmp_path):
         conn.execute("create table fact_formal_bond_analytics_daily (report_date varchar)")
         conn.execute("insert into fact_formal_bond_analytics_daily values ('2026-02-28')")
 
-    config = module.build_cluster_config(repo_root)
+    config = module.build_cluster_config(repo_root, pg_bin_dir=repo_root / "pgbin")
     env = module.build_env_mapping(config)
 
     assert env["MOSS_POSTGRES_DSN"] == "postgresql://moss:moss@127.0.0.1:55432/moss"
     assert env["MOSS_GOVERNANCE_SQL_DSN"] == "postgresql://moss:moss@127.0.0.1:55432/moss"
+    assert env["MOSS_AGENT_DEV_SCOPE_BYPASS"] == "true"
     assert env["MOSS_REDIS_DSN"] == "redis://127.0.0.1:6379/11"
     assert env["MOSS_DUCKDB_PATH"] == str(repo_root / "data" / "moss.duckdb")
     assert env["MOSS_GOVERNANCE_PATH"] == str(repo_root / "data" / "governance")
@@ -82,7 +108,9 @@ def test_dev_postgres_cluster_env_mapping_prefers_seeded_storage_root(tmp_path):
     assert env["MOSS_DATA_INPUT_ROOT"] == str(repo_root / "data_input")
 
 
-def test_dev_postgres_cluster_env_mapping_prefers_repo_when_runtime_also_seeded(tmp_path):
+def test_dev_postgres_cluster_env_mapping_prefers_repo_when_runtime_also_seeded(
+    tmp_path, default_storage_environment,
+):
     """Regression: avoid stale runtime-clean/moss.duckdb shadowing a fuller data/moss.duckdb."""
     module = load_module(
         "scripts.dev_postgres_cluster",
@@ -103,12 +131,66 @@ def test_dev_postgres_cluster_env_mapping_prefers_repo_when_runtime_also_seeded(
         conn.execute("create table fact_formal_bond_analytics_daily (report_date varchar)")
         conn.execute("insert into fact_formal_bond_analytics_daily values ('2026-01-02')")
 
-    config = module.build_cluster_config(repo_root)
+    config = module.build_cluster_config(repo_root, pg_bin_dir=repo_root / "pgbin")
     env = module.build_env_mapping(config)
 
     assert env["MOSS_DUCKDB_PATH"] == str(repo_root / "data" / "moss.duckdb")
     assert env["MOSS_GOVERNANCE_PATH"] == str(repo_root / "data" / "governance")
     assert env["MOSS_LOCAL_ARCHIVE_PATH"] == str(repo_root / "data" / "archive")
+
+
+@pytest.mark.parametrize("source", ["process", "env_file"])
+def test_dev_postgres_cluster_preserves_explicit_external_storage_paths(tmp_path, monkeypatch, source):
+    module = load_module("scripts.dev_postgres_cluster", "scripts/dev_postgres_cluster.py")
+    repo_root = tmp_path / "repo"
+    repo_duckdb = repo_root / "data" / "moss.duckdb"
+    repo_duckdb.parent.mkdir(parents=True)
+    repo_duckdb.write_bytes(b"metadata-only repository database sentinel")
+    external = tmp_path / "external storage"
+    configured = {
+        "MOSS_DUCKDB_PATH": str(external / "moss.duckdb"),
+        "MOSS_GOVERNANCE_PATH": str(external / "governance"),
+        "MOSS_DATA_INPUT_ROOT": str(external / "inputs"),
+        "MOSS_LOCAL_ARCHIVE_PATH": str(external / "archive"),
+        "MOSS_FINANCIAL_PUBLICATION_ROOT": str(external / "financial-publications"),
+        "MOSS_BALANCE_ANALYSIS_PUBLICATION_ROOT": str(external / "balance-publications"),
+    }
+    for key in configured:
+        monkeypatch.delenv(key, raising=False)
+    if source == "process":
+        for key, value in configured.items():
+            monkeypatch.setenv(key, value)
+    else:
+        config_dir = repo_root / "config"
+        config_dir.mkdir()
+        (config_dir / ".env").write_text(
+            "".join(f'{key}="{value.replace(chr(92), chr(47))}"\n' for key, value in configured.items()),
+            encoding="utf-8",
+        )
+
+    env = module.build_env_mapping(module.build_cluster_config(repo_root, pg_bin_dir=repo_root / "pgbin"))
+
+    assert {key: env.get(key) for key in configured} == configured
+    assert not external.exists(), "print-env must not create or initialize the selected storage"
+    assert repo_duckdb.read_bytes() == b"metadata-only repository database sentinel"
+
+
+def test_dev_postgres_cluster_explicit_path_precedence_and_repo_relative_resolution(tmp_path, monkeypatch):
+    module = load_module("scripts.dev_postgres_cluster", "scripts/dev_postgres_cluster.py")
+    repo_root = tmp_path / "repo"
+    config_dir = repo_root / "config"
+    config_dir.mkdir(parents=True)
+    (config_dir / ".env").write_text("MOSS_DATA_INPUT_ROOT=config-inputs\n", encoding="utf-8")
+    (repo_root / ".env").write_text("MOSS_DATA_INPUT_ROOT=root-inputs\n", encoding="utf-8")
+    monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", "process-inputs")
+    monkeypatch.chdir(tmp_path)
+
+    env = module.build_env_mapping(module.build_cluster_config(repo_root, pg_bin_dir=repo_root / "pgbin"))
+    assert env["MOSS_DATA_INPUT_ROOT"] == str((repo_root / "process-inputs").resolve())
+
+    monkeypatch.delenv("MOSS_DATA_INPUT_ROOT")
+    env = module.build_env_mapping(module.build_cluster_config(repo_root, pg_bin_dir=repo_root / "pgbin"))
+    assert env["MOSS_DATA_INPUT_ROOT"] == str((repo_root / "root-inputs").resolve())
 
 
 def test_prepare_runtime_clean_paths_does_not_overwrite_existing_smoke_files(tmp_path):
@@ -242,7 +324,7 @@ def test_prepare_runtime_clean_paths_seeds_formal_governance_with_runtime_duckdb
 
 
 def test_dev_postgres_cluster_env_mapping_falls_back_to_repo_data_root_when_runtime_duckdb_is_empty(
-    tmp_path,
+    tmp_path, default_storage_environment,
 ):
     module = load_module(
         "scripts.dev_postgres_cluster",
@@ -283,9 +365,8 @@ def test_dev_postgres_cluster_env_mapping_falls_back_to_repo_data_root_when_runt
     assert env["MOSS_DATA_INPUT_ROOT"] == str(repo_root / "data_input")
 
 
-def test_command_print_env_falls_back_to_repo_data_root_when_runtime_seed_copy_is_locked(
-    tmp_path,
-    monkeypatch,
+def test_command_print_env_does_not_prepare_or_copy_runtime_state(
+    tmp_path, monkeypatch, default_storage_environment,
 ):
     module = load_module(
         "scripts.dev_postgres_cluster",
@@ -300,8 +381,6 @@ def test_command_print_env_falls_back_to_repo_data_root_when_runtime_seed_copy_i
         conn.execute("insert into fact_formal_bond_analytics_daily values ('2026-02-28')")
 
     runtime_root = repo_root / "tmp-governance" / "runtime-clean"
-    runtime_data_input = runtime_root / "data_input"
-    runtime_data_input.mkdir(parents=True, exist_ok=True)
     runtime_duckdb = runtime_root / "moss.duckdb"
 
     config = module.DevPostgresClusterConfig(
@@ -314,21 +393,28 @@ def test_command_print_env_falls_back_to_repo_data_root_when_runtime_seed_copy_i
         runtime_duckdb_path=runtime_duckdb,
         runtime_governance_path=runtime_root / "governance",
         runtime_archive_path=runtime_root / "archive",
-        runtime_data_input_path=runtime_data_input,
+        runtime_data_input_path=runtime_root / "data_input",
     )
 
-    original_copy2 = module.shutil.copy2
+    forbidden_calls: list[str] = []
 
-    def locked_copy(src, dst, *args, **kwargs):
-        if Path(dst) == runtime_duckdb:
-            raise PermissionError("runtime duckdb locked")
-        return original_copy2(src, dst, *args, **kwargs)
+    def forbid(name):
+        def fail(*_args, **_kwargs):
+            forbidden_calls.append(name)
+            raise AssertionError(f"print-env must not call {name}")
 
-    monkeypatch.setattr(module.shutil, "copy2", locked_copy)
+        return fail
+
+    monkeypatch.setattr(module, "_prepare_runtime_clean_paths", forbid("prepare"))
+    monkeypatch.setattr(module.shutil, "copy2", forbid("copy"))
+    monkeypatch.setattr(module.duckdb, "connect", forbid("duckdb.connect"))
+    monkeypatch.setattr(Path, "mkdir", forbid("mkdir"))
 
     env = module.command_print_env(config)
 
+    assert forbidden_calls == []
     assert env["MOSS_DUCKDB_PATH"] == str(repo_root / "data" / "moss.duckdb")
+    assert not runtime_root.exists()
 
 
 def test_reset_schema_refuses_non_dev_endpoint():
@@ -337,7 +423,7 @@ def test_reset_schema_refuses_non_dev_endpoint():
         "scripts/dev_postgres_cluster.py",
     )
 
-    config = module.build_cluster_config(ROOT)
+    config = module.build_cluster_config(ROOT, pg_bin_dir=ROOT / "pgbin")
     wrong_port = replace(config, port=5432)
     with pytest.raises(RuntimeError, match="reset-schema refused"):
         module.command_reset_schema(wrong_port)
@@ -398,7 +484,7 @@ def test_wait_for_postgres_ready_retries_until_probe_succeeds(monkeypatch):
         "scripts/dev_postgres_cluster.py",
     )
 
-    config = module.build_cluster_config(ROOT)
+    config = module.build_cluster_config(ROOT, pg_bin_dir=ROOT / "pgbin")
     attempts = {"count": 0}
 
     def fake_probe(_config, *, database=None):
@@ -420,7 +506,7 @@ def test_wait_for_postgres_ready_raises_after_exhausting_retries(monkeypatch):
         "scripts/dev_postgres_cluster.py",
     )
 
-    config = module.build_cluster_config(ROOT)
+    config = module.build_cluster_config(ROOT, pg_bin_dir=ROOT / "pgbin")
     monkeypatch.setattr(module, "_probe_postgres_ready", lambda _config, *, database=None: False)
     monkeypatch.setattr(module.time, "sleep", lambda _seconds: None)
 
@@ -434,7 +520,7 @@ def test_wait_for_postgres_ready_can_target_application_database(monkeypatch):
         "scripts/dev_postgres_cluster.py",
     )
 
-    config = module.build_cluster_config(ROOT)
+    config = module.build_cluster_config(ROOT, pg_bin_dir=ROOT / "pgbin")
     seen: list[str | None] = []
 
     def fake_probe(_config, *, database=None):
@@ -448,7 +534,7 @@ def test_wait_for_postgres_ready_can_target_application_database(monkeypatch):
     assert seen == ["moss"]
 
 
-def test_command_up_starts_postgres_with_synchronous_nowait_pg_ctl(tmp_path, monkeypatch):
+def test_command_up_starts_postgres_without_inheritable_capture_pipe(tmp_path, monkeypatch):
     module = load_module(
         "scripts.dev_postgres_cluster",
         "scripts/dev_postgres_cluster.py",
@@ -497,10 +583,50 @@ def test_command_up_starts_postgres_with_synchronous_nowait_pg_ctl(tmp_path, mon
     assert "-w" not in pg_ctl_start
     assert "start" in pg_ctl_start
     assert run_kwargs["check"] is True
-    assert run_kwargs["stdout"] is subprocess.PIPE
-    assert run_kwargs["stderr"] is subprocess.STDOUT
+    assert run_kwargs["stdin"] is subprocess.DEVNULL
+    assert run_kwargs["stdout"] is subprocess.DEVNULL
+    assert run_kwargs["stderr"] is subprocess.DEVNULL
     assert payload["running"] is True
     assert payload["action"] == "up"
+
+
+def test_command_up_refuses_foreign_listener_before_sql_or_migrations(tmp_path, monkeypatch):
+    module = load_module(
+        "scripts.dev_postgres_cluster",
+        "scripts/dev_postgres_cluster.py",
+    )
+
+    repo_root = tmp_path / "repo"
+    data_dir = repo_root / "tmp-governance" / "pgdev" / "data"
+    data_dir.mkdir(parents=True)
+    config = module.DevPostgresClusterConfig(
+        repo_root=repo_root,
+        bin_dir=repo_root / "pgbin",
+        cluster_root=repo_root / "tmp-governance" / "pgdev",
+        data_dir=data_dir,
+        log_file=repo_root / "tmp-governance" / "pgdev" / "postgres.log",
+        runtime_root=repo_root / "tmp-governance" / "runtime-clean",
+        runtime_duckdb_path=repo_root / "tmp-governance" / "runtime-clean" / "moss.duckdb",
+        runtime_governance_path=repo_root / "tmp-governance" / "runtime-clean" / "governance",
+        runtime_archive_path=repo_root / "tmp-governance" / "runtime-clean" / "archive",
+        runtime_data_input_path=repo_root / "tmp-governance" / "runtime-clean" / "data_input",
+    )
+    side_effects: list[str] = []
+
+    monkeypatch.setattr(module, "_is_port_open", lambda _host, _port: True)
+    monkeypatch.setattr(module, "_is_expected_cluster_running", lambda _config: False)
+    monkeypatch.setattr(module, "_wait_for_postgres_ready", lambda *_args, **_kwargs: side_effects.append("wait"))
+    monkeypatch.setattr(module, "_ensure_role_and_database", lambda _config: side_effects.append("role"))
+    monkeypatch.setattr(
+        module,
+        "_apply_alembic_migrations_and_grants",
+        lambda _config: side_effects.append("migrations"),
+    )
+
+    with pytest.raises(RuntimeError, match="already occupied by a different process"):
+        module.command_up(config)
+
+    assert side_effects == []
 
 
 def test_apply_alembic_migrations_and_grants_retries_transient_connection_timeout(
@@ -604,7 +730,7 @@ def test_seed_dev_user_scopes_grants_local_read_surfaces_once(tmp_path, monkeypa
     assert command.count("INSERT INTO user_role_scope") == len(module.DEV_USER_SCOPE_GRANTS)
 
 
-def test_resolve_python_executable_prefers_path_python(monkeypatch):
+def test_resolve_python_executable_prefers_current_interpreter(monkeypatch):
     module = load_module(
         "scripts.dev_postgres_cluster",
         "scripts/dev_postgres_cluster.py",
@@ -613,4 +739,4 @@ def test_resolve_python_executable_prefers_path_python(monkeypatch):
     monkeypatch.setattr(module.shutil, "which", lambda name: r"C:\Python\python.exe" if name == "python" else None)
     monkeypatch.setattr(module.sys, "executable", r"C:\Fallback\python.exe")
 
-    assert module._resolve_python_executable() == r"C:\Python\python.exe"
+    assert module._resolve_python_executable() == r"C:\Fallback\python.exe"

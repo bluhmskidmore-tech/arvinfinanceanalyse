@@ -30,6 +30,8 @@ def test_load_hybrid_fusion_thresholds_overrides_subset(tmp_path: Path) -> None:
                 "thresholds:",
                 "  life_long_top_q: 0.90",
                 "  fusion_cycle_weight: 0.70",
+                "  fusion_life_weight: 0.30",
+                "  fusion_life_weight: 0.30",
             ]
         ),
         encoding="utf-8",
@@ -37,6 +39,8 @@ def test_load_hybrid_fusion_thresholds_overrides_subset(tmp_path: Path) -> None:
     thresholds = load_hybrid_fusion_thresholds(yaml_path)
     assert thresholds.life_long_top_q == 0.90
     assert thresholds.fusion_cycle_weight == 0.70
+    assert thresholds.fusion_life_weight == 0.30
+    assert thresholds.fusion_life_weight == 0.30
     assert thresholds.life_long_pconf_top_q == DEFAULT_HYBRID_FUSION_THRESHOLDS.life_long_pconf_top_q
 
 

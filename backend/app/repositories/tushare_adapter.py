@@ -10,6 +10,7 @@ silent fixture fallback in live fetch).
 
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -255,7 +256,12 @@ class VendorAdapter(VendorAdapterBase):
         if frame is None or len(frame) == 0:
             rows: list[dict[str, object]] = []
         else:
-            rows = parser(frame)
+            parsed_rows = parser(frame)
+            rows = [
+                row
+                for row in parsed_rows
+                if math.isfinite(float(row["value"]))
+            ]
 
         return {
             "vendor_kind": "tushare_macro",

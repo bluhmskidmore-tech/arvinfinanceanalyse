@@ -8,7 +8,15 @@ from fastapi.testclient import TestClient
 from openpyxl import Workbook
 
 from backend.app.governance.settings import get_settings
-from tests.helpers import ROOT, load_module
+from tests.business_input_fixtures import business_input_bytes, write_business_input
+from tests.helpers import load_module
+
+import pytest
+
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_source_preview,
+]
 
 NONSTD_HEADERS = [
     "账务流水号",
@@ -33,14 +41,13 @@ NONSTD_HEADERS = [
     "备注",
 ]
 
-
-def test_source_preview_service_summarizes_real_fi_pnl_file():
+def test_source_preview_service_summarizes_synthetic_fi_pnl_file(tmp_path):
     preview_module = load_module(
         "backend.app.services.source_preview_service",
         "backend/app/services/source_preview_service.py",
     )
 
-    fi_file = ROOT / "data_input" / "pnl" / "FI损益202512.xls"
+    fi_file = write_business_input(tmp_path / "FI损益202512.xls")
     summary = preview_module.summarize_source_file(fi_file)
 
     assert summary["source_family"] == "pnl"
@@ -49,7 +56,6 @@ def test_source_preview_service_summarizes_real_fi_pnl_file():
     assert summary["preview_mode"] == "tabular"
     assert sum(summary["group_counts"].values()) == summary["total_rows"]
     assert "H" in summary["group_counts"]
-
 
 def test_materialize_preview_supports_pnl_and_nonstd_rows_and_traces(tmp_path, monkeypatch):
     ingest_module = sys.modules.get("backend.app.tasks.ingest")
@@ -73,7 +79,7 @@ def test_materialize_preview_supports_pnl_and_nonstd_rows_and_traces(tmp_path, m
     (data_root / "pnl_516").mkdir(parents=True)
 
     fi_target = data_root / "pnl" / "FI损益202512.xls"
-    fi_target.write_bytes((ROOT / "data_input" / "pnl" / "FI损益202512.xls").read_bytes())
+    fi_target.write_bytes(business_input_bytes("FI损益202512.xls"))
     _write_nonstd_preview_workbook(data_root / "pnl_516" / "非标516-20260101-0228.xlsx")
 
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
@@ -134,7 +140,6 @@ def test_materialize_preview_supports_pnl_and_nonstd_rows_and_traces(tmp_path, m
         assert "reserved" in str(body.get("detail", "")).lower()
     get_settings.cache_clear()
 
-
 def test_mixed_family_materialize_does_not_pollute_tyw_trace_contract(tmp_path, monkeypatch):
     ingest_module = sys.modules.get("backend.app.tasks.ingest")
     if ingest_module is None:
@@ -154,10 +159,10 @@ def test_mixed_family_materialize_does_not_pollute_tyw_trace_contract(tmp_path, 
     archive_dir = tmp_path / "archive"
     data_root = tmp_path / "data_input"
     data_root.mkdir()
-    (data_root / "TYWLSHOW-20251231.xls").write_bytes((ROOT / "data_input" / "TYWLSHOW-20251231.xls").read_bytes())
+    (data_root / "TYWLSHOW-20251231.xls").write_bytes(business_input_bytes("TYWLSHOW-20251231.xls"))
     (data_root / "pnl").mkdir(parents=True)
     (data_root / "pnl_516").mkdir(parents=True)
-    (data_root / "pnl" / "FI损益202512.xls").write_bytes((ROOT / "data_input" / "pnl" / "FI损益202512.xls").read_bytes())
+    (data_root / "pnl" / "FI损益202512.xls").write_bytes(business_input_bytes("FI损益202512.xls"))
     _write_nonstd_preview_workbook(data_root / "pnl_516" / "非标516-20260101-0228.xlsx")
 
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
@@ -185,7 +190,6 @@ def test_mixed_family_materialize_does_not_pollute_tyw_trace_contract(tmp_path, 
     assert "result_meta" not in body
     assert "reserved" in str(body.get("detail", "")).lower()
     get_settings.cache_clear()
-
 
 def _write_nonstd_preview_workbook(path: Path) -> None:
     workbook = Workbook()

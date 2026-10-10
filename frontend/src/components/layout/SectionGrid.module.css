@@ -1,0 +1,89 @@
+/*
+ * SectionGrid: 不等高网格默认 align-items: start（DESIGN.md §11.2 根治）。
+ * 列轨道统一 minmax(0, 1fr)（裸 1fr 在内容超宽时会撑破容器，零横向溢出要求）。
+ * .grid.autoFill 用双类提升特异度（0-2-0）覆盖 .grid 与其断点媒体查询里的
+ * grid-template-columns，不借助感叹号强制规则（PagePrimitives.module.css 同款先例）。
+ */
+
+/*
+ * 每档轨道优先取 --sg-track-*（非等分权重，如 minmax(0, 1.45fr) …），未定义时
+ * 回退到 --sg-cols-* 的等分 repeat。等分是绝大多数场景，权重只在「等分会把宽表
+ * 的数值列挤出可视区」时按需开启（DESIGN.md §5 禁止压缩字号保列数）。
+ */
+.grid {
+  display: grid;
+  min-width: 0;
+  gap: var(--sg-gap, 16px);
+  grid-template-columns: var(--sg-track-base, repeat(var(--sg-cols-base, 1), minmax(0, 1fr)));
+}
+
+.alignStart {
+  align-items: start;
+}
+
+.alignStretch {
+  align-items: stretch;
+}
+
+/* stretch 齐底靠卡片自身背景延伸补齐（子项 align-self 继承 stretch），
+   不是让网格容器留出裸空白断层。 */
+.alignStretch > * {
+  align-self: stretch;
+}
+
+@media (min-width: 768px) {
+  .grid {
+    grid-template-columns: var(--sg-track-md, repeat(var(--sg-cols-md, 1), minmax(0, 1fr)));
+  }
+}
+
+@media (min-width: 1024px) {
+  .grid {
+    grid-template-columns: var(--sg-track-lg, repeat(var(--sg-cols-lg, 1), minmax(0, 1fr)));
+  }
+}
+
+@media (min-width: 1440px) {
+  .grid {
+    grid-template-columns: var(--sg-track-xl, repeat(var(--sg-cols-xl, 1), minmax(0, 1fr)));
+  }
+}
+
+/* minmax(min(N, 100%), 1fr): 容器窄于 minColWidth 时列宽收缩而不是溢出。 */
+.grid.autoFill {
+  grid-template-columns: repeat(auto-fill, minmax(min(var(--sg-min-col-width, 240px), 100%), 1fr));
+}
+
+/*
+ * SectionGridItem 跨列包装：`span` 跨的是已有的 minmax(0, 1fr) 轨道本身，
+ * 不引入新的裸宽度声明，零横向溢出保证不受影响。
+ *
+ * display: flex + 子项 flex:1 1 auto 是为了在 align="stretch" 场景下把
+ * 包装 div 拿到的 align-self:stretch（见下方 .alignStretch > *）继续传给
+ * 真正的内容子节点——不然内容子节点会在被拉伸到整行高度的包装 div 内部
+ * 只占内容高度，露出裸空白（DESIGN.md §11.2 同类问题）。align="start"
+ * （默认）下包装 div 高度本就是内容高度，这两条规则不产生任何视觉差异。
+ */
+.item {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  grid-column: span var(--sgi-span-base, 1);
+}
+
+.item > * {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+@media (min-width: 768px) {
+  .item { grid-column: span var(--sgi-span-md, 1); }
+}
+
+@media (min-width: 1024px) {
+  .item { grid-column: span var(--sgi-span-lg, 1); }
+}
+
+@media (min-width: 1440px) {
+  .item { grid-column: span var(--sgi-span-xl, 1); }
+}

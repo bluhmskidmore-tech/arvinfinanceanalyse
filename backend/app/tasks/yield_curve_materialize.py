@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
+import math
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
+from time import monotonic
 
 import duckdb
 from backend.app.core_finance.module_contracts import FormalComputeModuleDescriptor
@@ -22,6 +24,12 @@ from backend.app.schemas.formal_compute_runtime import (
 from backend.app.schemas.yield_curve import YieldCurvePoint, YieldCurveSnapshot
 from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.formal_compute_runtime import run_formal_materialize
+from backend.app.tasks.yield_curve_fetch import (
+    CurveFetchProcessError,
+    CurveFetchTimeout,
+    CurveVendorWindowExhausted,
+    fetch_curve_snapshot_with_timeout,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -126,29 +134,48 @@ def ensure_yield_curve_inputs_on_or_before(
     duckdb_path: str,
     curve_types: tuple[str, ...] = SUPPORTED_CURVE_TYPES,
     max_backtrack_days: int = MAX_BACKTRACK_DAYS,
+    vendor_timeout_seconds: float | None = None,
 ) -> None:
     normalized_anchor_dates = tuple(sorted({str(value).strip() for value in anchor_dates if str(value).strip()}))
     normalized_curve_types = _normalize_curve_types(curve_types)
     if not normalized_anchor_dates or not normalized_curve_types:
         return
 
-    adapter = VendorAdapter()
+    if vendor_timeout_seconds is not None and (not math.isfinite(vendor_timeout_seconds) or vendor_timeout_seconds <= 0):
+        raise ValueError("vendor_timeout_seconds must be finite and positive.")
+    deadline = None if vendor_timeout_seconds is None else monotonic() + vendor_timeout_seconds
+    adapter = VendorAdapter() if deadline is None else None
     repo = YieldCurveRepository(duckdb_path)
     for anchor_date in normalized_anchor_dates:
         for curve_type in normalized_curve_types:
             if repo.fetch_curve_snapshot(anchor_date, curve_type) is not None:
                 continue
             try:
-                snapshot = _fetch_curve_snapshot_on_or_before(
-                    adapter=adapter,
-                    curve_type=curve_type,
-                    anchor_date=anchor_date,
-                    max_backtrack_days=max_backtrack_days,
-                )
-            except Exception:
-                # Broad catch is intentional: if vendor fetch fails but we already have
-                # a fallback curve inside the allowed backtrack window, silently
-                # continue. Otherwise, re-raise to signal missing data.
+                if deadline is None:
+                    assert adapter is not None
+                    snapshot = _fetch_curve_snapshot_on_or_before(
+                        adapter=adapter,
+                        curve_type=curve_type,
+                        anchor_date=anchor_date,
+                        max_backtrack_days=max_backtrack_days,
+                    )
+                else:
+                    remaining = deadline - monotonic()
+                    if remaining <= 0:
+                        raise CurveFetchTimeout("Yield-curve vendor preparation budget has expired.")
+                    snapshot = fetch_curve_snapshot_with_timeout(
+                        curve_type=curve_type,
+                        anchor_date=anchor_date,
+                        max_backtrack_days=max_backtrack_days,
+                        timeout_seconds=remaining,
+                    )
+                    if monotonic() >= deadline:
+                        raise CurveFetchTimeout("Yield-curve vendor preparation budget has expired.")
+            except (CurveFetchTimeout, CurveFetchProcessError):
+                raise
+            except CurveVendorWindowExhausted:
+                # Only a completed vendor window can authorize an existing
+                # snapshot; programming and process failures must propagate.
                 existing = _existing_curve_snapshot_on_or_before(
                     repo=repo,
                     anchor_date=anchor_date,
@@ -423,8 +450,8 @@ def _fetch_curve_snapshot_on_or_before(
             # attempts so we can re-raise it if no date in the window has data.
             last_error = exc
     if last_error is not None:
-        raise last_error
-    raise RuntimeError(f"No {curve_type} curve snapshot found on or before {anchor_date}.")
+        raise CurveVendorWindowExhausted(str(last_error)) from last_error
+    raise ValueError("max_backtrack_days must be non-negative.")
 
 
 def _materialize_yield_curve(

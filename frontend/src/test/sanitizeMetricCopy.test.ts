@@ -4,7 +4,7 @@ import {
   sanitizeMetricCopy,
   sanitizeMetricDetail,
   sanitizeMetricLabel,
-} from "../features/executive-dashboard/lib/sanitizeMetricCopy";
+} from "../features/workbench/dashboard-home/lib/sanitizeMetricCopy";
 
 describe("sanitizeMetricLabel", () => {
   it("strips full-width ASCII suffix", () => {

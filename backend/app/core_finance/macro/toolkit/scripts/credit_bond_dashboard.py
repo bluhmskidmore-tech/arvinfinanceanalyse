@@ -1,33 +1,49 @@
 """
 credit_bond_dashboard.py
-信用债仪表盘：读取所有信用债模块输出，生成可视化图表
-依赖：credit_bond_latest.csv, credit_signal.csv, credit_monitor.csv, risk_alert.csv
-输出：output/bond_macro_report_assets/credit_dashboard_*.png
+信用债演示仪表盘：全部数值均为固定或随机生成的合成示例，不读取真实行情。
+真实数据模式尚未接入经验证的来源输入，明确返回不可用，不回退为演示数据。
+输出：output/bond_macro_report_assets/credit_dashboard_demo_*.png
 """
-import os
+import argparse
+import importlib.util
 import sys
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import warnings
+from pathlib import Path
 
-import paths
+if __package__:
+    from backend.app.core_finance.macro.toolkit import paths
+else:
+    _PKG = Path(__file__).resolve().parent.parent
+    if str(_PKG) not in sys.path:
+        sys.path.insert(0, str(_PKG))
+    import paths
 
 warnings.filterwarnings("ignore")
 
-import matplotlib
 
-matplotlib.use("Agg")
+if importlib.util.find_spec("matplotlib") is None:
+    matplotlib = None
+    gridspec = None
+    mpatches = None
+    plt = None
+else:
+    import matplotlib as _matplotlib
+
+    _matplotlib.use("Agg")
+    import matplotlib.gridspec as _gridspec
+    import matplotlib.patches as _mpatches
+    import matplotlib.pyplot as _plt
+
+    matplotlib = _matplotlib
+    gridspec = _gridspec
+    mpatches = _mpatches
+    plt = _plt
+
 from datetime import datetime
 
-import matplotlib.gridspec as gridspec
-import matplotlib.patches as mpatches
-import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 
 # 中文字体
-plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei"]
-plt.rcParams["axes.unicode_minus"] = False
 
 COLORS = {
     "primary":   "#1a4b8c",
@@ -43,11 +59,20 @@ COLORS = {
     "text_dim":  "#8b949e",
 }
 
+DEMO_LABEL = "DEMO / SYNTHETIC"
+
+
+def _set_style() -> None:
+    if plt is None or gridspec is None or mpatches is None:
+        raise RuntimeError("matplotlib is required for credit bond dashboard generation")
+    plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei"]
+    plt.rcParams["axes.unicode_minus"] = False
+
 
 # ── 信用利差图 ────────────────────────────────────────────────────────────────
 
 def draw_spread_chart(ax):
-    dates = pd.date_range(end=datetime.today(), periods=60, freq="B")
+    dates = np.arange(1, 61)
     np.random.seed(42)
     base = np.array([35,40,30,25,45,38,32,28,42,36,
                      33,30,37,41,35,29,27,44,39,33,
@@ -64,7 +89,8 @@ def draw_spread_chart(ax):
                linewidth=1, alpha=0.6, label="Floor")
     ax.axhline(y=35, color=COLORS["neutral"], linestyle="--",
                linewidth=1, alpha=0.4, label="Median")
-    ax.set_title("Credit Spread AA 3Y (bp)", fontsize=10, color=COLORS["text"], pad=6)
+    ax.set_title(f"{DEMO_LABEL}\nCredit Spread AA 3Y (bp)", fontsize=10, color=COLORS["text"], pad=6)
+    ax.set_xlabel("Synthetic observation", fontsize=8, color=COLORS["text_dim"])
     ax.tick_params(colors=COLORS["text_dim"], labelsize=8)
     for spine in ax.spines.values():
         spine.set_visible(False)
@@ -103,7 +129,7 @@ def draw_roll_yield_chart(ax):
     ax.set_xticks(x)
     ax.set_xticklabels(tenors, fontsize=9, color=COLORS["text"])
     ax.set_ylabel("Hold Period Yield (%, 3M)", fontsize=9, color=COLORS["text"])
-    ax.set_title("Roll Yield Curve (3M Holding)", fontsize=10, color=COLORS["text"], pad=6)
+    ax.set_title(f"{DEMO_LABEL}\nRoll Yield Curve (3M Holding)", fontsize=10, color=COLORS["text"], pad=6)
     for spine in ax.spines.values():
         spine.set_visible(False)
     ax.set_facecolor(COLORS["bg_dark"])
@@ -137,7 +163,7 @@ def draw_perpetual_spread_chart(ax):
     ax.set_xticks(x)
     ax.set_xticklabels(cats, fontsize=8, color=COLORS["text"])
     ax.set_ylabel("Spread (bp)", fontsize=9, color=COLORS["text"])
-    ax.set_title("Perpetual Spread + Hist Percentile (1Y)", fontsize=10,
+    ax.set_title(f"{DEMO_LABEL}\nPerpetual Spread + Hist Percentile (1Y)", fontsize=10,
                  color=COLORS["text"], pad=6)
     ax.axhline(y=12, color=COLORS["warning"], linestyle="--", linewidth=1)
     for spine in ax.spines.values():
@@ -149,7 +175,7 @@ def draw_perpetual_spread_chart(ax):
 # ── 固收+申赎强度 ─────────────────────────────────────────────────────────────
 
 def draw_fi_plus_chart(ax):
-    dates = pd.date_range(end=datetime.today(), periods=30, freq="B")
+    dates = np.arange(1, 31)
     np.random.seed(7)
     ma5 = np.array([-0.28,-0.30,-0.33,-0.38,-0.41,-0.44,
                     -0.43,-0.40,-0.35,-0.30,-0.25,-0.20,
@@ -169,7 +195,8 @@ def draw_fi_plus_chart(ax):
     ax.annotate(f"MA5={ma5[-1]:.2f}", xy=(dates[-1], ma5[-1]),
                 xytext=(5, 5), textcoords="offset points",
                 fontsize=8, color=COLORS["warning"])
-    ax.set_title("FI+ Redemption Intensity MA5", fontsize=10, color=COLORS["text"], pad=6)
+    ax.set_title(f"{DEMO_LABEL}\nFI+ Redemption Intensity MA5", fontsize=10, color=COLORS["text"], pad=6)
+    ax.set_xlabel("Synthetic observation", fontsize=8, color=COLORS["text_dim"])
     for spine in ax.spines.values():
         spine.set_visible(False)
     ax.set_facecolor(COLORS["bg_dark"])
@@ -198,7 +225,7 @@ def draw_province_heatmap(ax):
     ax.set_xticklabels(ratings, fontsize=9, color=COLORS["text"])
     ax.set_yticks(np.arange(len(provinces)))
     ax.set_yticklabels(provinces, fontsize=8, color=COLORS["text"])
-    ax.set_title("CT Bond Province Risk Heatmap", fontsize=10, color=COLORS["text"], pad=6)
+    ax.set_title(f"{DEMO_LABEL}\nCT Bond Province Risk Heatmap", fontsize=10, color=COLORS["text"], pad=6)
     plt.colorbar(im, ax=ax, fraction=0.025, pad=0.02)
 
 
@@ -215,7 +242,7 @@ def draw_kpi_card_on_ax(ax, title, value, subtitle, color):
         facecolor=COLORS["bg_card"],
         edgecolor=color, linewidth=2, alpha=0.9)
     ax.add_patch(rect)
-    ax.text(0.5, 0.80, title, ha="center", va="top", fontsize=10,
+    ax.text(0.5, 0.80, f"{DEMO_LABEL}\n{title}", ha="center", va="top", fontsize=10,
             color=COLORS["text_dim"], transform=ax.transAxes)
     ax.text(0.5, 0.52, value, ha="center", va="center", fontsize=20,
             fontweight="bold", color=color, transform=ax.transAxes)
@@ -225,7 +252,16 @@ def draw_kpi_card_on_ax(ax, title, value, subtitle, color):
 
 # ── 主函数 ────────────────────────────────────────────────────────────────────
 
-def generate_dashboard():
+def generate_dashboard(*, data_mode="demo"):
+    """Keep the legacy demo callable; never substitute it for real observations."""
+    if data_mode == "production":
+        raise RuntimeError(
+            "Credit dashboard unavailable: production mode has no validated source inputs. "
+            "Only explicitly labeled demo output is supported."
+        )
+    if data_mode != "demo":
+        raise ValueError("data_mode must be 'demo' or 'production'")
+    _set_style()
     fig = plt.figure(figsize=(16, 11), facecolor=COLORS["bg_dark"])
     fig.subplots_adjust(0.02, 0.02, 0.98, 0.97, wspace=0.25, hspace=0.35)
 
@@ -272,21 +308,24 @@ def generate_dashboard():
     draw_fi_plus_chart(ax_fi)
     draw_province_heatmap(ax_heat)
 
-    fig.suptitle("Macro Toolkit - Credit Bond Quantitative Dashboard",
+    fig.suptitle(f"{DEMO_LABEL} - Credit Bond Dashboard",
                  fontsize=16, fontweight="bold",
                  color=COLORS["text"], y=0.99)
 
     fig.text(0.99, 0.005,
-             f"Updated {datetime.now().strftime('%Y-%m-%d %H:%M')} | Source: Choice/Tushare system source | For reference only",
+             f"{DEMO_LABEL}: generated fixtures only; live observations unavailable. "
+             f"Artifact generated {datetime.now().strftime('%Y-%m-%d %H:%M')}; not a market-data as-of date.",
              ha="right", va="bottom", fontsize=7, color=COLORS["text_dim"])
 
-    out_path = paths.ASSET_DIR / f"credit_dashboard_{datetime.now().strftime('%Y%m%d_%H%M')}.png"
+    out_path = paths.ASSET_DIR / f"credit_dashboard_demo_{datetime.now().strftime('%Y%m%d_%H%M')}.png"
     plt.savefig(out_path, dpi=150, bbox_inches="tight",
                 facecolor=COLORS["bg_dark"], edgecolor="none")
     plt.close()
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Dashboard saved: {out_path}")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {DEMO_LABEL} dashboard saved: {out_path}")
     return out_path
 
 
 if __name__ == "__main__":
-    generate_dashboard()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--data-mode", choices=("demo", "production"), default="demo")
+    generate_dashboard(data_mode=parser.parse_args().data_mode)

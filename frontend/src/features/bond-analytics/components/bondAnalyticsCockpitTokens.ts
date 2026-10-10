@@ -1,13 +1,19 @@
 import type { CSSProperties } from "react";
 
-import { designTokens } from "../../../theme/designSystem";
-import { displayTokens } from "../../../theme/displayTokens";
+import { nocturneChartTheme } from "../../../components/charts/chartTheme";
+import { designTokens, dhApiTokens } from "../../../theme/designSystem";
 import type {
   BondAnalyticsPromotionDestination,
   BondAnalyticsTruthTone,
 } from "../lib/bondAnalyticsOverviewModel";
 
 const { color, fontSize, shadow } = designTokens;
+
+/* canvas 分类色板走页面 scope 同源的 Nocturne 常量（DESIGN §2）：本页是 Nocturne
+   深色 scope，旧的 IB 浅色分类板（mossChartCategoricalPalette）在深底上失真。 */
+export const DONUT_CHART_COLORS = nocturneChartTheme.categoricalPalette.slice(0, 5);
+export const DISTRIBUTION_CHART_COLORS = [...nocturneChartTheme.categoricalPalette];
+export const cardBodyStyle = { padding: 14 } as const;
 
 export const PERIOD_OPTIONS = [
   { value: "MoM", label: "月度环比" },
@@ -41,57 +47,58 @@ export const BOND_ANALYTICS_SPREAD_SCENARIO_PRESETS = [
 export const BORDER = color.neutral[100];
 export const SHADOW = shadow.card;
 
+/* 首页降噪制度（DESIGN §3）：眉标是 11px muted 常规体，不再用大写宽字距装饰。 */
 export const EYEBROW: CSSProperties = {
   fontSize: fontSize[11],
-  color: color.neutral[600],
-  textTransform: "uppercase",
-  letterSpacing: "0.14em",
-  fontWeight: 700,
+  color: "var(--dh-api-muted)",
+  letterSpacing: 0,
+  fontWeight: 400,
 };
 
 export const FIELD: CSSProperties = {
   marginBottom: 6,
   color: color.neutral[700],
   fontSize: fontSize[11],
-  textTransform: "uppercase",
-  letterSpacing: "0.08em",
-  fontWeight: 700,
+  letterSpacing: 0,
+  fontWeight: 500,
 };
 
 export function panelStyle(background?: string): CSSProperties {
-  return { borderRadius: 24, border: "none", boxShadow: SHADOW, background };
+  // dhApiTokens.radius 是 legacy 6px 静态回退；canonical Nocturne Shape Lock 为 8px。
+  return { borderRadius: dhApiTokens.radius, border: "none", boxShadow: SHADOW, background };
 }
 
+/** 语义 tone 面（DOM style 消费）：深色页走 --dh-api-* 语义链的暗底软色（DESIGN.md §2.2）。 */
 export function toneColor(tone: BondAnalyticsTruthTone) {
-  if (tone === "success") {
+  if (tone === "positive") {
     return {
-      background: color.success[50],
-      color: color.success[800],
-      borderColor: color.success[200],
-      accent: color.success[500],
+      background: "color-mix(in srgb, var(--dh-api-green) 12%, var(--dh-api-panel))",
+      color: "var(--dh-api-green)",
+      borderColor: "color-mix(in srgb, var(--dh-api-green) 30%, transparent)",
+      accent: "var(--dh-api-green)",
     };
   }
   if (tone === "warning") {
     return {
-      background: color.warning[50],
-      color: color.warning[800],
-      borderColor: color.warning[200],
-      accent: color.warning[500],
+      background: "color-mix(in srgb, var(--dh-api-amber) 12%, var(--dh-api-panel))",
+      color: "var(--dh-api-amber)",
+      borderColor: "color-mix(in srgb, var(--dh-api-amber) 30%, transparent)",
+      accent: "var(--dh-api-amber)",
     };
   }
-  if (tone === "danger") {
+  if (tone === "negative") {
     return {
-      background: color.danger[50],
-      color: color.danger[800],
-      borderColor: color.danger[200],
-      accent: color.danger[500],
+      background: "color-mix(in srgb, var(--dh-api-red) 12%, var(--dh-api-panel))",
+      color: "var(--dh-api-red)",
+      borderColor: "color-mix(in srgb, var(--dh-api-red) 30%, transparent)",
+      accent: "var(--dh-api-red)",
     };
   }
   return {
-    background: displayTokens.surface.section,
-    color: color.neutral[700],
-    borderColor: color.neutral[200],
-    accent: color.neutral[500],
+    background: "var(--dh-api-panel-2)",
+    color: "var(--dh-api-soft)",
+    borderColor: "var(--dh-api-line-soft)",
+    accent: "var(--dh-api-muted)",
   };
 }
 
@@ -102,36 +109,37 @@ export function readinessTagColor(statusLabel: string) {
   return "default";
 }
 
+/** 模块就绪状态面（DOM style 消费）：同 toneColor 的深色语义链。 */
 export function readinessSurface(statusLabel: string) {
   if (statusLabel === "eligible") {
     return {
-      background: color.success[50],
-      borderColor: color.success[200],
-      accent: color.success[500],
-      text: color.success[800],
+      background: "color-mix(in srgb, var(--dh-api-green) 12%, var(--dh-api-panel))",
+      borderColor: "color-mix(in srgb, var(--dh-api-green) 30%, transparent)",
+      accent: "var(--dh-api-green)",
+      text: "var(--dh-api-green)",
     };
   }
   if (statusLabel === "request-error") {
     return {
-      background: color.danger[50],
-      borderColor: color.danger[200],
-      accent: color.danger[600],
-      text: color.danger[800],
+      background: "color-mix(in srgb, var(--dh-api-red) 12%, var(--dh-api-panel))",
+      borderColor: "color-mix(in srgb, var(--dh-api-red) 30%, transparent)",
+      accent: "var(--dh-api-red)",
+      text: "var(--dh-api-red)",
     };
   }
   if (statusLabel === "placeholder-blocked" || statusLabel === "warning") {
     return {
-      background: color.warning[50],
-      borderColor: color.warning[200],
-      accent: color.warning[600],
-      text: color.warning[800],
+      background: "color-mix(in srgb, var(--dh-api-amber) 12%, var(--dh-api-panel))",
+      borderColor: "color-mix(in srgb, var(--dh-api-amber) 30%, transparent)",
+      accent: "var(--dh-api-amber)",
+      text: "var(--dh-api-amber)",
     };
   }
   return {
-    background: color.neutral[50],
-    borderColor: color.neutral[200],
-    accent: color.neutral[600],
-    text: color.neutral[800],
+    background: "var(--dh-api-panel-2)",
+    borderColor: "var(--dh-api-line-soft)",
+    accent: "var(--dh-api-muted)",
+    text: "var(--dh-api-soft)",
   };
 }
 
@@ -144,7 +152,7 @@ export function promotionLabel(destination: BondAnalyticsPromotionDestination) {
 export function readinessStatusLabel(statusLabel: string) {
   const labels: Record<string, string> = {
     loading: "加载中",
-    "request-error": "请求失败",
+    "request-error": "暂不可用",
     pending: "待加载",
     eligible: "可提升",
     "placeholder-blocked": "占位阻止",

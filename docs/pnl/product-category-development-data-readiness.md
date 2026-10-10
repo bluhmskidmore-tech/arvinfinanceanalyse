@@ -20,11 +20,11 @@ This baseline deliberately keeps broader system readiness as supporting context 
 
 | Evidence source | What it contributes | Limit |
 | --- | --- | --- |
-| `docs/pnl/product-category-page-truth-contract.md` | Page truth chain, field freeze, row-authority prohibitions, explicit gaps | P0 keeps `MTR-PCP-001` through `MTR-PCP-012` active; decision 3C detail expansion is limited to the approved row-level fields. |
+| `docs/pnl/product-category-page-truth-contract.md` | Page truth chain, field freeze, row-authority prohibitions, explicit gaps | P0 keeps `MTR-PCP-001` through `MTR-PCP-029` active; decision 3C detail expansion remains limited to the approved `MTR-PCP-004` through `MTR-PCP-012` row-level fields, while `MTR-PCP-013` through `MTR-PCP-029` are separately approved payload-section metrics. |
 | `docs/pnl/product-category-closure-checklist.md` | Unit-by-unit closure status and evidence map | All units remain `PARTIAL` at this baseline |
 | `docs/pnl/product-category-remaining-blockers.md` | Blocker class and cursor-safe next work | Product/API decision rows remain blocked |
 | `docs/page_contracts.md` | Page contract binding for `PAGE-PROD-CAT-PNL-001` | Records decision 1B no standalone outward `as_of_date` and the decision 3C detail-metric boundary |
-| `docs/metric_dictionary.md` | Cross-sample dictionary stance | Product-category dictionary-active metrics are the three headline rows plus decision 3C row-level detail rows `MTR-PCP-004`~`MTR-PCP-012`. |
+| `docs/metric_dictionary.md` | Cross-sample dictionary stance | Product-category dictionary-active metrics are the three headline rows, decision 3C row-level detail rows `MTR-PCP-004`~`MTR-PCP-012`, and the separately approved payload-section rows `MTR-PCP-013`~`MTR-PCP-029`. |
 | `tests/golden_samples/GS-PROD-CAT-PNL-A/` | Capture-ready sample pack | Scenario remains a companion probe, not a second full sample |
 | `tests/test_product_category_pnl_flow.py` | Backend route/materialization/scenario/manual-adjustment coverage | Targeted product-category flow, not full-system closure |
 | `frontend/src/test/ProductCategoryPnlPage.test.tsx` | Main page behavior and governance strip evidence | Mock/client UI evidence, not source-authority evidence |

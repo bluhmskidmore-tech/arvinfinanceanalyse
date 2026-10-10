@@ -7,23 +7,34 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.helpers import ROOT, load_module
+from tests.helpers import load_module
+from tests.business_input_fixtures import write_business_input
 
 
-def test_ingest_service_scans_data_input_and_returns_manifest_rows():
+@pytest.fixture
+def synthetic_data_root(tmp_path):
+    data_root = tmp_path / "data_input"
+    data_root.mkdir()
+    write_business_input(data_root / "ZQTZSHOW-20251231.xls")
+    return data_root
+
+
+def test_ingest_service_scans_data_input_and_returns_manifest_rows(synthetic_data_root):
     module = load_module("backend.app.services.ingest_service", "backend/app/services/ingest_service.py")
     ingest_service = getattr(module, "IngestService", None)
     if ingest_service is None:
         pytest.fail("backend.app.services.ingest_service must define IngestService")
 
-    service = ingest_service(data_root=ROOT / "data_input")
+    service = ingest_service(data_root=synthetic_data_root)
     rows = service.scan()
     assert rows, "Expected scan() to discover at least one source file under data_input"
     first = rows[0]
     assert {"source_name", "file_name", "file_path", "file_size"} <= set(first)
 
 
-def test_ingest_service_archives_files_in_local_mode_and_records_archive_metadata(tmp_path):
+def test_ingest_service_archives_files_in_local_mode_and_records_archive_metadata(
+    tmp_path, synthetic_data_root
+):
     ingest_module = load_module("backend.app.services.ingest_service", "backend/app/services/ingest_service.py")
     manifest_module = load_module(
         "backend.app.repositories.source_manifest_repo",
@@ -35,7 +46,7 @@ def test_ingest_service_archives_files_in_local_mode_and_records_archive_metadat
     )
 
     service = ingest_module.IngestService(
-        data_root=ROOT / "data_input",
+        data_root=synthetic_data_root,
         manifest_repo=manifest_module.SourceManifestRepository(),
         object_store_repo=object_store_module.ObjectStoreRepository(
             endpoint="127.0.0.1:1",
@@ -248,11 +259,11 @@ def test_build_source_version_changes_when_same_size_content_changes(tmp_path):
     assert second_version != first_version
 
 
-def test_ingest_task_returns_manifest_summary(monkeypatch, tmp_path):
+def test_ingest_task_returns_manifest_summary(monkeypatch, tmp_path, synthetic_data_root):
     ingest_task_module = sys.modules.get("backend.app.tasks.ingest")
     if ingest_task_module is None:
         ingest_task_module = load_module("backend.app.tasks.ingest", "backend/app/tasks/ingest.py")
-    monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(ROOT / "data_input"))
+    monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(synthetic_data_root))
     monkeypatch.setattr(
         ingest_task_module,
         "get_settings",
@@ -266,7 +277,11 @@ def test_ingest_task_returns_manifest_summary(monkeypatch, tmp_path):
             local_archive_path=tmp_path / "archive",
         ),
     )
-    payload = ingest_task_module.ingest_demo_manifest.fn()
+    payload = ingest_task_module.ingest_demo_manifest.fn(
+        data_root=str(synthetic_data_root),
+        governance_dir=str(tmp_path / "governance"),
+        archive_dir=str(tmp_path / "archive"),
+    )
     assert payload["status"] == "completed"
     assert payload["row_count"] > 0
     assert "archive_mode" in payload

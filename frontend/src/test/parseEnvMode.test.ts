@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createApiClient } from "../api/client";
+import { createDeferredApiClient } from "../api/clientContext";
 
 describe("createApiClient · parseEnvMode", () => {
   afterEach(() => {
@@ -82,6 +83,15 @@ describe("createApiClient · parseEnvMode", () => {
   });
 
   describe("mode override via options", () => {
+    it.each([
+      ["eager", createApiClient],
+      ["deferred", createDeferredApiClient],
+    ])("rejects an explicit mock override in production (%s client)", (_name, createClient) => {
+      vi.stubEnv("VITE_DATA_SOURCE", "real");
+      vi.stubEnv("PROD", true);
+      expect(() => createClient({ mode: "mock" })).toThrow(/mock.*production/i);
+    });
+
     it("options.mode overrides env parsing", () => {
       vi.stubEnv("VITE_DATA_SOURCE", "real");
       vi.stubEnv("VITE_API_BASE_URL", "http://localhost:8080");
@@ -96,5 +106,30 @@ describe("createApiClient · parseEnvMode", () => {
       const client = createApiClient({ mode: "real" });
       expect(client.mode).toBe("real");
     });
+  });
+});
+
+describe("deferred API client data-source boundary", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it.each(["", "bogus", "mock"])("rejects production environment mode %j", (mode) => {
+    vi.stubEnv("PROD", true);
+    vi.stubEnv("VITE_DATA_SOURCE", mode);
+    expect(() => createDeferredApiClient()).toThrow(/VITE_DATA_SOURCE/);
+  });
+
+  it("keeps explicit local demonstration mode available", () => {
+    vi.stubEnv("PROD", false);
+    vi.stubEnv("VITE_DATA_SOURCE", "real");
+    expect(createDeferredApiClient({ mode: "mock" }).mode).toBe("mock");
+  });
+
+  it("accepts explicit production real mode without an environment default", () => {
+    vi.stubEnv("PROD", true);
+    vi.stubEnv("VITE_DATA_SOURCE", "");
+    expect(createDeferredApiClient({ mode: "real" }).mode).toBe("real");
   });
 });

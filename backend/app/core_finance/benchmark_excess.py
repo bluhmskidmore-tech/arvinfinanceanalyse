@@ -1,4 +1,21 @@
 """
+[DEPRECATED / 已弃用 —— 危险死代码，勿在生产路径引用]（2026-08 PnL 归因审计 M3）
+
+本模块的 ``compute_benchmark_excess`` 当前无任何生产调用方。生产基准超额路径
+使用 ``bond_analytics/read_models.py`` 中的**同名**函数，两者入参形态与单位
+约定完全不同，极易误用：
+
+- 本模块：注入组合级标量（period_pnl / start_total_mv / portfolio_mod_duration
+  + 曲线快照），收益率输入为小数（0.012 = 1.2%），输出 pct / bp 的 float。
+- read_models 版：注入持仓行 rows + 分类曲线快照，输出 Decimal 小数分数
+  （portfolio_return / excess_return 等），由服务层换算展示单位。
+
+若把百分数当小数（或反之）注入本模块，会产生数量级的静默错误。保守处置：
+不直接删除；调用即抛 ``DeprecationWarning``。如需恢复使用，先与 read_models
+口径对齐并补黄金测试。
+
+--- 以下为原始文档 ---
+
 组合相对利率基准的超额收益（V1 benchmark_excess 的 DuckDB 可落地子集）。
 
 - 组合收益率：区间实际 PnL / 期初债券总市值（由调用方注入）。
@@ -10,6 +27,8 @@
 
 from __future__ import annotations
 
+# 别名导入：函数体内已有同名局部变量 `warnings`（业务警告代码列表），避免遮蔽。
+import warnings as _warnings_mod
 from collections.abc import Mapping
 from decimal import Decimal
 
@@ -67,8 +86,26 @@ def compute_benchmark_excess(
     portfolio_return_decimal = period_pnl / start_total_mv
     excess_bp = (port - bench) * 10000
     duration_effect_bp = -(D_port - D_bench) * avg_dy * 10000
-    selection_effect_bp = excess_bp - duration_effect_bp - curve_effect_bp - spread_effect_bp
+
+    Honest residual semantics:
+    - explained_excess_bp = duration_effect_bp + curve_effect_bp + spread_effect_bp
+      (only genuinely explained factors; curve/spread are 0 placeholders today).
+    - selection_effect_bp = excess_bp - explained_excess_bp is the *unexplained residual*
+      (individual selection + first-order approximation error), NOT a reconciled factor.
+    There is deliberately no always-zero recon field: excess = explained + residual holds
+    by construction, so a separate recon term would be uninformative.
+
+    .. deprecated:: 2026-08 (审计 M3)
+       无生产调用方；生产路径使用 ``bond_analytics.read_models.compute_benchmark_excess``
+       （入参与单位约定不同，勿混用）。调用本函数会抛出 ``DeprecationWarning``。
     """
+    _warnings_mod.warn(
+        "core_finance.benchmark_excess.compute_benchmark_excess 已弃用（无生产调用方）；"
+        "生产路径使用 bond_analytics.read_models.compute_benchmark_excess"
+        "（入参形态与单位约定不同，勿混用）。",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     profile = BENCHMARK_PROFILES.get(benchmark_id) or BENCHMARK_PROFILES["CDB_INDEX"]
     bench_name = str(profile["name"])
     d_bench = safe_decimal(profile["target_duration"])
@@ -91,11 +128,14 @@ def compute_benchmark_excess(
 
     dur_diff = portfolio_mod_duration - d_bench
     duration_effect_bp = -dur_diff * dy * Decimal("10000")
+    # Curve (non-parallel) and spread effects are not decomposed yet without index/KRD basis.
     curve_effect_bp = Decimal("0")
     spread_effect_bp = Decimal("0")
-    selection_effect_bp = excess_bp - duration_effect_bp - curve_effect_bp - spread_effect_bp
-    explained_bp = duration_effect_bp + curve_effect_bp + spread_effect_bp + selection_effect_bp
-    recon_bp = excess_bp - explained_bp
+    warnings.append("BENCHMARK_CURVE_SPREAD_NOT_DECOMPOSED")
+    # explained = only the factors we can actually attribute today.
+    explained_bp = duration_effect_bp + curve_effect_bp + spread_effect_bp
+    # selection is the honest unexplained residual, not a reconciled factor.
+    selection_effect_bp = excess_bp - explained_bp
 
     return {
         "benchmark_name": bench_name,
@@ -108,7 +148,6 @@ def compute_benchmark_excess(
         "spread_effect_bp": float(spread_effect_bp),
         "selection_effect_bp": float(selection_effect_bp),
         "explained_excess_bp": float(explained_bp),
-        "recon_error_bp": float(recon_bp),
         "portfolio_duration": float(portfolio_mod_duration),
         "benchmark_duration": float(d_bench),
         "duration_diff": float(dur_diff),
@@ -132,7 +171,7 @@ def compute_benchmark_excess(
             {
                 "source": "selection",
                 "contribution_bp": float(selection_effect_bp),
-                "description": "残差（超额 − 已解释因子，含个券选择与近似误差）",
+                "description": "未解释残差 unexplained residual（超额 − 已解释因子，含个券选择与近似误差，非对账项）",
             },
         ],
         "warnings": warnings + ["BENCHMARK_RETURN_CURVE_PROXY_NOT_WIND_INDEX"],
@@ -152,7 +191,6 @@ def _empty_payload(bench_name: str, benchmark_id: str, warnings: list[str]) -> d
         "spread_effect_bp": z,
         "selection_effect_bp": z,
         "explained_excess_bp": z,
-        "recon_error_bp": z,
         "portfolio_duration": z,
         "benchmark_duration": z,
         "duration_diff": z,

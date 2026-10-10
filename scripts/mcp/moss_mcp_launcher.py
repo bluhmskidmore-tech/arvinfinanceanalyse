@@ -23,10 +23,14 @@ def main() -> int:
     script = ROOT / "scripts" / "mcp" / "moss_project_mcp.py"
 
     os.chdir(ROOT)
-    if mode == "lineage-evidence":
-        os.environ.setdefault("MOSS_GOVERNANCE_PATH", str(ROOT / "data" / "governance"))
-    if mode in {"data-catalog", "data-quality"}:
-        os.environ.setdefault("MOSS_DUCKDB_PATH", str(ROOT / "data" / "moss.duckdb"))
+    if mode in {"lineage-evidence", "data-catalog", "data-quality"}:
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from backend.app.governance.settings import get_settings
+
+        settings = get_settings()
+        os.environ.setdefault("MOSS_GOVERNANCE_PATH", str(settings.governance_path))
+        os.environ.setdefault("MOSS_DUCKDB_PATH", str(settings.duckdb_path))
 
     sys.argv = [str(script), mode]
     spec = importlib.util.spec_from_file_location("moss_project_mcp_impl", script)

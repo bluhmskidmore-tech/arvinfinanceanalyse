@@ -1,11 +1,10 @@
 import type { Numeric } from "../../../api/contracts";
+import { numericDecimalOrNull } from "../../../api/numeric";
+import { EM_DASH, numericRaw as sharedNumericRaw } from "../../../pageModel";
 import { formatRawAsNumeric } from "../../../utils/format";
 
 export function numericRaw(value: Numeric | null | undefined): number | null {
-  if (!value || value.raw === null || !Number.isFinite(value.raw)) {
-    return null;
-  }
-  return value.raw;
+  return sharedNumericRaw(value);
 }
 
 export function numericYuanRaw(value: Numeric | null | undefined): number | null {
@@ -37,6 +36,7 @@ export function numericToYiNumeric(value: Numeric | null | undefined): Numeric |
   if (value?.unit === "yuan") {
     return formatRawAsNumeric({
       raw: raw / 1e8,
+      raw_text: numericDecimalOrNull(value)?.div(1e8).toFixed(),
       unit: "yi",
       sign_aware: value.sign_aware,
       precision: 2,
@@ -97,5 +97,5 @@ export function bucketAmountToYiNumeric(item: {
 }
 
 export function numericOrDash(value: Numeric | null | undefined): string {
-  return value?.display ?? "—";
+  return value?.display ?? EM_DASH;
 }

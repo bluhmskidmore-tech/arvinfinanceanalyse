@@ -309,3 +309,79 @@ def test_build_formal_result_envelope_from_lineage_can_pin_default_cache_version
     assert envelope["result_meta"]["rule_version"] == "rv_pnl_manifest"
     assert envelope["result_meta"]["vendor_version"] == "vv_pnl_manifest"
     assert envelope["result"]["report_date"] == "2025-12-31"
+
+
+def test_build_formal_result_meta_from_lineage_carries_build_finished_at_as_data_built_at():
+    runtime_mod = load_module(
+        "backend.app.services.formal_result_runtime",
+        "backend/app/services/formal_result_runtime.py",
+    )
+
+    meta = runtime_mod.build_formal_result_meta_from_lineage(
+        trace_id="tr_balance_analysis_dates",
+        result_kind="balance-analysis.dates",
+        lineage={
+            "cache_version": "cv_balance_analysis_from_manifest",
+            "source_version": "sv_balance_analysis_manifest",
+            "rule_version": "rv_balance_analysis_manifest",
+            "finished_at": "2026-08-25T02:15:00+00:00",
+        },
+        default_cache_version="cv_balance_analysis_default",
+    )
+
+    assert meta.data_built_at is not None
+    assert meta.data_built_at.isoformat() == "2026-08-25T02:15:00+00:00"
+    # The two timestamps answer different questions: a response assembled now
+    # may serve data materialized days earlier.
+    assert meta.data_built_at != meta.generated_at
+
+
+def test_build_formal_result_meta_from_lineage_leaves_data_built_at_unset_without_build_terminal():
+    runtime_mod = load_module(
+        "backend.app.services.formal_result_runtime",
+        "backend/app/services/formal_result_runtime.py",
+    )
+
+    meta = runtime_mod.build_formal_result_meta_from_lineage(
+        trace_id="tr_balance_analysis_dates",
+        result_kind="balance-analysis.dates",
+        lineage={
+            "cache_version": "cv_balance_analysis_from_manifest",
+            "source_version": "sv_balance_analysis_manifest",
+            "rule_version": "rv_balance_analysis_manifest",
+        },
+        default_cache_version="cv_balance_analysis_default",
+    )
+
+    assert meta.data_built_at is None
+    assert meta.generated_at is not None
+
+
+def test_build_formal_result_meta_from_lineage_does_not_adopt_build_row_report_date():
+    runtime_mod = load_module(
+        "backend.app.services.formal_result_runtime",
+        "backend/app/services/formal_result_runtime.py",
+    )
+
+    # A merged build terminal carries the whole governance row. Its report_date
+    # is the build's, and must never displace the business-resolved date.
+    meta = runtime_mod.build_formal_result_meta_from_lineage(
+        trace_id="tr_balance_analysis_detail",
+        result_kind="balance-analysis.detail",
+        lineage={
+            "cache_version": "cv_balance_analysis_from_manifest",
+            "source_version": "sv_balance_analysis_manifest",
+            "rule_version": "rv_balance_analysis_manifest",
+            "finished_at": "2026-08-25T02:15:00+00:00",
+            "report_date": "2026-06-30",
+            "status": "completed",
+            "job_name": "materialize_balance_analysis_facts",
+        },
+        default_cache_version="cv_balance_analysis_default",
+        requested_report_date="2026-07-31",
+        resolved_report_date="2026-07-31",
+    )
+
+    assert meta.requested_report_date == "2026-07-31"
+    assert meta.resolved_report_date == "2026-07-31"
+    assert meta.data_built_at is not None

@@ -37,7 +37,7 @@ class TestAccruedInterestFallbackMarker:
             report_date=date(2026, 3, 31),
         )
         assert result["has_accrued_interest"] is True
-        assert result["diagnostics"] == []
+        assert "accrued_interest_exceeds_modeled_carry" in result["diagnostics"]
 
     def test_without_accrued_interest_marks_missing(self):
         bond = _make_bond()

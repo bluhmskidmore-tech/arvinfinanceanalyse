@@ -46,10 +46,9 @@ Document intentional exceptions with ``# Human: caliber-accounting_basis-justifi
 
 CI gate status
 --------------
-Currently **informational**: the inline audit reports violations, but
-``_GATE_ENFORCED_RULES`` excludes ``accounting_basis`` until consumer
-migration completes. The rule will be moved into the enforced set in the
-planned **W-accounting-basis-migration** batch (see also W-rule-coverage-2026-04-21).
+Currently **enforced**: ``accounting_basis`` is included in
+``_GATE_ENFORCED_RULES``, and CI requires zero unjustified violations for
+this rule.
 """
 
 from __future__ import annotations

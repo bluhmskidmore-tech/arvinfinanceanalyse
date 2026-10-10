@@ -1,0 +1,441 @@
+# 市场首页  /market-overview
+final_url: http://127.0.0.1:5888/market-overview
+title: MOSS Workbench
+
+## innerText (first ~3000 chars)
+Skip to main content
+M
+MOSS
+工作台
+经营日报
+首页
+组合工作台
+首页
+市场工作台
+首页
+风险工作台
+首页
+绩效工作台
+首页
+报表与数据
+首页
+对话
+MOSS Chat
+可用
+直接提问
+支持入口
+报表中心
+中台配置
+帮助文档
+市场工作台
+
+今天利率、跨资产和新闻事件是否改变组合阅读顺序？
+
+刷新数据
+市场数据页
+同步 Choice 宏观与市场快照
+已接入
+最新行情日
+2026-07-10
+正式序列日
+2026-07-10
+利率
+10Y 国债
+1.74%
++0.2bp
+2026-07-10
+2Y 国债
+1.25%
++4bp
+2026-07-07
+5Y 国债
+1.44%
++0.8bp
+2026-07-07
+7Y 国债
+1.57%
++0.8bp
+2026-07-07
+30Y 国债
+2.26%
++2bp
+2026-07-07
+1Y 国债
+1.12%
+-0.4bp
+2026-07-07
+3Y 国债
+1.29%
+-0.2bp
+2026-07-07
+DR007
+1.38%
+0bp
+2026-07-10
+10Y 国开
+1.79%
++1bp
+2026-07-07
+5Y 国开
+1.54%
++0.3bp
+2026-07-07
+3Y 国开
+1.47%
++0.6bp
+2026-07-07
+1Y 国开
+1.35%
++0.5bp
+2026-07-07
+R007
+1.41%
+--
+2026-07-06
+跨资产
+沪深300指数收盘价
+4780.79
+日变动 -1.96%
+2026-07-10
+Brent spot price
+69.56USD/bbl
++0.88USD/bbl
+2026-07-06
+立场
+工具立场
+中性偏积极
+--
+2026-07-10
+本日市场判断
+中性偏积极 · 中债国债到期收益率:10年 最新值 1.74%；DR007 1.38%。
+
+先确认 10Y 与 DR007，再看沪深300指数收盘价对债市判断的传导。
+
+利率快照
+
+中债国债到期收益率:10年 最新值 1.74%；DR007 1.38%。
+
+稳定 series_id 优先，名称匹配兜底；完整曲线见下方国债/国开区。
+跨资产传导
+
+沪深300 4780.79，日变动 -1.96%。
+
+首页仅展示 Choice latest 已返回的观察点，不把观察口径提升为正式结论。
+事件状态
+
+choice-events 已返回 12418 条；最新 市场消息：以色列总理内塔尼亚胡预计下周访问华盛顿，行程或有变动。。
+
+最近收到 2026-07-15 · 进入 /news-events 查看全文。
+最新行情 132 条，正式利率序列 77 条。
+稳定 series_id 优先，名称匹配兜底；完整曲线见下方国债/国开区。
+Choice/Tushare 市场数据
+/ 跨资产
+/ 新闻事件
+/ real
+10Y国债
+1.74%
++0.2bp / 2026-07-10
+DR007
+1.38%
+0bp / 2026-07-10
+沪深300指数收盘价
+4780.79
+日变动 -1.96% / 2026-07-10
+宏观立场
+中性偏积极
+2026-07-10
+风险评分
+8
+2026-07-14
+DESK
+市场读数 · 曲线形态与工具指标
+指标明细 →
+曲线形态
+不可用
+
+国债曲线缺少必要的 1Y/10Y 节点。
+
+风险资产
+沪深300
+4780.7867点 · -1.96%
+工业需求
+铜主力
+103710元/吨 · +0.53%
+汇率
+美元兑人民币
+6.7989 · -0.07%
+流动性
+DR007
+1.38% · +0.00%
+资金利率
+3M NCD
+1.4279% · -0.08%
+利率
+5Y 国债
+1.4442% · +0.53%
+CURVE
+国债与国开曲线
+来源 market-data terminal
+已返回
+序列
+最新
+变动
+国债 1Y
+1.12%
+-0.4bp
+国债 2Y
+1.25%
++4bp
+国债 3Y
+1.29%
+-0.2bp
+国债 5Y
+1.44%
++0.8bp
+国债 7Y
+1.57%
++0.8bp
+国债 10Y
+1.74%
++0.2bp
+国债 20Y
+2.23
+缺前值
+国债 30Y
+2.26%
++2bp
+国开 1Y
+1.35%
++0.5bp
+国开 2Y
+1.43%
++2bp
+国开 3Y
+1.47%
++0.6bp
+国开 5Y
+1.54%
++0.3bp
+国开 10Y
+1.79%
++1bp
+国开 20Y
+2.3%
++2bp
+CROSS
+跨资产快讯
+来源 choice-latest
+已返回
+EQUITY
+2
+沪深300指数收盘价
+4780.79
+日变动 -1.96%
+沪深300指数涨跌幅
+-1.96%
+-450bp
+COMMOD
+1
+Brent spot price
+69.56USD/bbl
++0.88USD/bbl
+DESK 上下文
+RATES
+1.38%
+DR007
+FX
+待观察
+待接入
+曲线
+不可用
+更多观察
+4 条
+沪深300市盈率
+14.58
+-0.16
+铜主力期货收盘价
+103710CNY/t
++550CNY/t
+铝主力期货收盘价
+23055CNY/t
+-5CNY/t
+CSI 500 index close
+8503.97
+-148.82
+CRISIS 趋势
+宏观工具 →
+1.03
+警惕
+展示 3/13 条
+跨资产页 →
+MACRO
+宏观工具
+来源 macro-toolkit / analysis · 8/8 · 100.0% · 25 个 · 产物 17 个 · 6 张信号卡 · 8 项指标
+完整工具页 →
+8/8 · 100.0%
+工具立场
+中性偏积极
+
+维持观察，可优先运行 signal_aggregator / risk_monitor 形成交易层信号。
+
+CRIS
+Crisis Score
+警惕
+1.03
+历史分位 89.47%
+LQD
+流动性
+偏松
+78
+DR007 1.38% · 3M NCD 1.43%
+DR007 1.38% · 3M NCD 1.43%
+CRDT
+信用利差
+中性
+55
+AA-国债 5Y 58.8bp
+AA-国债 5Y 58.8bp
+RISK
+风险偏好
+转弱
+35
+沪深300 -1.96% · 铜主力 +0.53%
+沪深300 -1.96% · 铜主力 +0.53%
+A股
+市场踩踏风险
+绿色风险
+8
+指数从日内高点回落超过1% · ST 股票已从普通核心风险统计剔除，并单独统计。
+指数从日内高点回落超过1% · ST 股票已从普通核心风险统计剔除，并单独统计。
+OUT
+脚本产物
+已生成
+100
+17 个输出文件 · performance_results.csv
+17 个输出文件 · performance_results.csv
+MACRO
+宏观解释 · Crisis Score
+
+Crisis Score 1.03: 警惕
+
+宏观工具 →
+Score
+1.03
+Regime
+警惕
+分位
+P89.5
+组件
+2/5
+区间ΔScore
+-1.17
+区间Δ分位
+-10.53
+
+降低风险敞口，增加对冲
+
+历史分位
+P89.5
+0
+50
+100
+Score 趋势
+2025-08-27 → 202
+
+## computed styles
+{
+  "body_backgroundColor": "rgb(244, 243, 240)",
+  "body_color": "rgb(31, 41, 55)",
+  "body_fontFamily": "\"PingFang SC\", \"Microsoft YaHei UI\", \"Noto Sans SC\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", Arial, sans-serif",
+  "body_fontSize": "16px",
+  "root_backgroundColor": "rgb(245, 247, 249)",
+  "main_backgroundColor": "rgb(255, 255, 255)",
+  "body_borderRadius_first": "0px",
+  "css_vars": {
+    "--background": "oklch(0.9702 0 0)",
+    "--foreground": "oklch(0.2103 0.0059 285.89)",
+    "--border": "oklch(90% 0.004 286.32)",
+    "--font-sans": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\",\n      \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+    "--radius": "0.5rem",
+    "--moss-color-primary-50": "#e8f1fb",
+    "--moss-color-primary-100": "#d0e3f6",
+    "--moss-color-primary-200": "#a8c9ec",
+    "--moss-color-primary-300": "#79a7de",
+    "--moss-color-primary-400": "#4d84cc",
+    "--moss-color-primary-500": "#2f68b8",
+    "--moss-color-primary-600": "#1850a1",
+    "--moss-color-primary-700": "#144287",
+    "--moss-color-primary-800": "#10356a",
+    "--moss-color-primary-900": "#0c2a54",
+    "--moss-color-info-50": "#eff6ff",
+    "--moss-color-info-100": "#dbeafe",
+    "--moss-color-info-200": "#bfdbfe",
+    "--moss-color-info-300": "#93c5fd",
+    "--moss-color-info-400": "#60a5fa",
+    "--moss-color-info-500": "#3b82f6",
+    "--moss-color-info-600": "#2563eb",
+    "--moss-color-info-700": "#1d4ed8",
+    "--moss-color-info-800": "#1e40af",
+    "--moss-color-info-900": "#1e3a8a",
+    "--moss-color-success-50": "#ecf8f2",
+    "--moss-color-success-100": "#d5efe0",
+    "--moss-color-success-200": "#aedfc8",
+    "--moss-color-success-300": "#7fc8a4",
+    "--moss-color-success-400": "#52ad84",
+    "--moss-color-success-500": "#2d8a5e",
+    "--moss-color-success-600": "#25714d",
+    "--moss-color-success-700": "#1d5c40",
+    "--moss-color-success-800": "#174833",
+    "--moss-color-success-900": "#123828",
+    "--moss-color-warning-50": "#fff9eb",
+    "--moss-color-warning-100": "#fef0d4",
+    "--moss-color-warning-200": "#fde0a8",
+    "--moss-color-warning-300": "#fbc874",
+    "--moss-color-warning-400": "#f8a93a",
+    "--moss-color-warning-500": "#d97706",
+    "--moss-color-warning-600": "#b35c05",
+    "--moss-color-warning-700": "#8f4708",
+    "--moss-color-warning-800": "#713a0c",
+    "--moss-color-warning-900": "#5c300e"
+  }
+}
+
+## api calls (36)
+200  /src/api/clientContext.ts
+200  /src/api/client.ts
+200  /src/api/cashflowClient.ts
+200  /src/api/bondAnalyticsClient.ts
+200  /src/api/executiveClient.ts
+200  /src/api/healthClient.ts
+200  /src/api/liabilityAdbClient.ts
+200  /src/api/pnlClient.ts
+200  /src/api/pnlAttributionClient.ts
+200  /src/api/positionsClient.ts
+200  /src/api/pnlCoreClient.ts
+200  /src/api/qdbGlMonthlyAnalysisClient.ts
+200  /src/api/productCategoryClient.ts
+200  /src/api/balanceMovementClient.ts
+200  /src/api/ledgerClient.ts
+200  /src/api/balanceAnalysisClient.ts
+200  /src/api/cubeClient.ts
+200  /src/api/kpiClient.ts
+200  /src/api/workbenchDashboardApi.ts
+200  /src/api/agentClient.ts
+200  /src/api/marketDataClient.ts
+200  /src/api/bondDashboardWorkbenchEndpoints.ts
+200  /src/api/macroToolkitClient.ts
+200  /src/api/numeric.ts
+200  /src/api/bondAnalyticsYieldCurveTermStructureMock.ts
+200  /src/api/bondDashboardBundleMock.ts
+200  /src/api/executiveHomeSnapshotFetch.ts
+200  /src/api/httpResponseError.ts
+200  /src/api/marketDataMocks.ts
+200  /src/api/homeMarketTickerClient.ts
+200  /ui/market-data/rates
+200  /ui/macro/choice-series/latest
+200  /ui/news/choice-events/latest?limit=3&offset=0
+200  /ui/market-data/catalog
+200  /ui/macro/toolkit/analysis?detail=full&history_limit=430
+200  /ui/macro/toolkit/analysis/strategy-summaries
+
+## console errors (0)

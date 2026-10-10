@@ -10,6 +10,7 @@ import {
   getBondAnalyticsModuleDefinition,
   type BondAnalyticsModuleKey,
 } from "../lib/bondAnalyticsModuleRegistry";
+import { DetailPanelSkeleton } from "./BondAnalyticsDetailPrimitives";
 import styles from "./BondAnalyticsDetailSection.module.css";
 
 const ReturnDecompositionView = lazy(() =>
@@ -65,7 +66,7 @@ const TAB_ITEMS: Array<{ key: BondAnalyticsModuleKey; label: string }> = [
   { key: "dv01-risk", label: "DV01 风险" },
   { key: "credit-spread", label: "信用利差" },
   { key: "portfolio-headlines", label: "组合头条" },
-  { key: "top-holdings", label: "重仓券" },
+  { key: "top-holdings", label: "重仓资产" },
   { key: "action-attribution", label: "动作归因" },
   { key: "accounting-audit", label: "会计分类审计" },
 ];
@@ -183,12 +184,7 @@ export function BondAnalyticsDetailSection({
 
       <Suspense
         fallback={
-          <div
-            className={styles.loadingState}
-            data-testid="bond-analysis-detail-loading"
-          >
-            正在加载面板...
-          </div>
+          <DetailPanelSkeleton testId="bond-analysis-detail-loading" />
         }
       >
         <div className={styles.contentFrame} data-testid="bond-analysis-detail-content">

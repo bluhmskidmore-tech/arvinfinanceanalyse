@@ -1,17 +1,18 @@
 import type { EChartsOption } from "echarts";
 import type { Numeric } from "../../../api/contracts";
-import { designTokens } from "../../../theme/designSystem";
+import { nocturneTokens } from "../../../theme/designSystem";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type { AssetClassRiskSummary, KRDBucket } from "../types";
 import { formatWan, formatYi } from "./formatters";
 
-export const ECHARTS_RISK_TEXT = designTokens.color.neutral[700];
-export const ECHARTS_RISK_GRID_LINE = designTokens.color.neutral[200];
+/* ECharts canvas 不消费 CSS 变量：取 Nocturne 常量组（与页面 scope 同源）。 */
+export const ECHARTS_RISK_TEXT = nocturneTokens.color.inkSoft;
+export const ECHARTS_RISK_GRID_LINE = nocturneTokens.color.lineSoft;
 
 const ASSET_CLASS_SLICE_COLORS: Record<string, string> = {
-  rate: designTokens.color.info[500],
-  credit: designTokens.color.warning[400],
-  other: designTokens.color.neutral[500],
+  rate: nocturneTokens.color.blue,
+  credit: nocturneTokens.color.amber,
+  other: nocturneTokens.color.inkMuted,
 };
 
 function hexToRgbTriple(hex: string): readonly [number, number, number] {
@@ -27,10 +28,10 @@ function lerpByte(a: number, b: number, t: number) {
   return Math.round(a + (b - a) * t);
 }
 
-const DV01_GRADIENT_LO = hexToRgbTriple(designTokens.color.primary[200]);
-const DV01_GRADIENT_HI = hexToRgbTriple(designTokens.color.primary[700]);
+const DV01_GRADIENT_LO = hexToRgbTriple(nocturneTokens.color.accent300);
+const DV01_GRADIENT_HI = hexToRgbTriple(nocturneTokens.color.blue);
 
-/** 浅蓝 → 深蓝，按 DV01 数值在分桶内的相对大小着色。 */
+/** 浅 accent → accent，按 DV01 数值在分桶内的相对大小着色。 */
 function dv01GradientColor(dv01: number, min: number, max: number): string {
   const lo = DV01_GRADIENT_LO;
   const hi = DV01_GRADIENT_HI;
@@ -44,12 +45,11 @@ function dv01GradientColor(dv01: number, min: number, max: number): string {
 
 export function buildKrdDv01BarOption(buckets: KRDBucket[]): EChartsOption | null {
   if (!buckets.length) return null;
-  const dv01Values = buckets.map((b) => {
-    const n = bondNumericRaw(b.dv01);
-    return n ?? 0;
-  });
-  const min = Math.min(...dv01Values);
-  const max = Math.max(...dv01Values);
+  // 缺失 DV01 保留 null，序列画断点；渐变色仅按可用值计算。
+  const dv01Values = buckets.map((b) => bondNumericRaw(b.dv01));
+  const finiteValues = dv01Values.filter((v): v is number => v !== null);
+  const min = finiteValues.length > 0 ? Math.min(...finiteValues) : 0;
+  const max = finiteValues.length > 0 ? Math.max(...finiteValues) : 0;
   return {
     backgroundColor: "transparent",
     textStyle: { color: ECHARTS_RISK_TEXT },
@@ -85,10 +85,11 @@ export function buildKrdDv01BarOption(buckets: KRDBucket[]): EChartsOption | nul
         type: "bar",
         barMaxWidth: 48,
         data: buckets.map((b, i) => {
-          const v = dv01Values[i];
+          const v = dv01Values[i] ?? null;
           return {
             value: v,
-            itemStyle: { color: dv01GradientColor(v, min, max) },
+            itemStyle:
+              v === null ? undefined : { color: dv01GradientColor(v, min, max) },
           };
         }),
       },
@@ -106,7 +107,7 @@ export function buildAssetClassMarketValuePieOption(rows: AssetClassRiskSummary[
     itemStyle: {
       color:
         ASSET_CLASS_SLICE_COLORS[row.asset_class.trim().toLowerCase()] ??
-        designTokens.color.neutral[400],
+        nocturneTokens.color.inkSoft,
     },
   }));
   return {

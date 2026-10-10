@@ -1,3 +1,11 @@
+"""超跌反弹候选（signal_kind=mean_reversion）。
+
+命名澄清：这不是统计意义上的均值回归（无均值估计、z-score 或回归半衰期），
+而是"超跌 → 企稳（close>MA5>MA10）→ 放量确认"的反弹打分。signal_kind 与
+formula_version 因历史持久化数据保留 mean_reversion 命名；页面展示名为"超跌反弹"。
+阈值与评分权重见 strategy_policy.MeanReversionParams。
+"""
+
 from __future__ import annotations
 
 import math
@@ -5,9 +13,13 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import cast
 
+from backend.app.core_finance.strategy_policy import POLICY
+
 EPS = 1e-12
 FORMULA_VERSION = "rv_mean_reversion_candidates_v2"
-ACTIVE_MARKET_STATES = frozenset({"WARM"})
+ACTIVE_MARKET_STATES = POLICY.mean_reversion_active_states
+# 阈值与评分权重统一收编在 strategy_policy.MeanReversionParams（v2 原值，行为不变）。
+PARAMS = POLICY.mean_reversion
 # 60 个交易日高点窗口需要「今日收盘价之前」一共 60 根；加上今日至少共 61 根。
 MIN_HISTORY_BARS = 61
 MAX_RANKED = 20
@@ -56,10 +68,22 @@ def compute_mean_reversion_candidates(
     insufficient_history_count = 0
 
     for snapshot in snapshots:
-        row = _candidate_row(snapshot)
+        closes = _float_series(snapshot.close_history)
+        volumes = _float_series(snapshot.volume_history)
+        if (
+            closes is None
+            or volumes is None
+            or len(closes) < MIN_HISTORY_BARS
+            or len(volumes) < MIN_HISTORY_BARS
+        ):
+            row = None
+            insufficient_history = True
+        else:
+            row = _candidate_row(snapshot, closes, volumes)
+            insufficient_history = False
         if row is None:
             excluded_stock_count += 1
-            if _is_insufficient_history(snapshot):
+            if insufficient_history:
                 insufficient_history_count += 1
             continue
         items_accum.append(row)
@@ -108,13 +132,11 @@ def _build_payload(
     }
 
 
-def _candidate_row(snapshot: MeanReversionSnapshot) -> dict[str, object] | None:
-    closes = _float_series(snapshot.close_history)
-    volumes = _float_series(snapshot.volume_history)
-    if closes is None or volumes is None:
-        return None
-    if len(closes) < MIN_HISTORY_BARS or len(volumes) < MIN_HISTORY_BARS:
-        return None
+def _candidate_row(
+    snapshot: MeanReversionSnapshot,
+    closes: list[float],
+    volumes: list[float],
+) -> dict[str, object] | None:
     if len(closes) != len(volumes):
         return None
 
@@ -133,7 +155,9 @@ def _candidate_row(snapshot: MeanReversionSnapshot) -> dict[str, object] | None:
     drawdown_20d = _drawdown(close_price, max_20)
     drawdown_60d = _drawdown(close_price, max_60)
 
-    distressed = drawdown_20d <= -0.15 or drawdown_60d <= -0.25
+    distressed = (
+        drawdown_20d <= PARAMS.drawdown_20d_trigger or drawdown_60d <= PARAMS.drawdown_60d_trigger
+    )
     if not distressed:
         return None
 
@@ -146,21 +170,25 @@ def _candidate_row(snapshot: MeanReversionSnapshot) -> dict[str, object] | None:
     if vol_ma20 <= 0:
         return None
     vol_ratio = volume / vol_ma20
-    if not (1.5 <= vol_ratio <= 5.0):
+    if not (PARAMS.vol_ratio_min <= vol_ratio <= PARAMS.vol_ratio_max):
         return None
 
     close_strength = (close_price - low_price) / rng
-    if close_strength < 0.60:
+    if close_strength < PARAMS.close_strength_min:
         return None
 
     prior_close = closes[-2]
     if prior_close <= 0:
         return None
     pct_change = (close_price - prior_close) / prior_close
-    if pct_change >= 0.095:
+    if pct_change >= PARAMS.daily_change_max:
         return None
 
-    score = abs(drawdown_20d) * 0.4 + close_strength * 0.3 + min(vol_ratio / 3.0, 1.0) * 0.3
+    score = (
+        abs(drawdown_20d) * PARAMS.score_weight_drawdown
+        + close_strength * PARAMS.score_weight_close_strength
+        + min(vol_ratio / PARAMS.score_vol_ratio_norm, 1.0) * PARAMS.score_weight_vol_ratio
+    )
 
     return {
         "stock_code": snapshot.stock_code,
@@ -188,17 +216,14 @@ def _mean_tail(values: list[float], n: int) -> float:
     return sum(values[-n:]) / float(n)
 
 
-def _is_insufficient_history(snapshot: MeanReversionSnapshot) -> bool:
-    closes = _float_series(snapshot.close_history)
-    volumes = _float_series(snapshot.volume_history)
-    if closes is None or volumes is None:
-        return True
-    if len(closes) < MIN_HISTORY_BARS or len(volumes) < MIN_HISTORY_BARS:
-        return True
-    return False
-
-
 def _float_series(values: Sequence[object]) -> list[float] | None:
+    if type(values) is list:
+        for value in values:
+            if type(value) is not float or not math.isfinite(value):
+                break
+        else:
+            return cast(list[float], values)
+
     converted = [_valid_float(value) for value in values]
     if any(value is None for value in converted):
         return None
@@ -206,6 +231,13 @@ def _float_series(values: Sequence[object]) -> list[float] | None:
 
 
 def _valid_float(value: object) -> float | None:
+    if type(value) is float:
+        return value if math.isfinite(value) else None
+    if type(value) is int:
+        try:
+            return float(value)
+        except OverflowError:
+            return None
     if value is None:
         return None
     text = str(value).strip()

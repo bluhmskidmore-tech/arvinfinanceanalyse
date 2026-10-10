@@ -1,5 +1,5 @@
 import { useMemo, useRef } from "react";
-import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 
 import { useApiClient, type ApiClient } from "../../../api/clientContext";
 import {
@@ -30,7 +30,7 @@ export type DashboardSnapshotBoundaryResult = {
   refreshSnapshot: () => Promise<unknown>;
 };
 
-const REPORT_DATE_STALE_WARNING = "新报告日数据获取失败，当前展示上一版本数据";
+const REPORT_DATE_STALE_WARNING = "当前报告日刷新失败，保留该报告日上一版本数据";
 const LIVE_SOURCE_UNAVAILABLE_WARNING = "实时数据源当前不可用，未展示本地模拟数据";
 
 export function useDashboardSnapshotBoundary({
@@ -38,12 +38,14 @@ export function useDashboardSnapshotBoundary({
   allowPartial,
 }: UseDashboardSnapshotBoundaryOptions): DashboardSnapshotBoundaryResult {
   const sourceClient = useApiClient();
+  const queryClient = useQueryClient();
   const dataClient = sourceClient;
   const displayMode = sourceClient.mode;
   const requestedDateLabel = reportDate || "latest";
 
   const snapshotQuery = useQuery<HomeSnapshotEnvelope, Error>({
     queryKey: ["home-snapshot", dataClient.mode, requestedDateLabel, allowPartial],
+    meta: { homeSnapshotClient: dataClient },
     queryFn: () =>
       dataClient.getHomeSnapshot({
         reportDate: reportDate || undefined,
@@ -54,14 +56,43 @@ export function useDashboardSnapshotBoundary({
 
   const isLiveDataFallback = false;
   const lastSuccessfulSnapshotRef = useRef<HomeSnapshotEnvelope | null>(null);
+  const lastReadScopeRef = useRef({ dataClient, requestedDateLabel, allowPartial });
+  const lastReadScope = lastReadScopeRef.current;
+  if (
+    lastReadScope.dataClient !== dataClient ||
+    lastReadScope.requestedDateLabel !== requestedDateLabel ||
+    lastReadScope.allowPartial !== allowPartial
+  ) {
+    lastSuccessfulSnapshotRef.current = null;
+    lastReadScopeRef.current = { dataClient, requestedDateLabel, allowPartial };
+  }
   if (snapshotQuery.data) {
     lastSuccessfulSnapshotRef.current = snapshotQuery.data;
   }
 
+  // URL navigation remounts the page. Reuse only this client's same-date reads;
+  // a new fixed-generation QueryClient has no previous-generation cache.
+  const cachedSnapshotQuery = snapshotQuery.isError && !lastSuccessfulSnapshotRef.current
+    ? queryClient.getQueryCache().findAll({
+        queryKey: ["home-snapshot", dataClient.mode, requestedDateLabel, allowPartial],
+        exact: true,
+        predicate: (query) =>
+          query.meta?.homeSnapshotClient === dataClient &&
+          query.queryKey.length === 4 &&
+          query.queryKey[3] === allowPartial &&
+          query.state.status === "success",
+      }).sort((left, right) => right.state.dataUpdatedAt - left.state.dataUpdatedAt)[0]
+    : undefined;
+  const previousSnapshot = lastSuccessfulSnapshotRef.current ?? (
+    cachedSnapshotQuery
+      ? queryClient.getQueryData<HomeSnapshotEnvelope>(cachedSnapshotQuery.queryKey)
+      : undefined
+  );
+
   const displayedSnapshot =
-    snapshotQuery.data ?? (snapshotQuery.isError ? lastSuccessfulSnapshotRef.current : null);
+    snapshotQuery.data ?? (snapshotQuery.isError ? previousSnapshot ?? null : null);
   const reportDateDataWarning =
-    snapshotQuery.isError && lastSuccessfulSnapshotRef.current
+    snapshotQuery.isError && previousSnapshot
       ? REPORT_DATE_STALE_WARNING
       : snapshotQuery.isError && dataClient.mode === "real"
         ? LIVE_SOURCE_UNAVAILABLE_WARNING

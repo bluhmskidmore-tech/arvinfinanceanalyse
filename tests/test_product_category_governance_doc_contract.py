@@ -175,6 +175,7 @@ def test_product_category_unit2_decision_3c_field_matrix_is_dictionary_active():
 
 def test_product_category_recommended_next_unit2_work_blocks_non_3c_fields_without_redeciding_active_metrics():
     checklist = _read_pnl_doc("product-category-closure-checklist.md")
+    page_contract = _read_pnl_doc("product-category-page-truth-contract.md")
     recommendation = checklist.split("Recommended next smallest unit:", maxsplit=1)[1]
 
     assert "Unit 2: Detail" in recommendation
@@ -187,7 +188,21 @@ def test_product_category_recommended_next_unit2_work_blocks_non_3c_fields_witho
     assert "already governed" in recommendation
     assert "non-3C/additional detail fields" in recommendation
     assert "new governed metric matrix / dictionary / sample / test bundle" in recommendation
-    assert "do not invent additional `metric_id` bindings beyond `MTR-PCP-001` through `MTR-PCP-012`" in recommendation
+    assert (
+        "do not invent additional row-level `metric_id` bindings beyond `MTR-PCP-004` through `MTR-PCP-012`; "
+        "the separately approved `MTR-PCP-013` through `MTR-PCP-029` bindings are limited to the three "
+        "payload sections governed in `docs/metric_dictionary.md` section 12.3.2"
+    ) in recommendation
+
+    payload_scope = page_contract.split(
+        "#### 9.1.2 Interest-spread and CLN payload-section metrics", maxsplit=1,
+    )[1].split("### 9.2 Manual adjustment create", maxsplit=1)[0]
+    assert [line for line in payload_scope.splitlines() if line.startswith("- `MTR-PCP-")] == [
+        "- `MTR-PCP-013` through `MTR-PCP-018`: `result.interest_earning_spread.*`",
+        "- `MTR-PCP-019` through `MTR-PCP-024`: `result.interest_spread.*`",
+        "- `MTR-PCP-025` through `MTR-PCP-029`: `result.liability_cost_decomposition.*`",
+    ]
+    assert "These are section-level metrics, not additions to `result.rows[]`." in payload_scope
 
 
 def test_product_category_unit10_traceability_table_remains_non_exhaustive():
@@ -208,7 +223,8 @@ def test_product_category_unit10_traceability_table_remains_non_exhaustive():
         "`Unit 3: refresh shows in-flight status (queued",
         "`runPollingTask`; `formatProductCategoryRefreshStatusLine`",
         "`Unit 9: table",
-        "`formatProductCategoryRowDisplayValue`; `formatProductCategoryYieldValue`; `selectDisplayedProductCategoryGrandTotal`",
+        "`formatProductCategoryValue`; `formatProductCategoryYieldValue`; `selectDisplayedProductCategoryGrandTotal`",
+        "Historical title retained; current assertions preserve both sides' net income signs",
         "`surfaces degraded result_meta",
         "`PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY`; `collectProductCategoryGovernanceNotices`; `formatProductCategoryDualMetaDistinctLine`",
         "`keeps current and event sort controls independent and resets pagination on time-range apply/reset`",
@@ -218,7 +234,7 @@ def test_product_category_unit10_traceability_table_remains_non_exhaustive():
         "`Unit 6: a rendered audit row stays consistent with the exported CSV row for the same fixture`",
         "`buildProductCategoryAuditListExportQuery`; `downloadAuditCsv`",
         "`freezes the Unit 9 fixture-driven row/field matrix for asset, liability, and grand_total authority`",
-        "`selectProductCategoryDetailRows`; `formatProductCategoryRowDisplayValue`; `formatProductCategoryYieldValue`; `selectDisplayedProductCategoryGrandTotal`",
+        "`selectProductCategoryDetailRows`; `formatProductCategoryValue`; `formatProductCategoryRowDisplayValue`; `formatProductCategoryYieldValue`; `selectDisplayedProductCategoryGrandTotal`",
     ):
         assert required in traceability
 
@@ -239,7 +255,8 @@ def test_product_category_unit9_fixture_row_matrix_stays_narrow():
         "This matrix documents only rows already exercised by page/model tests; it does not infer broader category catalog behavior.",
         "`repo_liabilities`",
         "liability row",
-        "absolute display for `business_net_income`; yield is not money-scaled",
+        "signed `business_net_income` and `cny_net`; absolute `cny_ftp`; yield is not money-scaled",
+        "backend-signed net income for `MTR-PCP-009`~`MTR-PCP-011`",
         "`repo_assets`",
         "asset row",
         "signed display for `business_net_income`; yield is not money-scaled",
@@ -249,6 +266,7 @@ def test_product_category_unit9_fixture_row_matrix_stays_narrow():
     ):
         assert required in unit9
 
+    assert "absolute display for `business_net_income`" not in unit9
     assert "Unit 9 fixture-driven row matrix" not in _owner_review_queue(blocker_triage)
 
 

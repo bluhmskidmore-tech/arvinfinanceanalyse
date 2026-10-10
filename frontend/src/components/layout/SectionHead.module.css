@@ -1,0 +1,295 @@
+/*
+ * SectionHead 原语：编号分区头的机械视觉保证层（DESIGN.md §3/§6/§7）。
+ *
+ * 编号由 CSS counter 生成，禁止手写编号；counter-increment 挂在头部自己身上
+ * （不是挂在整节容器上），所以只有真的挂载了 SectionHead 的区块才计数——数据
+ * 缺失导致整节不渲染时，序号天然不跳号，不需要页面自己算"这是第几个可见区块"。
+ *
+ * meta 的 "·" 配额与竖线分栏在 KpiStrip 同款约束下完成：<=2 项才允许拼 "·"
+ * （2 项最多产生 1 个 "·"），超过 2 项直接切到 .metaGrid 竖线分栏，
+ * 页面拿到的数组永远不会被拼成违反 §7 单行 1 个 "·" 配额的字符串。
+ */
+
+.stack {
+  counter-reset: layoutSectionHead;
+}
+
+.head {
+  counter-increment: layoutSectionHead;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--dh-api-line);
+  /* 供锚点跳转使用：粘顶导航高度 + 余量，跳转后编号分区头不被压在导航条下。 */
+  scroll-margin-top: 64px;
+}
+
+/*
+ * 受控外边距（contentGap）：只开放「分区头到分区内容」这一根轴，只有三档，
+ * 全部落在 4px 节奏上。不开放 style / className 透传——上一轮实测里页面用
+ * `> div`、`span[style] + h2[style]` 这类结构耦合选择器从外部改组件，这种耦合
+ * 在 props 层面完全看不见、不报错、不挂测试、失效无声，开放任意样式等于把刚
+ * 拆掉的耦合装回去。
+ *
+ * 上外边距不开放：分区之间的垂直节奏归容器（stack / SectionGrid 的 gap），
+ * 分区头自己本来就没有 margin-top。老 PageSectionLead 的 .sectionLead 带
+ * margin-top: 28px，`market-data` 的 marginTop: 0 是在抵消它，迁到本原语后
+ * 那一半需求自动消失，真正要表达的只剩下边距那一档。
+ *
+ * padding-bottom 与发丝底线不随档位变：它们是 §3 分区头的身份，不是间距。
+ */
+.head[data-content-gap="tight"] {
+  margin-bottom: 8px;
+}
+
+.head[data-content-gap="flush"] {
+  margin-bottom: 0;
+}
+
+.titleRow {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* 眉标即编号本身（不是另一段大写宽字距装饰文案——DESIGN.md 已撤销该装饰）。 */
+.titleRow::before {
+  content: counter(layoutSectionHead, decimal-leading-zero);
+  flex: 0 0 auto;
+  color: var(--dh-api-muted);
+  font-family: var(--moss-font-tabular);
+  font-size: 11px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+/*
+ * numbered={false}：既不打印序号，也不 counter-increment——后者同样重要，
+ * 否则不编号的头会悄悄吃掉一个序号，让同域内后续分区跳号。
+ */
+.head[data-numbered="false"] {
+  counter-increment: none;
+}
+
+.head[data-numbered="false"] .titleRow::before {
+  content: none;
+}
+
+/*
+ * 外接编号域（numbered={{ counter }}）：编号「来源」由使用方给出，编号「样式」
+ * 仍然只在这里定义——11px 等宽 tabular muted 全部继承上面那条 .titleRow::before，
+ * 这里只换 content 里的 counter 名，decimal-leading-zero 使用方碰不到。
+ *
+ * counter 名经 --layout-section-head-counter 自定义属性传入。var() 在计算值阶段
+ * 替换、替换完成后才校验属性语法，所以 counter(var(--x), decimal-leading-zero)
+ * 是合法写法（Chromium 实测：替换成 counter(mt-section, decimal-leading-zero)
+ * 并正常渲染出连续序号）。
+ *
+ * 故意不给 var() 写回退值：写 layoutSectionHead 作回退的话，忘记传 counter 名时
+ * 会静默打印本原语自己那个编号域的序号——正是这一层要防的「静默错号」。没有回退
+ * 时 content 在计算值阶段失效，::before 直接不生成（Chromium 实测宽度 0）。
+ */
+.head[data-numbered="external"] {
+  counter-increment: none;
+}
+
+/*
+ * 递增位默认不在分区头上：页面既有规则（通常挂在分区容器上）照常递增，分区头
+ * 只打印当前值，于是同一页里没迁完的老分区头与已迁的 SectionHead 共用一条连续
+ * 序列。只有显式 increment: true 时递增位才落到分区头自己身上。
+ */
+.head[data-numbered="external"][data-counter-increment="self"] {
+  counter-increment: var(--layout-section-head-counter);
+}
+
+.head[data-numbered="external"] .titleRow::before {
+  content: counter(var(--layout-section-head-counter), decimal-leading-zero);
+}
+
+/*
+ * 分类眉标：与编号同处标题行首（对照 macro-toolkit 既有的「编号 + 分类 + 标题」
+ * 单行基线布局），编号是 .titleRow::before 所以恒排在它之前，两者靠 .titleRow
+ * 的 8px gap 分隔，不插 "·"——单行的 "·" 配额（§7）留给 meta。
+ *
+ * 11px / muted / 400 是刻意压到 note 同档：分类词弱于 14px/600 的标题，也不比
+ * 40-60 字的 note 说明句更响。上一轮把它映射进 meta（12px --dh-api-soft）导致
+ * 层级反转，就是因为 meta 比 note 更重。
+ *
+ * 等宽字体留给编号：分类词走 UI 正文栈，与紧邻的等宽序号天然区分，不需要再加
+ * 大写宽字距装饰（DESIGN.md §3 已把大写徽标收回给状态/口径徽标，何况大写变换
+ * 在中文分类词上本来就无效）。
+ */
+.category {
+  flex: 0 0 auto;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  margin: 0;
+  color: var(--dh-api-ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 只有明确声明信息不可省略的标题才换行；默认仍保持终端式单行密度。 */
+.head[data-title-wrap="wrap"] .title {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.spacer {
+  flex: 1 1 auto;
+  min-width: 8px;
+}
+
+/* 状态位：五态齐备，ready（state=null/undefined）时 SectionHead 直接不渲染这段
+   DOM（不是渲染空壳），不占版面（DESIGN.md §6）。 */
+.state {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border-radius: var(--dh-api-radius);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.stateDot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.state[data-tone="loading"],
+.state[data-tone="empty"] {
+  color: var(--dh-api-muted);
+  background: transparent;
+}
+
+.state[data-tone="error"] {
+  color: var(--dh-api-red);
+  background: transparent;
+}
+
+.state[data-tone="stale"],
+.state[data-tone="partial"] {
+  color: var(--dh-api-amber);
+  background: transparent;
+}
+
+/* 强调色只留可点击：actions 里的交互元素才允许用 accent 蓝；标题/meta/note
+   一律留在 ink/soft/muted 中性色阶（DESIGN.md「强调色只留可点击」纪律）。 */
+.actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.actions a,
+.actions button {
+  color: var(--dh-api-blue);
+}
+
+/* meta：<=2 项走行内 "·" 拼接。 */
+.metaInline {
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+  min-width: 0;
+  overflow: hidden;
+  margin: 0;
+  color: var(--dh-api-soft);
+  font-size: 12px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/*
+ * label 与 value 之间必须靠 gap 拉开，不能靠 TSX 里的 `{" "}`：按 Flexbox 规范，
+ * 纯空白的匿名 flex item 不渲染，于是「来源 kpi」会画成「来源kpi」。
+ * DOM 的 textContent 仍含那个空格，所以 toHaveTextContent 照过、jsdom 与深色
+ * 契约都抓不到——这个缺陷曾同时存在于全部使用 meta 的页面上。
+ */
+.metaInlineItem {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.metaDot {
+  margin: 0 6px;
+  color: var(--dh-api-muted);
+}
+
+.metaLabel {
+  color: var(--dh-api-muted);
+}
+
+.metaValue {
+  color: var(--dh-api-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* meta：>2 项自动改竖线分栏（不再是任何形式的 "·" 文本拼接），并随宽度自动换行。 */
+.metaGrid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 0;
+  min-width: 0;
+}
+
+/* 同 .metaInlineItem：label/value 之间靠 gap，不靠不渲染的空白 flex item。 */
+.metaCell {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 10px;
+  border-left: 1px solid var(--dh-api-line-soft);
+  font-size: 12px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
+.metaCell:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.note {
+  min-width: 0;
+  margin: 0;
+  color: var(--dh-api-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}

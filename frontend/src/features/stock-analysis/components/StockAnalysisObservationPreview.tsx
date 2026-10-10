@@ -29,6 +29,8 @@ type StockAnalysisObservationPreviewProps = {
   onOpenMeanReversionDetail: (row: MeanReversionCandidateItem) => void;
 };
 
+const OBSERVATION_PREVIEW_DEFAULT_COUNT = 1;
+
 export function StockAnalysisObservationPreview({
   factorScreenPayload,
   factorPreviewItems,
@@ -42,6 +44,71 @@ export function StockAnalysisObservationPreview({
   const meanReversionCount = meanReversionMarketActive
     ? meanReversionPayload?.candidate_count ?? 0
     : "暂停";
+  const visibleFactorPreviewItems = factorPreviewItems.slice(0, OBSERVATION_PREVIEW_DEFAULT_COUNT);
+  const extraFactorPreviewItems = factorPreviewItems.slice(OBSERVATION_PREVIEW_DEFAULT_COUNT);
+  const visibleMeanReversionPreviewItems = meanReversionPreviewItems.slice(0, OBSERVATION_PREVIEW_DEFAULT_COUNT);
+  const extraMeanReversionPreviewItems = meanReversionPreviewItems.slice(OBSERVATION_PREVIEW_DEFAULT_COUNT);
+
+  const renderFactorPreviewRow = (row: FactorScreenCandidateItem) => (
+    <tr
+      key={row.stock_code}
+      data-testid={`factor-preview-row-${row.stock_code}`}
+    >
+      <td className="stock-analysis-page__table-number">{row.rank}</td>
+      <td>
+        <button
+          aria-label={`查看${row.stock_name}（${row.stock_code}）详情`}
+          className="stock-analysis-page__factor-detail-button"
+          onClick={() => onOpenFactorDetail(row)}
+          type="button"
+        >
+          <span>{row.stock_name}</span>
+          <small className="stock-analysis-page__tabular"> {row.stock_code}</small>
+        </button>
+      </td>
+      <td>{row.sector_name}</td>
+      <td className="stock-analysis-page__table-number">{row.score.toFixed(4)}</td>
+    </tr>
+  );
+
+  const renderMeanReversionPreviewRow = (row: MeanReversionCandidateItem) => {
+    const openMeanReversionDetail = () => onOpenMeanReversionDetail(row);
+
+    return (
+      <li
+        key={row.stock_code}
+        className="stock-analysis-page__mean-reversion-row stock-analysis-page__row--clickable"
+        data-testid={`mean-reversion-preview-row-${row.stock_code}`}
+        onClick={openMeanReversionDetail}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            openMeanReversionDetail();
+          }
+        }}
+      >
+        <span>
+          #{row.rank} {row.stock_name}{" "}
+          <small className="stock-analysis-page__tabular">{row.stock_code}</small>
+        </span>
+        <span className="stock-analysis-page__mean-reversion-metrics">
+          <span>{row.sector_name}</span>
+          <span className="stock-analysis-page__mean-reversion-dd">
+            20日回撤{" "}
+            {row.drawdown_20d != null && Number.isFinite(row.drawdown_20d)
+              ? `${(row.drawdown_20d * 100).toFixed(1)}%`
+              : "待补"}
+          </span>
+          <span>
+            评分{" "}
+            {row.score != null && Number.isFinite(row.score) ? row.score.toFixed(2) : "待补"}
+          </span>
+        </span>
+      </li>
+    );
+  };
 
   return (
     <section
@@ -50,14 +117,14 @@ export function StockAnalysisObservationPreview({
       data-testid="stock-analysis-observation-preview"
     >
       <div className={SA_SECTION_HEAD}>
-        <div className="min-w-0">
+        <div className="stock-analysis-page__min-w-0">
           <p className={SA_SECTION_EYEBROW}>多策略观察池</p>
           <h2 className={SA_CARD_TITLE}>多因子 / 超跌观察池</h2>
           <div className="stock-analysis-page__lower-signal-strip" aria-label="观察池状态">
-            <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] font-semibold text-neutral-600">
+            <span className="stock-analysis-page__signal-pill">
               <DatabaseOutlined aria-hidden="true" /> 多因子 {factorScreenPayload?.candidate_count ?? 0}
             </span>
-            <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] font-semibold text-neutral-600">
+            <span className="stock-analysis-page__signal-pill">
               <FireOutlined aria-hidden="true" /> 超跌 {meanReversionCount}
             </span>
           </div>
@@ -69,7 +136,7 @@ export function StockAnalysisObservationPreview({
 
       <div className="stock-analysis-page__observation-preview-grid">
         <div className="stock-analysis-page__observation-preview-panel">
-          <h3>多因子 Top {factorPreviewItems.length || 0}</h3>
+          <h3>多因子候选</h3>
           {!factorScreenPayload ? (
             <CompactStatusTile
               icon={<DatabaseOutlined />}
@@ -86,36 +153,37 @@ export function StockAnalysisObservationPreview({
               testId="stock-analysis-factor-preview-empty"
             />
           ) : (
-            <div className="stock-analysis-page__table-wrap">
-              <table className="stock-analysis-page__table stock-analysis-page__table--dense">
-                <thead>
-                  <tr>
-                    <th scope="col">#</th>
-                    <th scope="col">标的</th>
-                    <th scope="col">板块</th>
-                    <th scope="col">评分</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {factorPreviewItems.map((row) => (
-                    <tr
-                      key={row.stock_code}
-                      className="stock-analysis-page__row--clickable"
-                      data-testid={`factor-preview-row-${row.stock_code}`}
-                      onClick={() => onOpenFactorDetail(row)}
-                    >
-                      <td className="stock-analysis-page__table-number">{row.rank}</td>
-                      <td>
-                        {row.stock_name}
-                        <small className="stock-analysis-page__tabular"> {row.stock_code}</small>
-                      </td>
-                      <td>{row.sector_name}</td>
-                      <td className="stock-analysis-page__table-number">{row.score.toFixed(4)}</td>
+            <>
+              <div className="stock-analysis-page__table-wrap">
+                <table className="stock-analysis-page__table stock-analysis-page__table--dense">
+                  <thead>
+                    <tr>
+                      <th scope="col">#</th>
+                      <th scope="col">标的</th>
+                      <th scope="col">板块</th>
+                      <th scope="col">评分</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>{visibleFactorPreviewItems.map(renderFactorPreviewRow)}</tbody>
+                </table>
+              </div>
+              {extraFactorPreviewItems.length > 0 ? (
+                <details
+                  className="stock-analysis-page__observation-preview-more"
+                  data-testid="stock-analysis-factor-preview-more"
+                >
+                  <summary className="stock-analysis-page__observation-preview-more-summary">
+                    <span>更多候选</span>
+                    <small>余 {extraFactorPreviewItems.length} 只</small>
+                  </summary>
+                  <div className="stock-analysis-page__table-wrap stock-analysis-page__observation-preview-extra">
+                    <table className="stock-analysis-page__table stock-analysis-page__table--dense">
+                      <tbody>{extraFactorPreviewItems.map(renderFactorPreviewRow)}</tbody>
+                    </table>
+                  </div>
+                </details>
+              ) : null}
+            </>
           )}
           {factorScreenCoverageNote ? (
             <p className="stock-analysis-page__footnote">{factorScreenCoverageNote}</p>
@@ -123,7 +191,7 @@ export function StockAnalysisObservationPreview({
         </div>
 
         <div className="stock-analysis-page__observation-preview-panel">
-          <h3>超跌{meanReversionMarketActive ? " Top" : ""}</h3>
+          <h3>{meanReversionMarketActive ? "超跌候选" : "超跌状态"}</h3>
           {!meanReversionMarketActive ? (
             <CompactStatusTile
               icon={<FireOutlined />}
@@ -148,40 +216,25 @@ export function StockAnalysisObservationPreview({
               testId="stock-analysis-mean-reversion-preview-empty"
             />
           ) : (
-            <ul className="stock-analysis-page__list stock-analysis-page__list--compact">
-              {meanReversionPreviewItems.map((row) => {
-                const openMeanReversionDetail = () => onOpenMeanReversionDetail(row);
-
-                return (
-                  <li
-                    key={row.stock_code}
-                    className="stock-analysis-page__mean-reversion-row stock-analysis-page__row--clickable"
-                    data-testid={`mean-reversion-preview-row-${row.stock_code}`}
-                    onClick={openMeanReversionDetail}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        openMeanReversionDetail();
-                      }
-                    }}
-                  >
-                    <span>
-                      #{row.rank} {row.stock_name}{" "}
-                      <small className="stock-analysis-page__tabular">{row.stock_code}</small>
-                    </span>
-                    <span className="stock-analysis-page__mean-reversion-metrics">
-                      <span>{row.sector_name}</span>
-                      <span className="stock-analysis-page__mean-reversion-dd">
-                        20日回撤 {(row.drawdown_20d * 100).toFixed(1)}%
-                      </span>
-                      <span>评分 {row.score.toFixed(2)}</span>
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
+            <>
+              <ul className="stock-analysis-page__list stock-analysis-page__list--compact">
+                {visibleMeanReversionPreviewItems.map(renderMeanReversionPreviewRow)}
+              </ul>
+              {extraMeanReversionPreviewItems.length > 0 ? (
+                <details
+                  className="stock-analysis-page__observation-preview-more"
+                  data-testid="stock-analysis-mean-reversion-preview-more"
+                >
+                  <summary className="stock-analysis-page__observation-preview-more-summary">
+                    <span>更多候选</span>
+                    <small>余 {extraMeanReversionPreviewItems.length} 只</small>
+                  </summary>
+                  <ul className="stock-analysis-page__list stock-analysis-page__list--compact stock-analysis-page__observation-preview-extra">
+                    {extraMeanReversionPreviewItems.map(renderMeanReversionPreviewRow)}
+                  </ul>
+                </details>
+              ) : null}
+            </>
           )}
         </div>
       </div>

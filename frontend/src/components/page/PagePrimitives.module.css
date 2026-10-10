@@ -1,0 +1,129 @@
+/*
+ * PagePrimitives 布局样式（2026-08-13 自 PageHeader 的重复内联 style
+ * 布局块抽取，债务审计 P0 项）。
+ *
+ * 为什么所有选择器都写成 .x.x 双类（特异度 0,2,0）：
+ * 这些声明原先是内联 style，页面级单类 / 后代选择器（0,1,*）从来压不过它们；
+ * 抽取后必须保持同样的优先级语义，否则会出现渲染漂移，已知实例：
+ * - OperationsAnalysisPage 传入 .operations-analysis-page__hero-header
+ *   { margin-bottom: 0 }（今日被内联 28px 压制，双类下继续压制）；
+ * 页面确需覆盖时仍走 style prop（内联恒胜）或 !important。
+ *
+ * 颜色使用共享主题变量，页面只提供内容与布局。
+ */
+
+/* ---------- PageHeader ---------- */
+
+.pageHeader.pageHeader {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.headerTop.headerTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.headerTitles.headerTitles {
+  display: grid;
+  gap: 8px;
+  max-width: 920px;
+  min-width: 0;
+}
+
+.headerEyebrow.headerEyebrow {
+  color: var(--dh-api-muted, var(--moss-color-text-muted));
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.headerTitle.headerTitle {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--dh-api-ink, var(--moss-color-text-primary));
+  line-height: 1.25;
+}
+
+.headerDescription.headerDescription {
+  margin: 0;
+  color: var(--dh-api-soft, var(--moss-color-text-secondary));
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.headerAside.headerAside {
+  display: grid;
+  justify-items: end;
+  gap: 12px;
+}
+
+.headerBadge.headerBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border-radius: var(--dh-api-radius, 8px);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.headerBadgePositive.headerBadgePositive {
+  background: transparent;
+  color: var(--dh-api-muted, var(--moss-color-text-muted));
+}
+
+.headerBadgeAccent.headerBadgeAccent {
+  background: transparent;
+  color: var(--dh-api-muted, var(--moss-color-text-muted));
+}
+
+.headerBadgeNeutral.headerBadgeNeutral {
+  background: transparent;
+  color: var(--dh-api-muted, var(--moss-color-text-muted));
+}
+
+/* compact 密度覆盖：与基础规则同特异度（0,2,0），依靠书写顺序后置生效 */
+
+.pageHeaderCompact.pageHeaderCompact {
+  gap: 8px;
+  margin-bottom: 0;
+}
+
+.pageHeaderCompact .headerTop {
+  gap: 12px;
+}
+
+.pageHeaderCompact .headerTitles {
+  gap: 4px;
+  max-width: 760px;
+}
+
+.pageHeaderCompact .headerEyebrow {
+  font-size: 11px;
+}
+
+.pageHeaderCompact .headerTitle {
+  font-size: 20px;
+  letter-spacing: 0;
+}
+
+.pageHeaderCompact .headerDescription {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.pageHeaderCompact .headerAside {
+  gap: 8px;
+}
+
+.pageHeaderCompact .headerBadge {
+  padding: 0;
+}

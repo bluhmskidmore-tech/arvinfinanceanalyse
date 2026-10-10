@@ -11,10 +11,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import duckdb
+import duckdb  # noqa: E402
 
-from backend.app.governance.locks import LockDefinition, acquire_lock
-from backend.app.tasks.choice_stock_materialize import (
+from backend.app.governance.locks import LockDefinition, acquire_lock  # noqa: E402
+from backend.app.tasks.choice_stock_materialize import (  # noqa: E402
+    assert_choice_stock_vendor_era,
+    assert_known_choice_stock_daily_vendor_version,
     choice_stock_history_start_date,
     load_choice_stock_materialization_coverage,
 )
@@ -50,6 +52,7 @@ def copy_choice_stock_asof_from_duckdb(
     include_factor_snapshot: bool = False,
     dry_run: bool = False,
     governance_dir: str | Path | None = None,
+    allow_cross_era_backfill: bool = False,
 ) -> dict[str, object]:
     source_path = _resolve_existing_path(source_duckdb_path, field_name="source_duckdb_path")
     target_path = _resolve_existing_path(target_duckdb_path, field_name="target_duckdb_path")
@@ -75,6 +78,15 @@ def copy_choice_stock_asof_from_duckdb(
     try:
         target_conn.execute(f"attach {_sql_string(str(source_path))} as src (read_only)")
         _validate_tables(target_conn, specs)
+        _validate_source_daily_vendor_slices(
+            target_conn,
+            history_start=history_start,
+            as_of_date=resolved_date,
+            allow_cross_era_backfill=allow_cross_era_backfill,
+        )
+        _assert_source_covers_target_daily_keys(
+            target_conn, history_start=history_start, as_of_date=resolved_date,
+        )
         source_counts = {
             spec.table: _count_source_rows(target_conn, spec)
             for spec in specs
@@ -90,6 +102,9 @@ def copy_choice_stock_asof_from_duckdb(
             with acquire_lock(LOCK, base_dir=lock_dir, timeout_seconds=5.0):
                 target_conn.execute("begin transaction")
                 try:
+                    _assert_source_covers_target_daily_keys(
+                        target_conn, history_start=history_start, as_of_date=resolved_date,
+                    )
                     for spec in specs:
                         deleted_counts[spec.table] = _delete_target_rows(target_conn, spec)
                         inserted_counts[spec.table] = _insert_source_rows(target_conn, spec)
@@ -170,8 +185,60 @@ def _table_columns(conn: duckdb.DuckDBPyConnection, schema: str, table: str) -> 
     return [str(row[0]) for row in rows]
 
 
+def _validate_source_daily_vendor_slices(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    history_start: str,
+    as_of_date: str,
+    allow_cross_era_backfill: bool,
+) -> None:
+    """复制前对来源 daily observation 切片做 vendor 白名单 + 代际守卫(轻量,按 vendor 聚合端点)。"""
+    rows = conn.execute(
+        f"""
+        select coalesce(vendor_version, ''), min(trade_date), max(trade_date)
+        from src.{DAILY_TABLE}
+        where cast(trade_date as date) between cast(? as date) and cast(? as date)
+        group by 1
+        """,
+        [history_start, as_of_date],
+    ).fetchall()
+    for vendor_version, min_trade_date, max_trade_date in rows:
+        vendor = str(vendor_version)
+        assert_known_choice_stock_daily_vendor_version(vendor)
+        assert_choice_stock_vendor_era(
+            [min_trade_date, max_trade_date],
+            vendor_version=vendor,
+            allow_cross_era_backfill=allow_cross_era_backfill,
+        )
+
+
 def _count_source_rows(conn: duckdb.DuckDBPyConnection, spec: TableCopySpec) -> int:
     return _count_rows(conn, f"src.{spec.table}", spec)
+
+
+def _assert_source_covers_target_daily_keys(
+    conn: duckdb.DuckDBPyConnection, *, history_start: str, as_of_date: str,
+) -> None:
+    missing = conn.execute(
+        f"""
+        select cast(target.trade_date as date), target.stock_code
+        from {DAILY_TABLE} as target
+        where cast(target.trade_date as date) between cast(? as date) and cast(? as date)
+          and not exists (
+            select 1 from src.{DAILY_TABLE} as source
+            where cast(source.trade_date as date) = cast(target.trade_date as date)
+              and source.stock_code = target.stock_code
+          )
+        order by 1, 2
+        limit 5
+        """,
+        [history_start, as_of_date],
+    ).fetchall()
+    if missing:
+        raise RuntimeError(
+            "source daily window does not cover target keys; "
+            f"copy would delete historical observations absent from source: {missing}"
+        )
 
 
 def _count_target_rows(conn: duckdb.DuckDBPyConnection, spec: TableCopySpec) -> int:
@@ -224,6 +291,11 @@ def main() -> int:
     parser.add_argument("--as-of-date", required=True)
     parser.add_argument("--include-factor-snapshot", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--allow-cross-era-backfill",
+        action="store_true",
+        help="知情放行代际守卫:允许复制包含跨代际 vendor/日期组合的来源切片。",
+    )
     args = parser.parse_args()
 
     try:
@@ -233,6 +305,7 @@ def main() -> int:
             as_of_date=args.as_of_date,
             include_factor_snapshot=args.include_factor_snapshot,
             dry_run=args.dry_run,
+            allow_cross_era_backfill=args.allow_cross_era_backfill,
         )
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

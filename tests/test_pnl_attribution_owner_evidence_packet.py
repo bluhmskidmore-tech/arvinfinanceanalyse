@@ -6,11 +6,16 @@ import sys
 from pathlib import Path
 
 from scripts.pnl_attribution_owner_evidence_packet import build_packet, render_markdown
+from tests.governance_evidence_inputs import governance_evidence_inputs
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "pnl_attribution_owner_evidence_packet.py"
 OWNER_EVIDENCE_PACKET = ROOT / "docs" / "pnl" / "pnl-attribution-owner-evidence-packet.md"
+ARCHIVED_BOUNDARY = (
+    ROOT / "docs" / "audits" / "2026-06-05-pnl-attribution-gate-i-certification-boundary.json"
+)
+SIGNOFF_PACKET = ROOT / "docs" / "pnl" / "pnl-attribution-sign-off-packet.md"
 
 
 def _run_packet(*args: str) -> tuple[int, dict[str, object]]:
@@ -27,11 +32,13 @@ def _run_packet(*args: str) -> tuple[int, dict[str, object]]:
 
 def test_pnl_attribution_owner_evidence_packet_preserves_candidate_boundary(
     tmp_path: Path,
+    governance_evidence_inputs,
 ) -> None:
     governance_dir = tmp_path / "governance"
 
     packet = build_packet(
         governance_dir=governance_dir,
+        duckdb_path=Path(governance_evidence_inputs["MOSS_DUCKDB_PATH"]),
         created_at="2026-06-05T00:00:00Z",
     )
 
@@ -114,6 +121,7 @@ def test_pnl_attribution_owner_evidence_packet_preserves_candidate_boundary(
 
 def test_pnl_attribution_owner_evidence_packet_cli_writes_markdown(
     tmp_path: Path,
+    governance_evidence_inputs,
 ) -> None:
     output_path = tmp_path / "packet.md"
     governance_dir = tmp_path / "governance"
@@ -167,8 +175,81 @@ def test_pnl_attribution_owner_evidence_packet_cli_writes_markdown(
     assert "- - Candidate-only boundary accepted" not in text
 
 
-def test_pnl_attribution_owner_evidence_packet_matches_generator_output() -> None:
-    expected = render_markdown(build_packet())
+def test_pnl_attribution_owner_evidence_packet_matches_generator_output(
+    governance_evidence_inputs,
+) -> None:
+    packet = build_packet(
+        governance_dir=Path(governance_evidence_inputs["MOSS_GOVERNANCE_PATH"]),
+        duckdb_path=Path(governance_evidence_inputs["MOSS_DUCKDB_PATH"]),
+    )
+    # The synthetic stream has no record with the generator's fixed historical
+    # key. Its current lookup must not inherit the archived private-stream line.
+    assert packet["governance_existing_record_line"] is None
+    archived = json.loads(ARCHIVED_BOUNDARY.read_text(encoding="utf-8"))
+    governance = archived["governance_record_evidence"]
+    assert packet["governance_record_key"] == governance["record_key"]
+    assert packet["governance_record_write_status"] == governance["record_write_status"]
+    assert packet["governance_validation_status"] == governance["validation_status"]
+    assert governance["mode"] == "dry-run"
+    assert governance["evidence_scope"]["writes_governance_records"] is False
+    archived_line = governance["existing_record_line"]
+    assert isinstance(archived_line, int) and archived_line > 0
+    signoff = SIGNOFF_PACKET.read_text(encoding="utf-8")
+    assert f"Governance record: `{governance['target_path']}:{archived_line}`" in signoff
+    # Render the archived locator as archived metadata, while all other packet
+    # fields still come from the real generator and current contract inputs.
+    packet["governance_existing_record_line"] = archived_line
+    expected = render_markdown(packet)
     actual = OWNER_EVIDENCE_PACKET.read_text(encoding="utf-8")
 
     assert actual == expected
+
+
+def test_pnl_attribution_owner_evidence_packet_locates_current_synthetic_record(
+    tmp_path: Path,
+    governance_evidence_inputs,
+) -> None:
+    manifest = Path(governance_evidence_inputs["MOSS_GOVERNANCE_PATH"]) / "cache_manifest.jsonl"
+    unrelated = next(
+        record
+        for line in manifest.read_text(encoding="utf-8").splitlines()
+        if (record := json.loads(line))["page_slug"] == "pnl-attribution"
+    )
+    matching = dict(unrelated)
+    matching.update({
+        "report_date": "2026-04-30",
+        "cache_key": "pnl-attribution:volume-rate:2026-04-30:mom",
+    })
+    governance_dir = tmp_path / "synthetic-key-governance"
+    governance_dir.mkdir()
+    current_manifest = governance_dir / "cache_manifest.jsonl"
+    current_manifest.write_text(json.dumps(unrelated) + "\n", encoding="utf-8")
+    missing = build_packet(
+        governance_dir=governance_dir,
+        duckdb_path=Path(governance_evidence_inputs["MOSS_DUCKDB_PATH"]),
+    )
+    assert missing["governance_existing_record_line"] is None
+    with current_manifest.open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(json.dumps(matching) + "\n")
+    before_dry_run = current_manifest.read_bytes()
+
+    packet = build_packet(
+        governance_dir=governance_dir,
+        duckdb_path=Path(governance_evidence_inputs["MOSS_DUCKDB_PATH"]),
+    )
+
+    assert packet["governance_existing_record_line"] == 2
+    assert packet["governance_record_key"] == {
+        "page_id": "PAGE-PNL-ATTR-WB-001",
+        "primary_api": "/api/pnl-attribution/volume-rate",
+        "report_date": "2026-04-30",
+        "cache_key": "pnl-attribution:volume-rate:2026-04-30:mom",
+    }
+    assert matching["source_surface"] == "synthetic_readiness_fixture"
+    assert matching["basis"] == "analytical"
+    assert packet["governance_record_write_status"] == "not_requested"
+    assert packet["formal_use_allowed"] is False
+    assert packet["closure_approved"] is False
+    assert packet["business_owner_approval_captured"] is False
+    assert "Existing record line: `2`" in render_markdown(packet)
+    assert current_manifest.read_bytes() == before_dry_run

@@ -1,32 +1,16 @@
 import type { ChoiceMacroLatestPoint } from "../../../api/contracts";
 import type { EChartsOption } from "../../../lib/echarts";
 import { designTokens } from "../../../theme/designSystem";
+import { EM_DASH } from "../../../utils/format";
 
+import {
+  resolveCrossAssetChartPalette,
+  type CrossAssetChartTheme,
+} from "./crossAssetChartTheme";
 import { crossAssetTrendLines, type ResolvedCrossAssetKpi, type CrossAssetKpiFormat } from "./crossAssetKpiModel";
 
 /** Must match section copy on cross-asset ("近 N 日"). */
 export const CROSS_ASSET_TREND_WINDOW_DAYS = 20;
-
-const { color: c } = designTokens;
-
-/**
- * Hand-picked palette: maximise hue separation across 12 series.
- * Avoids adjacent hues that collapse on projectors / f.lux screens.
- */
-const CHART_COLORS = [
-  "#1850a1", // deep institutional blue  (10Y国债)
-  "#e85d3a", // warm vermilion            (10Y美债)
-  "#2d8a5e", // forest green              (中美10Y利差)
-  "#d97706", // amber                     (银拆7D)
-  "#8b5cf6", // vivid purple              (金融条件指数)
-  "#0891b2", // teal-cyan                 (沪深300市盈率)
-  "#db2777", // deep pink                 (沪深300前十)
-  "#475569", // slate grey                (沪深300前五)
-  "#059669", // emerald                   (布油)
-  "#b45309", // burnt sienna              (钢)
-  "#6366f1", // indigo                    (USD/CNY)
-  "#0369a1", // ocean blue                (spare)
-];
 
 /**
  * Stagger dash patterns so even colour-blind viewers can tell series apart.
@@ -74,7 +58,12 @@ function normalizedAligned(values: (number | null)[]): (number | null)[] {
   });
 }
 
-export function buildCrossAssetTrendOption(series: ChoiceMacroLatestPoint[]): EChartsOption | null {
+export function buildCrossAssetTrendOption(
+  series: ChoiceMacroLatestPoint[],
+  theme: CrossAssetChartTheme = "light",
+): EChartsOption | null {
+  const palette = resolveCrossAssetChartPalette(theme);
+  const chartColors = palette.series;
   const lineInputs = crossAssetTrendLines(series);
   if (lineInputs.length === 0) {
     return null;
@@ -101,7 +90,7 @@ export function buildCrossAssetTrendOption(series: ChoiceMacroLatestPoint[]): EC
     const aligned = axisDates.map((d) => byDate.get(d) ?? null);
     const leveled = locfForward(aligned);
     const display = normalizedAligned(leveled);
-    const color = CHART_COLORS[idx % CHART_COLORS.length];
+    const color = chartColors[idx % chartColors.length]!;
     const dash = DASH_PATTERNS[idx % DASH_PATTERNS.length];
     return {
       name: line.name,
@@ -121,7 +110,7 @@ export function buildCrossAssetTrendOption(series: ChoiceMacroLatestPoint[]): EC
       emphasis: {
         focus: "series" as const,
         lineStyle: { width: 3.5 },
-        itemStyle: { borderWidth: 2, borderColor: "#fff" },
+        itemStyle: { borderWidth: 2, borderColor: palette.emphasisBorder },
       },
       blur: {
         lineStyle: { width: 1, opacity: 0.25 },
@@ -132,7 +121,7 @@ export function buildCrossAssetTrendOption(series: ChoiceMacroLatestPoint[]): EC
 
   const fs = designTokens.fontSize;
   return {
-    color: CHART_COLORS,
+    color: [...chartColors],
     animation: true,
     animationDuration: 600,
     animationEasing: "cubicOut",
@@ -154,16 +143,16 @@ export function buildCrossAssetTrendOption(series: ChoiceMacroLatestPoint[]): EC
       itemGap: 14,
       pageIconSize: 12,
       pageButtonGap: 8,
-      pageTextStyle: { fontSize: fs[12], color: c.neutral[600] },
+      pageTextStyle: { fontSize: fs[12], color: palette.textMuted },
       textStyle: {
         fontSize: fs[12],
-        color: c.neutral[700],
+        color: palette.textSoft,
         fontWeight: 500 as const,
         padding: [0, 0, 0, 2],
       },
       padding: [8, 8, 12, 8],
       icon: "roundRect",
-      inactiveColor: c.neutral[300],
+      inactiveColor: palette.legendInactive,
       inactiveBorderColor: "transparent",
       selector: false,
     },
@@ -177,31 +166,30 @@ export function buildCrossAssetTrendOption(series: ChoiceMacroLatestPoint[]): EC
         "overflow-y: auto",
         "white-space: pre-line",
         "text-align: left",
-        "border-radius: 8px",
-        "box-shadow: 0 8px 24px rgba(15,23,42,0.12), 0 2px 6px rgba(15,23,42,0.08)",
-        "backdrop-filter: blur(8px)",
+        "border-radius: 2px",
+        "box-shadow: var(--ib-shadow)",
         "padding: 10px 14px",
       ].join(";"),
       axisPointer: {
         type: "line",
         lineStyle: {
-          color: c.neutral[400],
+          color: palette.axisLine,
           width: 1,
           type: "dashed",
         },
         label: {
           show: true,
-          backgroundColor: c.neutral[700],
+          backgroundColor: palette.axisPointerLabelBg,
           fontSize: fs[11],
-          color: "#fff",
+          color: palette.axisPointerLabelText,
           padding: [4, 8],
-          borderRadius: 4,
+          borderRadius: 2,
         },
       },
-      backgroundColor: "rgba(255,255,255,0.96)",
-      borderColor: c.neutral[200],
+      backgroundColor: palette.tooltipBg,
+      borderColor: palette.tooltipBorder,
       borderWidth: 1,
-      textStyle: { fontSize: fs[12], color: c.neutral[800] },
+      textStyle: { fontSize: fs[12], color: palette.text },
       position(point, _params, _dom, _rect, size) {
         if (!size?.viewSize) {
           return point;
@@ -218,16 +206,16 @@ export function buildCrossAssetTrendOption(series: ChoiceMacroLatestPoint[]): EC
         }
         const first = raw[0] as { axisValueLabel?: string; axisValue?: string };
         const date = first.axisValueLabel ?? first.axisValue ?? "";
-        const header = `<div style="font-weight:700;font-size:13px;margin-bottom:6px;color:${c.neutral[900]}">${date}</div>`;
+        const header = `<div style="font-weight:700;font-size:13px;margin-bottom:6px;color:${palette.text}">${date}</div>`;
         const rows = (raw as Array<{ marker?: string; seriesName?: string; value?: unknown }>).map((p) => {
           const v = p.value;
           const str =
             v == null || (typeof v === "number" && Number.isNaN(v))
-              ? "—"
+              ? EM_DASH
               : typeof v === "number"
                 ? v.toFixed(1)
                 : String(v);
-          return `<div style="display:flex;align-items:center;gap:6px;line-height:1.7;font-size:12px">${p.marker ?? ""}<span style="flex:1;color:${c.neutral[700]}">${p.seriesName ?? ""}</span><span style="font-weight:600;font-variant-numeric:tabular-nums;color:${c.neutral[900]}">${str}</span></div>`;
+          return `<div style="display:flex;align-items:center;gap:6px;line-height:1.7;font-size:12px">${p.marker ?? ""}<span style="flex:1;color:${palette.textSoft}">${p.seriesName ?? ""}</span><span style="font-weight:600;font-variant-numeric:tabular-nums;color:${palette.text}">${str}</span></div>`;
         });
         return header + rows.join("");
       },
@@ -238,7 +226,7 @@ export function buildCrossAssetTrendOption(series: ChoiceMacroLatestPoint[]): EC
       boundaryGap: false,
       axisLabel: {
         fontSize: fs[11],
-        color: c.neutral[500],
+        color: palette.textMuted,
         hideOverlap: true,
         margin: 12,
         formatter: (v: string) => {
@@ -247,11 +235,11 @@ export function buildCrossAssetTrendOption(series: ChoiceMacroLatestPoint[]): EC
         },
       },
       axisLine: {
-        lineStyle: { color: c.neutral[200], width: 1 },
+        lineStyle: { color: palette.axisLine, width: 1 },
       },
       axisTick: {
         alignWithLabel: true,
-        lineStyle: { color: c.neutral[200] },
+        lineStyle: { color: palette.axisLine },
         length: 4,
       },
       splitLine: { show: false },
@@ -261,12 +249,12 @@ export function buildCrossAssetTrendOption(series: ChoiceMacroLatestPoint[]): EC
       scale: true,
       axisLabel: {
         fontSize: fs[11],
-        color: c.neutral[500],
+        color: palette.textMuted,
         formatter: (v: number) => v.toFixed(0),
       },
       splitLine: {
         lineStyle: {
-          color: c.neutral[100],
+          color: palette.splitLine,
           width: 1,
           type: "dashed" as const,
         },
@@ -378,7 +366,7 @@ export function buildCrossAssetTrendSummary(kpis: ResolvedCrossAssetKpi[]): Tren
   const bond = kpiDir("cn_gov_10y");
   const usBond = kpiDir("us_gov_10y");
   const money = kpiDir("money_market_7d");
-  const equity = kpiDir("financial_conditions");
+  const equity = kpiDir("csi300");
   const brent = kpiDir("brent");
   const steel = kpiDir("steel");
   const usdcny = kpiDir("usdcny");
@@ -481,10 +469,12 @@ export function buildCrossAssetTrendSummary(kpis: ResolvedCrossAssetKpi[]): Tren
   const bondFriendly = bond ? bond.direction === "falling" : true;
   const liquidityFriendly = money ? money.direction !== "rising" : true;
   const externalFriendly = usBond ? usBond.direction !== "rising" : true;
+  // 三条核心序列全缺时不给「偏友好」结论：缺数据不是利好证据（§6 不用演示语气冒充口径）。
+  const hasCoreEvidence = Boolean(bond || money || usBond);
 
   let tone: TrendSummaryTone;
   let toneLabel: string;
-  if (bondFriendly && liquidityFriendly && externalFriendly) {
+  if (hasCoreEvidence && bondFriendly && liquidityFriendly && externalFriendly) {
     tone = "friendly";
     toneLabel = "整体环境偏友好";
   } else if (!bondFriendly && !liquidityFriendly) {
@@ -492,7 +482,8 @@ export function buildCrossAssetTrendSummary(kpis: ResolvedCrossAssetKpi[]): Tren
     toneLabel = "整体环境偏紧";
   } else if (parts.length === 0) {
     tone = "neutral";
-    toneLabel = "各资产波动不大";
+    const hasAnySeries = Boolean(bond || money || usBond || equity || brent || steel || usdcny);
+    toneLabel = hasAnySeries ? "各资产波动不大" : "历史序列不足，暂不判定整体环境";
   } else {
     tone = "mixed";
     toneLabel = "环境信号分化";

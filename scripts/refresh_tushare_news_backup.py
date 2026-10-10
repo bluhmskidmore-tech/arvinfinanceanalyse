@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from contextlib import nullcontext
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -145,22 +146,33 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--research-lookback-days", type=int, default=3)
     parser.add_argument("--enqueue", action="store_true", help="Send the actor to the worker instead of running sync")
     parser.add_argument("--dry-run", action="store_true", help="Inspect current backup state without running ingest")
+    parser.add_argument("--vendor-source-ip", help="Bind synchronous vendor traffic to a local IPv4 address.")
     args = parser.parse_args(argv)
 
-    result = refresh_tushare_news_backup(
-        duckdb_path=args.duckdb_path,
-        limit=args.limit,
-        news_limit=args.news_limit,
-        news_src=args.news_src,
-        news_lookback_hours=args.news_lookback_hours,
-        cctv_lookback_days=args.cctv_lookback_days,
-        major_lookback_hours=args.major_lookback_hours,
-        research_lookback_days=args.research_lookback_days,
-        enqueue=args.enqueue,
-        dry_run=args.dry_run,
-    )
+    if args.vendor_source_ip and args.enqueue:
+        parser.error("--vendor-source-ip requires synchronous execution; it cannot bind a separate worker.")
+    network = nullcontext()
+    if args.vendor_source_ip and not args.dry_run:
+        from backend.app.network.source_bound_socks_proxy import resolve_vendor_source_ip
+        from scripts.choice_stock_daily_refresh import _vendor_source_network
+
+        network = _vendor_source_network(resolve_vendor_source_ip(args.vendor_source_ip))
+    with network:
+        result = refresh_tushare_news_backup(
+            duckdb_path=args.duckdb_path,
+            limit=args.limit,
+            news_limit=args.news_limit,
+            news_src=args.news_src,
+            news_lookback_hours=args.news_lookback_hours,
+            cctv_lookback_days=args.cctv_lookback_days,
+            major_lookback_hours=args.major_lookback_hours,
+            research_lookback_days=args.research_lookback_days,
+            enqueue=args.enqueue,
+            dry_run=args.dry_run,
+        )
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
-    return 0
+    status = str(result.get("status") or "").lower()
+    return 0 if status in {"completed", "dry_run", "queued"} else 1
 
 
 if __name__ == "__main__":

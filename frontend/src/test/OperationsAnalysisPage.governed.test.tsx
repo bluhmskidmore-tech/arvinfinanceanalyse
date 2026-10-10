@@ -5,8 +5,8 @@ import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
+import { BALANCE_ANALYSIS_METRIC_DEFINITIONS } from "../mocks/balanceAnalysisMockClient";
 import type { ProductCategoryPnlRow } from "../api/contracts";
-import { routerFuture } from "../router/routerFuture";
 import OperationsAnalysisPage from "../features/workbench/pages/OperationsAnalysisPage";
 
 vi.mock("../features/workbench/business-analysis/RevenueCostBridge", () => ({
@@ -36,7 +36,7 @@ function renderPage(client: ApiClient) {
 
   return render(
     <Wrapper>
-      <MemoryRouter future={routerFuture}>
+      <MemoryRouter>
         <OperationsAnalysisPage />
       </MemoryRouter>
     </Wrapper>,
@@ -235,6 +235,8 @@ describe("OperationsAnalysisPage governed values", () => {
           total_rows: 4,
           limit: 3,
           offset: 0,
+          as_of_date: "2026-04-10",
+          excluded_future_rows: 0,
           events: [],
         },
       })),
@@ -350,6 +352,7 @@ describe("OperationsAnalysisPage governed values", () => {
           liability_total_amortized_cost_amount: "26050000000",
           asset_total_accrued_interest_amount: "875000000",
           liability_total_accrued_interest_amount: "400000000",
+          metric_definitions: BALANCE_ANALYSIS_METRIC_DEFINITIONS,
         },
       })),
       getBalanceAnalysisSummary: vi.fn(async () => ({
@@ -421,7 +424,29 @@ describe("OperationsAnalysisPage governed values", () => {
           asset_total: assetTotal,
           liability_total: liabilityTotal,
           grand_total: grandTotal,
-          interest_spread: null,
+          interest_spread: {
+            all_currency_asset_yield_pct: null,
+            all_currency_liability_yield_pct: null,
+            all_currency_spread_pct: null,
+            cny_asset_yield_pct: null,
+            cny_liability_yield_pct: null,
+            cny_spread_pct: null,
+          },
+          interest_earning_spread: {
+            all_currency_asset_yield_pct: null,
+            all_currency_liability_yield_pct: null,
+            all_currency_spread_pct: null,
+            cny_asset_yield_pct: null,
+            cny_liability_yield_pct: null,
+            cny_spread_pct: null,
+          },
+          liability_cost_decomposition: {
+            liability_yield_pct: null,
+            liability_yield_ex_cln_pct: null,
+            cln_yield_pct: null,
+            cln_drag_bp: null,
+            cln_scale: null,
+          },
         },
       })),
     });
@@ -434,7 +459,7 @@ describe("OperationsAnalysisPage governed values", () => {
       expect(cockpit).toHaveTextContent("-1.30");
       expect(cockpit).toHaveTextContent("经营净收入");
       expect(cockpit).toHaveTextContent("2.90");
-      expect(cockpit).toHaveTextContent("/ui/pnl/product-category");
+      expect(cockpit).not.toHaveTextContent("/ui/pnl/product-category");
       expect(cockpit).not.toHaveTextContent("总市值");
       expect(cockpit).not.toHaveTextContent("摊余成本");
       expect(cockpit).not.toHaveTextContent("3,525.0");
@@ -449,7 +474,7 @@ describe("OperationsAnalysisPage governed values", () => {
     const conclusionGrid = await screen.findByTestId("operations-conclusion-grid");
     await waitFor(() => {
       expect(conclusionGrid).toHaveTextContent("2026-02-28");
-      expect(conclusionGrid).toHaveTextContent("产品分类损益正式读模型");
+      expect(conclusionGrid).toHaveTextContent("月度产品分类损益");
       expect(conclusionGrid).toHaveTextContent("2.90");
     });
 
@@ -469,11 +494,12 @@ describe("OperationsAnalysisPage governed values", () => {
     expect(totalSummary).toHaveTextContent("4.20 / -1.30");
 
     const heroProvenance = await screen.findByTestId("operations-hero-provenance");
-    expect(heroProvenance).toHaveTextContent("物化/候选对账");
-    expect(heroProvenance).toHaveTextContent("总账对账 + 日均");
-    expect(heroProvenance).toHaveTextContent("静态示例");
+    expect(heroProvenance).toHaveTextContent("月度产品分类损益口径");
+    expect(heroProvenance).toHaveTextContent("汇率覆盖情况用于核验外币数据");
+    // hero 只留一句业务口径声明；示例声明由折叠区 summary 承载。
+    expect(heroProvenance).not.toHaveTextContent("静态示例");
     const tableProv = await screen.findByTestId("operations-contribution-table-provenance");
-    expect(tableProv).toHaveTextContent("口径 正式口径");
+    expect(tableProv).toHaveTextContent("正式口径");
   });
 
   it("labels product-category contribution rows with the resolved payload report date", async () => {
@@ -548,7 +574,29 @@ describe("OperationsAnalysisPage governed values", () => {
           asset_total: assetTotal,
           liability_total: liabilityTotal,
           grand_total: grandTotal,
-          interest_spread: null,
+          interest_spread: {
+            all_currency_asset_yield_pct: null,
+            all_currency_liability_yield_pct: null,
+            all_currency_spread_pct: null,
+            cny_asset_yield_pct: null,
+            cny_liability_yield_pct: null,
+            cny_spread_pct: null,
+          },
+          interest_earning_spread: {
+            all_currency_asset_yield_pct: null,
+            all_currency_liability_yield_pct: null,
+            all_currency_spread_pct: null,
+            cny_asset_yield_pct: null,
+            cny_liability_yield_pct: null,
+            cny_spread_pct: null,
+          },
+          liability_cost_decomposition: {
+            liability_yield_pct: null,
+            liability_yield_ex_cln_pct: null,
+            cln_yield_pct: null,
+            cln_drag_bp: null,
+            cln_scale: null,
+          },
         },
       })),
     });

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { vi } from "vitest";
 
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
@@ -125,6 +125,7 @@ function q1MonthlyPayload(items: PnlByBusinessMonthlyItem[]): PnlByBusinessMonth
     year: 2026,
     as_of_date: "2026-03-31",
     source_tables: ["fact_formal_pnl_fi", "fact_formal_zqtz_balance_daily"],
+    management_change: null,
     months: [
       {
         month_key: "2026-03",
@@ -212,20 +213,122 @@ function emptyProductPayload(): ProductCategoryPnlPayload {
     asset_total: asset,
     liability_total: liability,
     grand_total: grand,
-    interest_spread: null,
+    interest_spread: {
+      all_currency_asset_yield_pct: null,
+      all_currency_liability_yield_pct: null,
+      all_currency_spread_pct: null,
+      cny_asset_yield_pct: null,
+      cny_liability_yield_pct: null,
+      cny_spread_pct: null,
+    },
+    interest_earning_spread: {
+      all_currency_asset_yield_pct: null,
+      all_currency_liability_yield_pct: null,
+      all_currency_spread_pct: null,
+      cny_asset_yield_pct: null,
+      cny_liability_yield_pct: null,
+      cny_spread_pct: null,
+    },
+    liability_cost_decomposition: {
+      liability_yield_pct: null,
+      liability_yield_ex_cln_pct: null,
+      cln_yield_pct: null,
+      cln_drag_bp: null,
+      cln_scale: null,
+    },
   };
 }
 
 describe("TeamPerformancePage", () => {
-  it("keeps page state surfaces on the homepage blue-gray token family", () => {
+  it.each([
+    { name: "partial", february: null, quality: "stale", fallback: "latest_snapshot", amount: "5 亿元", coverage: "部分已知小计" },
+    { name: "complete", february: "100000000", quality: "ok", fallback: "none", amount: "6 亿元", coverage: "季度证据齐全" },
+  ] as const)("renders $name Q1 evidence and analytical-only usage through the production monthly client", async ({ february, quality: qualityFlag, fallback, amount, coverage }) => {
+    const base = createApiClient({ mode: "mock" });
+    const payload = q1MonthlyPayload([]);
+    payload.months = ["200000000", february, "300000000"].map((value, index) => {
+      const monthKey = `2026-0${index + 1}`;
+      const days = index === 1 ? 28 : 31;
+      return {
+        ...q1MonthlyPayload([]).months[0], month_key: monthKey,
+        period_start_date: `${monthKey}-01`, period_end_date: `${monthKey}-${days}`,
+        calendar_days: days, expected_days: days, coverage_days: days, sample_filled: false,
+        items: [{ ...monthlyBusinessItem({ row_key: "asset_zqtz_detail_structured_finance_broker",
+          business_type: "合成产业基金" }), ftp_net_pnl: value }],
+      };
+    });
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
+      result_meta: buildMeta("pnl.by_business_monthly", "synthetic-q1-monthly-trace", {
+        // Mirrors _build_pnl_by_business_analytical_result_envelope for both paths.
+        basis: "analytical", formal_use_allowed: false,
+        quality_flag: qualityFlag, fallback_mode: fallback, source_version: "synthetic-q1-source",
+      }), result: payload,
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    const real = createApiClient({ mode: "real", baseUrl: "", fetchImpl });
+    renderTeamPerformance({ ...base,
+      getFormalPnlDates: async () => ({ result_meta: buildMeta("pnl.dates", "synthetic-dates"),
+        result: { report_dates: ["2025-12-31", "2026-03-31"], formal_fi_report_dates: [], nonstd_bridge_report_dates: [] } }),
+      getPnlByBusinessMonthly: real.getPnlByBusinessMonthly,
+      getProductCategoryPnl: async ({ reportDate }) => ({
+        result_meta: buildMeta("product_category_pnl.detail", `synthetic-product-${reportDate}`),
+        result: { ...emptyProductPayload(), report_date: reportDate },
+      }),
+    });
+    await waitFor(() => expect(fetchImpl).toHaveBeenCalledWith(
+      "/api/pnl/by-business-monthly?year=2026&as_of_date=2026-03-31", expect.anything(),
+    ));
+    const q1 = screen.getByTestId("team-performance-q1-caliber");
+    await waitFor(() => expect(q1).toHaveTextContent("synthetic-q1-monthly-trace"));
+    const center = screen.getByTestId("team-performance-q1-center-product-market");
+    expect(center).toHaveTextContent(amount);
+    expect(center).toHaveTextContent(coverage);
+    const quality = within(q1).getByTestId("team-performance-q1-quality");
+    if (qualityFlag === "stale") {
+      expect(q1).toHaveTextContent("2026-02 FTP后净损益不可用");
+      expect(quality).toHaveTextContent("quality_flag=stale");
+      expect(quality).toHaveTextContent("fallback_mode=latest_snapshot");
+    }
+    const usage = within(q1).getByTestId("team-performance-q1-use-q1-by-business-monthly");
+    expect(usage).toBeVisible();
+    expect(usage).toHaveTextContent("Q1业务种类月度损益：仅供分析，尚未获准正式使用");
+    const provenance = within(q1).getByTestId("team-performance-q1-result-meta");
+    expect(provenance).toHaveTextContent("Q1业务种类月度损益");
+    expect(provenance).toHaveTextContent("synthetic-q1-monthly-trace");
+    expect(provenance).toHaveTextContent("synthetic-q1-source");
+    expect(provenance).toHaveTextContent("分析口径");
+    expect(provenance).toHaveTextContent("仅供分析，尚未获准正式使用");
+    expect(provenance).toHaveTextContent("Q1产品分类损益 YTD");
+    expect(provenance).toHaveTextContent("synthetic-product-2026-03-31");
+  });
+
+  it("keeps page surfaces on the IB light token family without bare hex colors", () => {
     const css = readFileSync(
       resolve(process.cwd(), "src/features/team-performance/TeamPerformancePage.css"),
       "utf8",
     );
 
-    expect(css).not.toMatch(/#fffdf8|#fffaf4|moss-color-warm-|designTokens\.color\.warm/);
-    expect(css).toContain("#f8fafc");
-    expect(css).toContain("#ffffff");
+    expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    expect(css).not.toMatch(/moss-color-warm-|designTokens\.color\.warm/);
+    expect(css).toContain("var(--ib-surface)");
+    expect(css).toContain("var(--ib-surface-muted)");
+    expect(css).toContain("var(--ib-radius, 2px)");
+  });
+
+  it("shows missing Q1 metadata without claiming fallback values were used", async () => {
+    const base = createApiClient({ mode: "mock" });
+    renderTeamPerformance({ ...base,
+      getFormalPnlDates: async () => ({ result_meta: buildMeta("pnl.dates", "synthetic-dates"),
+        result: { report_dates: ["2025-12-31", "2026-03-31"], formal_fi_report_dates: [], nonstd_bridge_report_dates: [] } }),
+      getPnlByBusinessMonthly: async () => { throw new Error("synthetic unavailable"); },
+      getProductCategoryPnl: async ({ reportDate }) => ({ result_meta: buildMeta("product_category_pnl.detail", "synthetic-product"),
+        result: { ...emptyProductPayload(), report_date: reportDate } }),
+    });
+    const q1 = screen.getByTestId("team-performance-q1-caliber");
+    await waitFor(() => expect(q1).toHaveTextContent("Q1证据加载失败"));
+    const missingMeta = within(q1).getByTestId("team-performance-q1-missing-meta-q1-by-business-monthly");
+    expect(missingMeta).toBeVisible();
+    expect(missingMeta).toHaveTextContent("缺少结果元信息，完整性未确认");
+    expect(q1).not.toHaveTextContent("部分数据使用回退值");
   });
 
   it("locks to 2025-12-31 and renders the matrix, detail panel, warnings, and meta evidence", async () => {
@@ -252,11 +355,38 @@ describe("TeamPerformancePage", () => {
         period_start_date: "2025-01-01",
         period_end_date: "2025-12-31",
         total_pnl: "12000000",
+        coverage_days: 365,
+        expected_days: 365,
+        sample_filled: false,
+        sample_fill_method: null,
+        classified_parent_total_pnl: "12000000",
+        summary: {
+          interest_income: "12000000",
+          fair_value_change: "0",
+          capital_gain: "0",
+          manual_adjustment: "0",
+          total_pnl: "12000000",
+          avg_balance: "3550000000",
+          current_balance: "3550000000",
+          annualized_yield_pct: "0.338028",
+          ftp_rate_pct: "1.60",
+          ftp_cost: null,
+          ftp_net_pnl: null,
+          ftp_net_annualized_yield_pct: null,
+          proportion: "1.00",
+          assets_count: 5,
+        },
+        unallocated_pnl: "0",
+        unallocated_abs_pnl: "0",
+        unallocated_row_count: 0,
+        reconciliation_delta: "0",
+        unallocated_breakdown: [],
+        unallocated_items: [],
         source_tables: ["fact_formal_pnl_fi"],
         items: [
           byBusinessRow({
             row_key: "asset_zqtz_detail_structured_finance_broker",
-            business_type: "其中：结构化融资（券商）",
+            business_type: "其中：结构化产业基金（产业基金部分）",
             total_pnl: "3500000",
             current_balance: "800000000",
           }),
@@ -311,7 +441,7 @@ describe("TeamPerformancePage", () => {
       result: q1MonthlyPayload([
         monthlyBusinessItem({
           row_key: "asset_zqtz_detail_structured_finance_broker",
-          business_type: "其中：结构化融资（券商）",
+          business_type: "其中：结构化产业基金（产业基金部分）",
           total_pnl: "3000000",
           ftp_cost: "500000",
           ftp_net_pnl: "2500000",
@@ -464,7 +594,6 @@ describe("TeamPerformancePage", () => {
             business_net_income: "-300000",
           }),
         ],
-        interest_spread: null,
       } satisfies ProductCategoryPnlPayload,
     }));
 
@@ -477,7 +606,7 @@ describe("TeamPerformancePage", () => {
     });
 
     expect(await screen.findByTestId("team-performance-page-title")).toHaveTextContent(
-      "Team Performance 工作损益分析",
+      "团队绩效工作损益分析",
     );
 
     await waitFor(() => {
@@ -497,8 +626,18 @@ describe("TeamPerformancePage", () => {
     expect(screen.getByLabelText("team-performance-report-date")).toHaveValue("2025-12-31");
 
     const summary = await screen.findByTestId("team-performance-summary-cards");
-    expect(summary).toHaveTextContent("409.28");
+    await waitFor(() => {
+      expect(summary).toHaveTextContent("409.28");
+    });
     expect(summary).toHaveTextContent("8");
+    expect(summary).toHaveTextContent("静态底稿·非正式口径（后端下发）");
+    expect(summary).not.toHaveTextContent("前端演示数据");
+    expect(screen.getByTestId("team-performance-demo-score-badge")).toHaveTextContent(
+      "考核得分：静态底稿·非正式口径（后端下发）",
+    );
+    expect(screen.getByTestId("team-performance-matrix-demo-badge")).toHaveTextContent(
+      "权重/得分列：静态底稿·非正式口径（后端下发）",
+    );
 
     expect(await screen.findByTestId("team-performance-warning-banner")).toHaveTextContent(
       "映射分析不代表正式中心归属",
@@ -532,6 +671,7 @@ describe("TeamPerformancePage", () => {
     );
 
     const meta = await screen.findByTestId("team-performance-result-meta");
+    expect(meta).toHaveTextContent("team_performance.assessment_workbook");
     expect(meta).toHaveTextContent("pnl.by_business_ytd");
     expect(meta).toHaveTextContent("product_category_pnl.detail");
 
@@ -548,7 +688,7 @@ describe("TeamPerformancePage", () => {
     expect(q1Caliber).toHaveTextContent("汇兑损益及衍生聚合行暂不强行归属");
     expect(q1Caliber).toHaveTextContent("汇兑损益及衍生");
     expect(q1Caliber).toHaveTextContent("产业基金");
-    expect(q1Caliber).toHaveTextContent("来源行：其中：结构化融资（券商）");
+    expect(q1Caliber).toHaveTextContent("来源行：其中：结构化产业基金（产业基金部分）");
     expect(q1Caliber).not.toHaveTextContent("2026计划");
     expect(q1Caliber).not.toHaveTextContent("完成率");
   });
@@ -605,6 +745,33 @@ describe("TeamPerformancePage", () => {
         period_start_date: "2025-01-01",
         period_end_date: "2025-12-31",
         total_pnl: "0",
+        coverage_days: 0,
+        expected_days: 0,
+        sample_filled: false,
+        sample_fill_method: null,
+        classified_parent_total_pnl: "0",
+        summary: {
+          interest_income: "0",
+          fair_value_change: "0",
+          capital_gain: "0",
+          manual_adjustment: "0",
+          total_pnl: "0",
+          avg_balance: "0",
+          current_balance: "0",
+          annualized_yield_pct: null,
+          ftp_rate_pct: "0",
+          ftp_cost: null,
+          ftp_net_pnl: null,
+          ftp_net_annualized_yield_pct: null,
+          proportion: null,
+          assets_count: 0,
+        },
+        unallocated_pnl: "0",
+        unallocated_abs_pnl: "0",
+        unallocated_row_count: 0,
+        reconciliation_delta: "0",
+        unallocated_breakdown: [],
+        unallocated_items: [],
         source_tables: ["fact_formal_pnl_fi"],
         items: [],
       } satisfies PnlByBusinessYtdPayload,
@@ -653,8 +820,81 @@ describe("TeamPerformancePage", () => {
     });
 
     expect(await screen.findByTestId("team-performance-error")).toHaveTextContent(
-      "2025 工作损益证据加载失败",
+      "2025 考核底稿或工作损益证据加载失败",
     );
     expect(screen.getByRole("button", { name: "重试" })).toBeInTheDocument();
+  });
+
+  it("renders an error state when the backend assessment workbook cannot be loaded", async () => {
+    const base = createApiClient({ mode: "mock" });
+
+    const getTeamPerformanceAssessmentWorkbook = vi.fn(async () => {
+      throw new Error("workbook failed");
+    });
+    const getFormalPnlDates = vi.fn(async () => ({
+      result_meta: buildMeta("pnl.dates", "trace-dates-workbook-error"),
+      result: {
+        report_dates: ["2025-12-31"],
+        formal_fi_report_dates: ["2025-12-31"],
+        nonstd_bridge_report_dates: ["2025-12-31"],
+      } satisfies PnlDatesPayload,
+    }));
+    const getPnlByBusinessYtd = vi.fn(async () => ({
+      result_meta: buildMeta("pnl.by_business_ytd", "trace-by-business-workbook-error"),
+      result: {
+        year: 2025,
+        period_type: "yearly",
+        period_label: "2025 年累计",
+        period_start_date: "2025-01-01",
+        period_end_date: "2025-12-31",
+        total_pnl: "0",
+        coverage_days: 0,
+        expected_days: 0,
+        sample_filled: false,
+        sample_fill_method: null,
+        classified_parent_total_pnl: "0",
+        summary: {
+          interest_income: "0",
+          fair_value_change: "0",
+          capital_gain: "0",
+          manual_adjustment: "0",
+          total_pnl: "0",
+          avg_balance: "0",
+          current_balance: "0",
+          annualized_yield_pct: null,
+          ftp_rate_pct: "0",
+          ftp_cost: null,
+          ftp_net_pnl: null,
+          ftp_net_annualized_yield_pct: null,
+          proportion: null,
+          assets_count: 0,
+        },
+        unallocated_pnl: "0",
+        unallocated_abs_pnl: "0",
+        unallocated_row_count: 0,
+        reconciliation_delta: "0",
+        unallocated_breakdown: [],
+        unallocated_items: [],
+        source_tables: ["fact_formal_pnl_fi"],
+        items: [],
+      } satisfies PnlByBusinessYtdPayload,
+    }));
+    const getProductCategoryPnl = vi.fn(async () => ({
+      result_meta: buildMeta("product_category_pnl.detail", "trace-product-workbook-error"),
+      result: emptyProductPayload(),
+    }));
+
+    renderTeamPerformance({
+      ...base,
+      getTeamPerformanceAssessmentWorkbook,
+      getFormalPnlDates,
+      getPnlByBusinessYtd,
+      getProductCategoryPnl,
+    });
+
+    expect(await screen.findByTestId("team-performance-error")).toHaveTextContent(
+      "2025 考核底稿或工作损益证据加载失败",
+    );
+    expect(getTeamPerformanceAssessmentWorkbook).toHaveBeenCalled();
   });
 });

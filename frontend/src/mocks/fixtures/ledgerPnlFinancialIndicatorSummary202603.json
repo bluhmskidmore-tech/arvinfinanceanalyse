@@ -1,0 +1,1921 @@
+{
+ "contract_version": "ledger-financial-indicator-summary-v1",
+ "title": "2026年经营指标情况表（总账口径）",
+ "report_month": "202603",
+ "report_year": 2026,
+ "currency_basis": "CNX",
+ "unit": "亿元",
+ "data_status": "ready",
+ "periods": [
+  {
+   "period_id": "202601",
+   "flow_label": "2026年1月",
+   "flow_compare_label": "2025年1月",
+   "point_label": "2026年1月末",
+   "point_compare_label": "2025年末",
+   "current_month": "202601",
+   "flow_compare_month": "202501",
+   "point_compare_month": "202512",
+   "current_available": true,
+   "flow_compare_available": true,
+   "point_compare_available": true
+  },
+  {
+   "period_id": "202602",
+   "flow_label": "2026年1-2月",
+   "flow_compare_label": "2025年1-2月",
+   "point_label": "2026年2月末",
+   "point_compare_label": "2025年末",
+   "current_month": "202602",
+   "flow_compare_month": "202502",
+   "point_compare_month": "202512",
+   "current_available": true,
+   "flow_compare_available": true,
+   "point_compare_available": true
+  },
+  {
+   "period_id": "202603",
+   "flow_label": "2026年1-3月",
+   "flow_compare_label": "2025年1-3月",
+   "point_label": "2026年3月末",
+   "point_compare_label": "2025年末",
+   "current_month": "202603",
+   "flow_compare_month": "202503",
+   "point_compare_month": "202512",
+   "current_available": true,
+   "flow_compare_available": true,
+   "point_compare_available": true
+  }
+ ],
+ "sections": [
+  {
+   "section_id": "financial",
+   "title": "财务指标",
+   "basis_note": "损益类 · 年内累计口径 · 与上年同期比较",
+   "rows": [
+    {
+     "row_id": "fin.group_revenue",
+     "name": "一、集团营业收入",
+     "indent": 0,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "集团合并口径依赖子公司数据与合并抵消，系统仅有母公司总账",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "fin.mother_revenue",
+     "name": "（一）母公司营收（并表口径）",
+     "indent": 1,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "ledger_computed",
+     "caliber_note": null,
+     "unavailable_reason": null,
+     "account_evidence": "总账口径 = -(501+502+511+512+513+514+516+517+518+519 期末累计) - (521+522+523+527 期末累计)",
+     "values": [
+      {
+       "period_id": "202601",
+       "current": "14.2163191416",
+       "compare": "12.5888198231",
+       "delta": "1.6274993185",
+       "delta_pct": "12.928133"
+      },
+      {
+       "period_id": "202602",
+       "current": "26.5687621397",
+       "compare": "22.9728757926",
+       "delta": "3.5958863471",
+       "delta_pct": "15.652748"
+      },
+      {
+       "period_id": "202603",
+       "current": "40.5057623569",
+       "compare": "37.9361212775",
+       "delta": "2.5696410794",
+       "delta_pct": "6.773600"
+      }
+     ]
+    },
+    {
+     "row_id": "fin.leasing_revenue",
+     "name": "（二）青银金租营收",
+     "indent": 1,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "子公司（青银金租/青银理财/村镇银行）数据无系统来源，不能由总账推算",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "fin.wm_revenue",
+     "name": "（三）青银理财营收",
+     "indent": 1,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "子公司（青银金租/青银理财/村镇银行）数据无系统来源，不能由总账推算",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "fin.village_revenue",
+     "name": "（四）村镇银行营收",
+     "indent": 1,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "子公司（青银金租/青银理财/村镇银行）数据无系统来源，不能由总账推算",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "fin.group_opex",
+     "name": "二、业务及管理费",
+     "indent": 0,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "集团合并口径依赖子公司数据与合并抵消，系统仅有母公司总账",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "fin.mother_opex",
+     "name": "（一）母公司费用",
+     "indent": 1,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "ledger_computed",
+     "caliber_note": null,
+     "unavailable_reason": null,
+     "account_evidence": "总账口径 = 529（业务及管理费）+ 530（折旧）期末累计",
+     "values": [
+      {
+       "period_id": "202601",
+       "current": "1.9922624684",
+       "compare": "2.7461635872",
+       "delta": "-0.7539011188",
+       "delta_pct": "-27.452885"
+      },
+      {
+       "period_id": "202602",
+       "current": "4.3216188615",
+       "compare": "4.9426400429",
+       "delta": "-0.6210211814",
+       "delta_pct": "-12.564564"
+      },
+      {
+       "period_id": "202603",
+       "current": "9.2856413190",
+       "compare": "9.1799191205",
+       "delta": "0.1057221985",
+       "delta_pct": "1.151668"
+      }
+     ]
+    },
+    {
+     "row_id": "fin.leasing_opex",
+     "name": "（二）青银金租费用",
+     "indent": 1,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "子公司（青银金租/青银理财/村镇银行）数据无系统来源，不能由总账推算",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "fin.wm_opex",
+     "name": "（三）青银理财费用",
+     "indent": 1,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "子公司（青银金租/青银理财/村镇银行）数据无系统来源，不能由总账推算",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "fin.village_opex",
+     "name": "（四）村镇银行费用",
+     "indent": 1,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "子公司（青银金租/青银理财/村镇银行）数据无系统来源，不能由总账推算",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "fin.group_impairment",
+     "name": "三、减值损失",
+     "indent": 0,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "集团合并口径依赖子公司数据与合并抵消，系统仅有母公司总账",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "fin.mother_impairment",
+     "name": "（一）母公司减值损失",
+     "indent": 1,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "ledger_computed",
+     "caliber_note": null,
+     "unavailable_reason": null,
+     "account_evidence": "总账口径 = 531（资产减值损失）期末累计",
+     "values": [
+      {
+       "period_id": "202601",
+       "current": "3.5641863456",
+       "compare": "3.1936652179",
+       "delta": "0.3705211277",
+       "delta_pct": "11.601752"
+      },
+      {
+       "period_id": "202602",
+       "current": "5.7364891761",
+       "compare": "4.3214146419",
+       "delta": "1.4150745342",
+       "delta_pct": "32.745632"
+      },
+      {
+       "period_id": "202603",
+       "current": "13.8357855232",
+       "compare": "16.2492800346",
+       "delta": "-2.4134945114",
+       "delta_pct": "-14.852932"
+      }
+     ]
+    },
+    {
+     "row_id": "fin.mother_impairment_loan",
+     "name": "1.贷款减值损失",
+     "indent": 2,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "ledger_computed",
+     "caliber_note": null,
+     "unavailable_reason": null,
+     "account_evidence": "总账口径 = 53101（贷款减值损失）期末累计",
+     "values": [
+      {
+       "period_id": "202601",
+       "current": "3.5550048236",
+       "compare": "3.2228964648",
+       "delta": "0.3321083588",
+       "delta_pct": "10.304655"
+      },
+      {
+       "period_id": "202602",
+       "current": "5.7273106541",
+       "compare": "4.3514504988",
+       "delta": "1.3758601553",
+       "delta_pct": "31.618426"
+      },
+      {
+       "period_id": "202603",
+       "current": "13.0832767606",
+       "compare": "9.5729515021",
+       "delta": "3.5103252585",
+       "delta_pct": "36.669205"
+      }
+     ]
+    },
+    {
+     "row_id": "fin.mother_impairment_other",
+     "name": "2.其它资产减值损失",
+     "indent": 2,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "ledger_computed",
+     "caliber_note": null,
+     "unavailable_reason": null,
+     "account_evidence": "总账口径 = 531 - 53101 期末累计",
+     "values": [
+      {
+       "period_id": "202601",
+       "current": "0.0091815220",
+       "compare": "-0.0292312469",
+       "delta": "0.0384127689",
+       "delta_pct": "-131.409957"
+      },
+      {
+       "period_id": "202602",
+       "current": "0.0091785220",
+       "compare": "-0.0300358569",
+       "delta": "0.0392143789",
+       "delta_pct": "-130.558549"
+      },
+      {
+       "period_id": "202603",
+       "current": "0.7525087626",
+       "compare": "6.6763285325",
+       "delta": "-5.9238197699",
+       "delta_pct": "-88.728704"
+      }
+     ]
+    },
+    {
+     "row_id": "fin.subsidiary_impairment",
+     "name": "（二）子公司减值损失",
+     "indent": 1,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "子公司（青银金租/青银理财/村镇银行）数据无系统来源，不能由总账推算",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "fin.village_impairment",
+     "name": "（三）村镇银行减值损失",
+     "indent": 1,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "子公司（青银金租/青银理财/村镇银行）数据无系统来源，不能由总账推算",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "fin.group_profit_total",
+     "name": "四、利润总额",
+     "indent": 0,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "集团合并口径依赖子公司数据与合并抵消，系统仅有母公司总账",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "fin.mother_profit_total",
+     "name": "（一）母公司利润总额（并表口径）",
+     "indent": 1,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "ledger_computed",
+     "caliber_note": null,
+     "unavailable_reason": null,
+     "account_evidence": "总账口径 = 营业收入 - 业务及管理费 - 减值损失 - 税金及附加(533) + 营业外净收支(-(515)-534-536)",
+     "values": [
+      {
+       "period_id": "202601",
+       "current": "8.4376309736",
+       "compare": "6.3847765219",
+       "delta": "2.0528544517",
+       "delta_pct": "32.152331"
+      },
+      {
+       "period_id": "202602",
+       "current": "16.1563967500",
+       "compare": "13.3641236454",
+       "delta": "2.7922731046",
+       "delta_pct": "20.893799"
+      },
+      {
+       "period_id": "202603",
+       "current": "16.9243165590",
+       "compare": "12.0222594531",
+       "delta": "4.9020571059",
+       "delta_pct": "40.774840"
+      }
+     ]
+    },
+    {
+     "row_id": "fin.leasing_profit_total",
+     "name": "（二）青银金租利润总额",
+     "indent": 1,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "子公司（青银金租/青银理财/村镇银行）数据无系统来源，不能由总账推算",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "fin.wm_profit_total",
+     "name": "（三）青银理财利润总额",
+     "indent": 1,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "子公司（青银金租/青银理财/村镇银行）数据无系统来源，不能由总账推算",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "fin.group_net_profit",
+     "name": "五、净利润",
+     "indent": 0,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "集团合并口径依赖子公司数据与合并抵消，系统仅有母公司总账",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "fin.mother_net_profit",
+     "name": "（一）母公司净利润（并表口径）",
+     "indent": 1,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "ledger_computed",
+     "caliber_note": null,
+     "unavailable_reason": null,
+     "account_evidence": "总账口径 = 利润总额 - 所得税(550)；与 -(全部 5 类科目余额合计) 恒等校验",
+     "values": [
+      {
+       "period_id": "202601",
+       "current": "8.4376309736",
+       "compare": "6.3847765219",
+       "delta": "2.0528544517",
+       "delta_pct": "32.152331"
+      },
+      {
+       "period_id": "202602",
+       "current": "16.1563967500",
+       "compare": "13.3641236454",
+       "delta": "2.7922731046",
+       "delta_pct": "20.893799"
+      },
+      {
+       "period_id": "202603",
+       "current": "13.9118472051",
+       "compare": "11.5608705076",
+       "delta": "2.3509766975",
+       "delta_pct": "20.335637"
+      }
+     ]
+    },
+    {
+     "row_id": "fin.leasing_net_profit",
+     "name": "（二）青银金租净利润",
+     "indent": 1,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "子公司（青银金租/青银理财/村镇银行）数据无系统来源，不能由总账推算",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "fin.wm_net_profit",
+     "name": "（三）青银理财净利润",
+     "indent": 1,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "子公司（青银金租/青银理财/村镇银行）数据无系统来源，不能由总账推算",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "fin.village_net_profit",
+     "name": "（四）村镇银行净利润",
+     "indent": 1,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "子公司（青银金租/青银理财/村镇银行）数据无系统来源，不能由总账推算",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "fin.attributable_net_profit",
+     "name": "六、归母净利润",
+     "indent": 0,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "归母净利润依赖合并抵消与少数股东损益，无系统来源",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "fin.group_cost_income_ratio",
+     "name": "七、集团成本收入比",
+     "indent": 0,
+     "basis": "flow",
+     "value_kind": "percent",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "集团合并口径依赖子公司数据与合并抵消，系统仅有母公司总账",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "fin.mother_cost_income_ratio",
+     "name": "（一）母公司成本收入比",
+     "indent": 1,
+     "basis": "flow",
+     "value_kind": "percent",
+     "availability": "ledger_computed",
+     "caliber_note": "补充行：工作簿汇总表仅列集团口径；本行按财务指标-计算表口径 = 母公司费用 / 母公司营收",
+     "unavailable_reason": null,
+     "account_evidence": "总账口径 = (529+530) / 营业收入",
+     "values": [
+      {
+       "period_id": "202601",
+       "current": "14.013912",
+       "compare": "21.814305",
+       "delta": "-7.800393",
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": "16.265789",
+       "compare": "21.515112",
+       "delta": "-5.249323",
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": "22.924248",
+       "compare": "24.198360",
+       "delta": "-1.274112",
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "fin.group_roa",
+     "name": "八、集团ROA",
+     "indent": 0,
+     "basis": "flow",
+     "value_kind": "percent",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "集团 ROA 依赖集团总资产与子公司数据，无系统来源",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "fin.group_roe",
+     "name": "集团ROE",
+     "indent": 0,
+     "basis": "flow",
+     "value_kind": "percent",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "集团 ROE 依赖集团权益结构（分红/永续债利息），无系统来源",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "section_id": "business",
+   "title": "业务指标",
+   "basis_note": "余额类 · 时点口径 · 与上年末比较",
+   "rows": [
+    {
+     "row_id": "biz.group_total_assets",
+     "name": "一、集团总资产",
+     "indent": 0,
+     "basis": "point",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "集团合并口径依赖子公司数据与合并抵消，系统仅有母公司总账",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "biz.mother_total_assets",
+     "name": "（一）母公司总资产",
+     "indent": 1,
+     "basis": "point",
+     "value_kind": "money_yi",
+     "availability": "ledger_computed",
+     "caliber_note": "总账 1 类科目净额口径；工作簿报表口径含重分类调整，两者存在结构性差异",
+     "unavailable_reason": null,
+     "account_evidence": "总账口径 = 全部 1 类科目期末余额净额",
+     "values": [
+      {
+       "period_id": "202601",
+       "current": "7993.0462954646",
+       "compare": "7927.6953469404",
+       "delta": "65.3509485242",
+       "delta_pct": "0.824337"
+      },
+      {
+       "period_id": "202602",
+       "current": "8045.9697198298",
+       "compare": "7927.6953469404",
+       "delta": "118.2743728894",
+       "delta_pct": "1.491914"
+      },
+      {
+       "period_id": "202603",
+       "current": "8144.0484161112",
+       "compare": "7927.6953469404",
+       "delta": "216.3530691708",
+       "delta_pct": "2.729079"
+      }
+     ]
+    },
+    {
+     "row_id": "biz.leasing_total_assets",
+     "name": "（二）青银金租总资产",
+     "indent": 1,
+     "basis": "point",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "子公司（青银金租/青银理财/村镇银行）数据无系统来源，不能由总账推算",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "biz.wm_total_assets",
+     "name": "（三）青银理财总资产",
+     "indent": 1,
+     "basis": "point",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "子公司（青银金租/青银理财/村镇银行）数据无系统来源，不能由总账推算",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "biz.mother_loans",
+     "name": "二、贷款余额（母公司）",
+     "indent": 0,
+     "basis": "point",
+     "value_kind": "money_yi",
+     "availability": "ledger_computed",
+     "caliber_note": "总账科目组合口径；已与财务指标工作簿贷款余额核对一致",
+     "unavailable_reason": null,
+     "account_evidence": "总账口径 = 122+123+129+130+132+136 期末余额",
+     "values": [
+      {
+       "period_id": "202601",
+       "current": "4068.7264003635",
+       "compare": "3964.6879269004",
+       "delta": "104.0384734631",
+       "delta_pct": "2.624128"
+      },
+      {
+       "period_id": "202602",
+       "current": "4107.4970584039",
+       "compare": "3964.6879269004",
+       "delta": "142.8091315035",
+       "delta_pct": "3.602027"
+      },
+      {
+       "period_id": "202603",
+       "current": "4189.4674724086",
+       "compare": "3964.6879269004",
+       "delta": "224.7795455082",
+       "delta_pct": "5.669539"
+      }
+     ]
+    },
+    {
+     "row_id": "biz.mother_deposits",
+     "name": "三、存款余额（母公司）",
+     "indent": 0,
+     "basis": "point",
+     "value_kind": "money_yi",
+     "availability": "ledger_computed",
+     "caliber_note": "总账存款科目组合口径；工作簿报表口径含应计利息等调整，两者存在结构性差异",
+     "unavailable_reason": null,
+     "account_evidence": "总账口径 = |201+202+203+204+205+211+215+216+217+225+243+244+251 期末余额|",
+     "values": [
+      {
+       "period_id": "202601",
+       "current": "5059.4525750012",
+       "compare": "5015.2196056893",
+       "delta": "44.2329693119",
+       "delta_pct": "0.881975"
+      },
+      {
+       "period_id": "202602",
+       "current": "5042.2526337232",
+       "compare": "5015.2196056893",
+       "delta": "27.0330280339",
+       "delta_pct": "0.539020"
+      },
+      {
+       "period_id": "202603",
+       "current": "5115.9567637297",
+       "compare": "5015.2196056893",
+       "delta": "100.7371580404",
+       "delta_pct": "2.008629"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "section_id": "asset_quality",
+   "title": "资产质量指标",
+   "basis_note": "核销/收回为累计口径，余额与比率为时点口径",
+   "rows": [
+    {
+     "row_id": "aq.writeoff",
+     "name": "一、核销",
+     "indent": 0,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "核销/收回发生额属备查台账口径，总账余额无法唯一拆分，无系统来源",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "aq.writeoff_loan",
+     "name": "（一）贷款核销",
+     "indent": 1,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "核销/收回发生额属备查台账口径，总账余额无法唯一拆分，无系统来源",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "aq.writeoff_other",
+     "name": "（二）其他资产核销",
+     "indent": 1,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "核销/收回发生额属备查台账口径，总账余额无法唯一拆分，无系统来源",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "aq.recovery",
+     "name": "二、核销后收回",
+     "indent": 0,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "核销/收回发生额属备查台账口径，总账余额无法唯一拆分，无系统来源",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "aq.recovery_loan",
+     "name": "（一）贷款核销后收回",
+     "indent": 1,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "核销/收回发生额属备查台账口径，总账余额无法唯一拆分，无系统来源",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "aq.recovery_other",
+     "name": "（二）其他资产核销后收回",
+     "indent": 1,
+     "basis": "flow",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "核销/收回发生额属备查台账口径，总账余额无法唯一拆分，无系统来源",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "aq.provision_balance",
+     "name": "三、减值准备余额",
+     "indent": 0,
+     "basis": "point",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "合计需其他资产减值准备管理口径，总账无唯一科目组合可复算",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "aq.provision_loan_balance",
+     "name": "（一）贷款减值准备余额",
+     "indent": 1,
+     "basis": "point",
+     "value_kind": "money_yi",
+     "availability": "ledger_computed",
+     "caliber_note": "总账 131 科目余额口径；工作簿为管理滚动口径（期初+计提-核销+收回），两者存在口径差异",
+     "unavailable_reason": null,
+     "account_evidence": "总账口径 = |131（贷款减值准备）期末余额|",
+     "values": [
+      {
+       "period_id": "202601",
+       "current": "107.1233205655",
+       "compare": "103.7233205655",
+       "delta": "3.4000000000",
+       "delta_pct": "3.277951"
+      },
+      {
+       "period_id": "202602",
+       "current": "108.7230931708",
+       "compare": "103.7233205655",
+       "delta": "4.9997726053",
+       "delta_pct": "4.820297"
+      },
+      {
+       "period_id": "202603",
+       "current": "113.2914746633",
+       "compare": "103.7233205655",
+       "delta": "9.5681540978",
+       "delta_pct": "9.224689"
+      }
+     ]
+    },
+    {
+     "row_id": "aq.provision_other_balance",
+     "name": "（二）其他资产减值准备余额（母公司）",
+     "indent": 1,
+     "basis": "point",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "其他资产减值准备分散于多类备抵科目，无与工作簿一致的唯一总账组合",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "aq.npl_amount",
+     "name": "四、不良贷款额",
+     "indent": 0,
+     "basis": "point",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "五级分类（不良）数据不在总账科目中，无系统来源",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "aq.group_loans",
+     "name": "五、贷款余额",
+     "indent": 0,
+     "basis": "point",
+     "value_kind": "money_yi",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "工作簿此行为集团口径（含村镇银行），系统仅有母公司总账；母公司口径见业务指标板块",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "aq.npl_ratio",
+     "name": "六、不良贷款率",
+     "indent": 0,
+     "basis": "point",
+     "value_kind": "percent",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "五级分类（不良）数据不在总账科目中，无系统来源",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "aq.provision_loan_ratio",
+     "name": "七、拨贷比",
+     "indent": 0,
+     "basis": "point",
+     "value_kind": "percent",
+     "availability": "ledger_computed",
+     "caliber_note": "母公司总账口径 = 131 余额 / 母公司贷款余额；工作簿为集团管理口径，两者存在口径差异",
+     "unavailable_reason": null,
+     "account_evidence": "总账口径 = |131| / (122+123+129+130+132+136)",
+     "values": [
+      {
+       "period_id": "202601",
+       "current": "2.632846",
+       "compare": "2.616179",
+       "delta": "0.016667",
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": "2.646943",
+       "compare": "2.616179",
+       "delta": "0.030764",
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": "2.704198",
+       "compare": "2.616179",
+       "delta": "0.088019",
+       "delta_pct": null
+      }
+     ]
+    },
+    {
+     "row_id": "aq.coverage_ratio",
+     "name": "八、拨备覆盖率",
+     "indent": 0,
+     "basis": "point",
+     "value_kind": "percent",
+     "availability": "no_system_source",
+     "caliber_note": null,
+     "unavailable_reason": "五级分类（不良）数据不在总账科目中，无系统来源",
+     "account_evidence": null,
+     "values": [
+      {
+       "period_id": "202601",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202602",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      },
+      {
+       "period_id": "202603",
+       "current": null,
+       "compare": null,
+       "delta": null,
+       "delta_pct": null
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "quality_checks": [
+  {
+   "check_id": "net_profit_identity",
+   "month": "202501",
+   "passed": true,
+   "gap_yuan": "0.00",
+   "message": "净利润(利润总额-所得税)与 -(全部损益科目余额合计) 恒等"
+  },
+  {
+   "check_id": "balance_identity",
+   "month": "202501",
+   "passed": true,
+   "gap_yuan": "-0.04",
+   "message": "资产(1类) = 负债(2类)+权益(3类)+递延(4类)+当期损益(5类) 借贷闭合"
+  },
+  {
+   "check_id": "net_profit_identity",
+   "month": "202502",
+   "passed": true,
+   "gap_yuan": "0.00",
+   "message": "净利润(利润总额-所得税)与 -(全部损益科目余额合计) 恒等"
+  },
+  {
+   "check_id": "balance_identity",
+   "month": "202502",
+   "passed": true,
+   "gap_yuan": "0.01",
+   "message": "资产(1类) = 负债(2类)+权益(3类)+递延(4类)+当期损益(5类) 借贷闭合"
+  },
+  {
+   "check_id": "net_profit_identity",
+   "month": "202503",
+   "passed": true,
+   "gap_yuan": "0.00",
+   "message": "净利润(利润总额-所得税)与 -(全部损益科目余额合计) 恒等"
+  },
+  {
+   "check_id": "balance_identity",
+   "month": "202503",
+   "passed": true,
+   "gap_yuan": "0.00",
+   "message": "资产(1类) = 负债(2类)+权益(3类)+递延(4类)+当期损益(5类) 借贷闭合"
+  },
+  {
+   "check_id": "net_profit_identity",
+   "month": "202512",
+   "passed": true,
+   "gap_yuan": "0.00",
+   "message": "净利润(利润总额-所得税)与 -(全部损益科目余额合计) 恒等"
+  },
+  {
+   "check_id": "balance_identity",
+   "month": "202512",
+   "passed": true,
+   "gap_yuan": "-0.02",
+   "message": "资产(1类) = 负债(2类)+权益(3类)+递延(4类)+当期损益(5类) 借贷闭合"
+  },
+  {
+   "check_id": "net_profit_identity",
+   "month": "202601",
+   "passed": true,
+   "gap_yuan": "0.00",
+   "message": "净利润(利润总额-所得税)与 -(全部损益科目余额合计) 恒等"
+  },
+  {
+   "check_id": "balance_identity",
+   "month": "202601",
+   "passed": true,
+   "gap_yuan": "0.01",
+   "message": "资产(1类) = 负债(2类)+权益(3类)+递延(4类)+当期损益(5类) 借贷闭合"
+  },
+  {
+   "check_id": "net_profit_identity",
+   "month": "202602",
+   "passed": true,
+   "gap_yuan": "0.00",
+   "message": "净利润(利润总额-所得税)与 -(全部损益科目余额合计) 恒等"
+  },
+  {
+   "check_id": "balance_identity",
+   "month": "202602",
+   "passed": true,
+   "gap_yuan": "-0.01",
+   "message": "资产(1类) = 负债(2类)+权益(3类)+递延(4类)+当期损益(5类) 借贷闭合"
+  },
+  {
+   "check_id": "net_profit_identity",
+   "month": "202603",
+   "passed": true,
+   "gap_yuan": "0.00",
+   "message": "净利润(利润总额-所得税)与 -(全部损益科目余额合计) 恒等"
+  },
+  {
+   "check_id": "balance_identity",
+   "month": "202603",
+   "passed": true,
+   "gap_yuan": "-0.01",
+   "message": "资产(1类) = 负债(2类)+权益(3类)+递延(4类)+当期损益(5类) 借贷闭合"
+  }
+ ],
+ "coverage": {
+  "row_total": 50,
+  "row_computed": 13,
+  "row_unavailable": 37
+ },
+ "notes": [
+  "损益类行按总账损益科目年内累计余额组合计算，已与财务指标工作簿在 CNX 口径逐项核对（202601/202602/202603/202503）。",
+  "余额类行为总账科目组合口径（QDB 源口径）；存款余额、总资产、贷款减值准备余额与工作簿报表口径存在已知结构性差异，见行内口径说明。",
+  "无系统来源行（子公司、集团合并、不良、核销等）保持空值展示，不以 0 值代替；补数需先登记对应数据源。",
+  "CNY 口径按同一科目组合计算，净利润与借贷闭合两项恒等校验在真实总账数据上全部通过（202401/202412/202501-202503/202512/202601-202603）；财务指标工作簿仅提供 CNX 基准，CNY 无工作簿数值可核对。"
+ ],
+ "source_files": [
+  {
+   "month": "202501",
+   "file_name": "总账对账202501.xlsx",
+   "source_version": "sv_product_category_4f8bd12952ff"
+  },
+  {
+   "month": "202502",
+   "file_name": "总账对账202502.xlsx",
+   "source_version": "sv_product_category_1d0eda2cf980"
+  },
+  {
+   "month": "202503",
+   "file_name": "总账对账202503.xlsx",
+   "source_version": "sv_product_category_f5f44650d8aa"
+  },
+  {
+   "month": "202512",
+   "file_name": "总账对账202512.xlsx",
+   "source_version": "sv_product_category_4dcee63b2300"
+  },
+  {
+   "month": "202601",
+   "file_name": "总账对账202601.xlsx",
+   "source_version": "sv_product_category_2bf9a0021307"
+  },
+  {
+   "month": "202602",
+   "file_name": "总账对账202602.xlsx",
+   "source_version": "sv_product_category_46b2b4392854"
+  },
+  {
+   "month": "202603",
+   "file_name": "总账对账202603.xlsx",
+   "source_version": "sv_product_category_f03529ab4912"
+  }
+ ]
+}

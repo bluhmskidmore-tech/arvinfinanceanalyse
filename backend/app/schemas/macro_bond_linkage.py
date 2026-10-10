@@ -32,6 +32,7 @@ class MacroBondCorrelationItem(BaseModel):
     correlation_1y: float | None = None
     lead_lag_days: int
     direction: str
+    direction_source_window: str | None = None
     alignment_mode: AlignmentMode | None = None
     sample_size: int | None = None
     winsorized: bool = False
@@ -88,3 +89,5 @@ class MacroBondLinkageResponse(BaseModel):
     transmission_axes: list[MacroBondTransmissionAxis] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     computed_at: str
+    served_at: str | None = None
+    cache_hit: bool = False

@@ -1,20 +1,26 @@
 from __future__ import annotations
 
+from importlib import import_module
 from decimal import Decimal
+from datetime import date
 from types import SimpleNamespace
 from typing import Any
 
 import duckdb
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from backend.app.repositories.yield_curve_repo import (
     FORMAL_FACT_TABLE,
     YieldCurveRepository,
     ensure_yield_curve_tables,
 )
+from backend.app.security.auth_context import AuthContext, get_auth_context
 from backend.app.services import campisi_attribution_service as campisi_svc
 from backend.app.services.campisi_attribution_service import (
     _add_market_curve_quality,
+    _decision_residual_ratio,
     _build_formal_closure,
     _build_input_quality,
     _fetch_spread_data,
@@ -70,6 +76,106 @@ class _FakeBondAnalyticsRepository:
     def fetch_bond_analytics_rows(self, *, report_date: str, **_kwargs: Any) -> list[dict[str, object]]:
         return list(self._rows_by_date.get(report_date, []))
 
+    def load_snapshot_rows(self, report_date: str) -> list[dict[str, object]]:
+        return [{**row, "accounting_basis": row["accounting_class"]}
+                for row in self._rows_by_date.get(report_date, [])]
+
+
+@pytest.mark.parametrize("native_end,expected_covered", [(Decimal("1000000"), 1), (Decimal("1100000"), 0), (None, 0)])
+@pytest.mark.parametrize("entry", ["campisi_four_effects_envelope", "campisi_enhanced_envelope", "campisi_maturity_bucket_envelope"])
+def test_fx_translation_does_not_assert_a_native_principal_trade(monkeypatch, native_end, expected_covered, entry):
+    start = _bond_row(code="USD-BOND", currency="USD", face_value=Decimal("7000000"), market_value=Decimal("7000000"))
+    end = {**start, "face_value": Decimal("7100000"), "market_value": Decimal("7100000")}
+    start["face_value_native"] = Decimal("1000000")
+    end["face_value_native"] = native_end
+    _install_full_service_fakes(monkeypatch, dates=["2026-07-31", "2026-06-30"],
+        rows_by_date={"2026-06-30": [start], "2026-07-31": [end]},
+        curves={(day, "treasury"): _flat_treasury(Decimal("3")) for day in ["2026-06-30", "2026-07-31"]})
+    monkeypatch.setattr(campisi_svc, "_try_fetch_formal_bridge", lambda **kwargs: None)
+    monkeypatch.setattr(campisi_svc, "_try_fetch_cached_formal_bridge", lambda **kwargs: None)
+    _clear_four_effects_cache()
+    result = getattr(campisi_svc, entry)(start_date="2026-06-30", end_date="2026-07-31")
+    payload = result["result"]
+    quality = payload["input_quality"]["position_change"]
+    assert quality["covered_bonds"] == expected_covered
+    assert result["result_meta"]["formal_use_allowed"] is False
+    if native_end is None:
+        assert quality["reason"] == "principal_evidence_unavailable"
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "/api/pnl-attribution/campisi/four-effects",
+        "/api/pnl-attribution/campisi/enhanced",
+        "/api/pnl-attribution/campisi/maturity-buckets",
+    ],
+)
+def test_foreign_currency_principal_evidence_survives_http_response_model(monkeypatch, endpoint):
+    start = _bond_row(code="USD-BOND", currency="USD", face_value=Decimal("700"), market_value=Decimal("700"))
+    end = {**start, "face_value": Decimal("710"), "market_value": Decimal("710")}
+    start["face_value_native"] = Decimal("100")
+    end["face_value_native"] = Decimal("100")
+    _install_full_service_fakes(
+        monkeypatch,
+        dates=["2026-07-31", "2026-06-30"],
+        rows_by_date={"2026-06-30": [start], "2026-07-31": [end]},
+        curves={(day, "treasury"): _flat_treasury(Decimal("3")) for day in ("2026-06-30", "2026-07-31")},
+    )
+    monkeypatch.setattr(campisi_svc, "_try_fetch_formal_bridge", lambda **_kwargs: None)
+    monkeypatch.setattr(campisi_svc, "_try_fetch_cached_formal_bridge", lambda **_kwargs: None)
+    _clear_four_effects_cache()
+
+    route = import_module("backend.app.api.routes.campisi_attribution")
+    monkeypatch.setattr(route, "_ensure_pnl_attribution_read_allowed", lambda _auth: None)
+    app = FastAPI()
+    app.include_router(route.router)
+    app.dependency_overrides[get_auth_context] = lambda: AuthContext(user_id="test", role="viewer")
+    client = TestClient(app)
+
+    response = client.get(endpoint, params={"start_date": "2026-06-30", "end_date": "2026-07-31"})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["result"]["input_quality"]["principal_evidence"] == {
+        "source": "zqtz_bond_daily_snapshot",
+        "basis": "native_face_value",
+        "period_start": "2026-06-30",
+        "period_end": "2026-07-31",
+        "model_only": True,
+    }
+
+
+@pytest.mark.parametrize("asset_end", [Decimal("90"), Decimal("100")])
+@pytest.mark.parametrize("issuance_flag,asset_flag", [(True, False), ("true", "false")])
+@pytest.mark.parametrize("entry", ["campisi_four_effects_envelope", "campisi_enhanced_envelope", "campisi_maturity_bucket_envelope"])
+def test_native_principal_excludes_issuance_like_rows(monkeypatch, asset_end, issuance_flag, asset_flag, entry):
+    start = _bond_row(code="USD1", currency="USD", accounting_class="OCI",
+                      face_value=Decimal("700"), market_value=Decimal("700"))
+    end = {**start, "face_value": asset_end * 7, "market_value": asset_end * 7}
+    snapshots = {}
+    for day, asset_native, issued_native in [
+        ("2026-06-30", Decimal("100"), Decimal("100")),
+        ("2026-07-31", asset_end, Decimal("110")),
+    ]:
+        snapshots[day] = [
+            {**start, "accounting_basis": "FVOCI", "face_value_native": asset_native,
+             "is_issuance_like": asset_flag},
+            {**start, "accounting_basis": "FVOCI", "face_value_native": issued_native,
+             "is_issuance_like": issuance_flag},
+        ]
+    _install_full_service_fakes(monkeypatch, dates=["2026-07-31", "2026-06-30"],
+        rows_by_date={"2026-06-30": [start], "2026-07-31": [end]},
+        curves={(day, "treasury"): _flat_treasury(Decimal("3")) for day in snapshots})
+    monkeypatch.setattr(_FakeBondAnalyticsRepository, "load_snapshot_rows", lambda self, day: snapshots[day])
+    monkeypatch.setattr(campisi_svc, "_try_fetch_formal_bridge", lambda **kwargs: None)
+    monkeypatch.setattr(campisi_svc, "_try_fetch_cached_formal_bridge", lambda **kwargs: None)
+    _clear_four_effects_cache()
+    result = getattr(campisi_svc, entry)(start_date="2026-06-30", end_date="2026-07-31")
+    quality = result["result"]["input_quality"]["position_change"]
+    assert quality["covered_bonds"] == int(asset_end == Decimal("100"))
+    assert quality["unavailable_bonds"] == int(asset_end != Decimal("100"))
+    assert result["result_meta"]["formal_use_allowed"] is False
+
 
 class _FakeYieldCurveRepository:
     path = "missing-choice-campisi.duckdb"
@@ -79,6 +185,10 @@ class _FakeYieldCurveRepository:
 
     def fetch_curve(self, trade_date: str, curve_type: str) -> dict[str, object]:
         return dict(self._curves.get((trade_date, curve_type), {}))
+
+    def resolve_curve_snapshot(self, trade_date: str, curve_type: str):
+        curve = self.fetch_curve(trade_date, curve_type)
+        return ({"trade_date": trade_date, "curve": curve}, None) if curve else (None, None)
 
     def fetch_latest_trade_date_on_or_before(self, _curve_type: str, _trade_date: str) -> str | None:
         return None
@@ -130,6 +240,10 @@ def _install_full_service_fakes(
         }
 
     monkeypatch.setattr(campisi_svc, "_fetch_formal_closure", fake_formal_closure)
+    monkeypatch.setattr(
+        campisi_svc, "_choice_macro_repo",
+        lambda _path: SimpleNamespace(credit_3y_yields_on_or_before=lambda _day: {}),
+    )
 
 
 def _clear_four_effects_cache() -> None:
@@ -236,6 +350,166 @@ def test_merge_positions_aggregates_same_position_key_and_reports_input_quality(
     assert quality["warnings"]
 
 
+def test_merge_positions_marks_single_sided_rows_and_keeps_the_absent_side_unset():
+    """期初有/期末无（及反向）必须留下单边标记，缺失一侧的市值不得折成 0。"""
+    rows_start = [
+        _bond_row(code="BOND_SOLD", market_value=Decimal("100"), face_value=Decimal("100")),
+        _bond_row(code="BOND_HELD", market_value=Decimal("200"), face_value=Decimal("200")),
+    ]
+    rows_end = [
+        _bond_row(code="BOND_HELD", market_value=Decimal("210"), face_value=Decimal("200")),
+        _bond_row(code="BOND_BOUGHT", market_value=Decimal("300"), face_value=Decimal("300")),
+    ]
+
+    positions = {row["bond_code"]: row for row in _merge_positions(rows_start, rows_end)}
+
+    sold = positions["BOND_SOLD"]
+    assert sold["start_present"] is True
+    assert sold["end_present"] is False
+    assert sold["market_value_end"] is None
+
+    bought = positions["BOND_BOUGHT"]
+    assert bought["start_present"] is False
+    assert bought["end_present"] is True
+    assert bought["market_value_start"] is None
+    assert bought["face_value_start"] is None
+
+    held = positions["BOND_HELD"]
+    assert held["start_present"] is True
+    assert held["end_present"] is True
+    assert Decimal(str(held["market_value_start"])) == Decimal("200")
+    assert Decimal(str(held["market_value_end"])) == Decimal("210")
+
+
+def test_input_quality_reports_single_sided_positions_and_both_side_market_values():
+    rows_start = [
+        _bond_row(code="BOND_SOLD", market_value=Decimal("100"), face_value=Decimal("100")),
+        _bond_row(code="BOND_HELD", market_value=Decimal("200"), face_value=Decimal("200")),
+    ]
+    rows_end = [
+        _bond_row(code="BOND_HELD", market_value=Decimal("210"), face_value=Decimal("200")),
+        _bond_row(code="BOND_BOUGHT", market_value=Decimal("300"), face_value=Decimal("300")),
+    ]
+
+    positions = _merge_positions(rows_start, rows_end)
+    quality = _build_input_quality(rows_start=rows_start, rows_end=rows_end, positions=positions)
+
+    assert quality["single_sided_positions"] == 2
+    assert quality["start_only_positions"] == 1
+    assert quality["end_only_positions"] == 1
+    assert quality["start_only_market_value"] == pytest.approx(100.0)
+    assert quality["end_only_market_value"] == pytest.approx(300.0)
+    assert any("start-only" in warning for warning in quality["warnings"])
+
+
+def test_single_sided_positions_contribute_no_selection_effect_end_to_end():
+    """缺陷回归钉子：新增/退出持仓不得把整笔市值当成价格涨跌灌进 selection_effect。"""
+    from backend.app.core_finance.campisi import campisi_attribution
+
+    rows_start = [_bond_row(code="BOND_SOLD", market_value=Decimal("100"), face_value=Decimal("100"))]
+    rows_end = [_bond_row(code="BOND_BOUGHT", market_value=Decimal("300"), face_value=Decimal("300"))]
+    positions = _merge_positions(rows_start, rows_end)
+
+    market = {
+        "treasury_1y": 2.0,
+        "treasury_3y": 2.0,
+        "treasury_5y": 2.0,
+        "treasury_7y": 2.0,
+        "treasury_10y": 2.0,
+        "treasury_30y": 2.0,
+        "credit_spread_aaa_3y": 50.0,
+    }
+    result = campisi_attribution(
+        positions_merged=positions,
+        market_start=market,
+        market_end=market,
+        start_date=date(2026, 1, 1),
+        end_date=date(2026, 1, 31),
+    )
+
+    assert result.by_bond == []
+    assert result.totals["market_value_start"] == 0.0
+    coverage = result.effect_availability["position_change"]
+    assert coverage["status"] == "unavailable"
+    assert coverage["covered_bonds"] == 0
+    assert coverage["unavailable_bonds"] == 2
+    assert coverage["unavailable_market_value_start"] == 100.0
+    assert coverage["unavailable_market_value_end"] == 300.0
+    assert result.totals["selection_effect"] == 0.0
+    assert result.totals["total_return"] == 0.0
+    assert any("position_start_only" in item for item in result.diagnostics)
+    assert any("position_end_only" in item for item in result.diagnostics)
+
+
+def test_merge_positions_keeps_missing_coupon_unset_instead_of_zero():
+    """缺票息写 0.0 会被下游当成"可解析的存在值"，久期按零息债退化且无任何标记。"""
+    rows = [
+        _bond_row(
+            code="BOND_NO_COUPON",
+            market_value=Decimal("100"),
+            face_value=Decimal("100"),
+            coupon_rate=None,
+            ytm=None,
+        )
+    ]
+
+    positions = _merge_positions(rows, rows)
+    quality = _build_input_quality(rows_start=rows, rows_end=rows, positions=positions)
+
+    assert positions[0]["coupon_rate_start"] is None
+    assert positions[0]["yield_to_maturity_start"] is None
+    assert quality["missing_fields"]["start"]["coupon_rate"]["rows"] == 1
+    assert quality["missing_fields"]["start"]["coupon_rate"]["market_value"] == pytest.approx(100.0)
+
+
+@pytest.mark.parametrize("start_rate", [0.0, None])
+def test_merge_positions_rate_fallback_preserves_zero_and_matching_quality(start_rate):
+    start = {
+        **_bond_row(code="ZERO", market_value=Decimal("100"), face_value=Decimal("100")),
+        "coupon_rate": start_rate, "ytm": start_rate,
+        "coupon_rate_input_status": "missing" if start_rate is None else "observed",
+        "ytm_input_status": "missing" if start_rate is None else "observed",
+    }
+    end = {
+        **start, "coupon_rate": 0.05, "ytm": 0.04,
+        "coupon_rate_input_status": "observed", "ytm_input_status": "observed",
+    }
+    row = _merge_positions([start], [end])[0]
+    assert row["coupon_rate_start"] == pytest.approx(0.05 if start_rate is None else 0.0)
+    assert row["yield_to_maturity_start"] == pytest.approx(0.04 if start_rate is None else 0.0)
+    assert row["coupon_rate_input_status"] == "observed"
+    assert row["ytm_input_status"] == "observed"
+
+
+def test_merge_positions_passes_through_bond_analytics_quality_flags():
+    rows_start = [
+        {
+            **_bond_row(code="BOND_FALLBACK", market_value=Decimal("100"), face_value=Decimal("100")),
+            "coupon_rate_input_status": "observed",
+            "ytm_input_status": "missing",
+            "duration_quality_flag": "ytm_par_fallback",
+        }
+    ]
+    rows_end = [
+        {
+            **_bond_row(code="BOND_FALLBACK", market_value=Decimal("110"), face_value=Decimal("100")),
+            "coupon_rate_input_status": "observed",
+            "ytm_input_status": "observed",
+            "duration_quality_flag": "observed",
+        }
+    ]
+
+    positions = _merge_positions(rows_start, rows_end)
+    quality = _build_input_quality(rows_start=rows_start, rows_end=rows_end, positions=positions)
+
+    assert positions[0]["ytm_input_status"] == "missing"
+    assert positions[0]["duration_quality_flag"] == "ytm_par_fallback"
+    assert quality["duration_quality_degraded"]["start"]["rows"] == 1
+    assert quality["duration_quality_degraded"]["start"]["market_value"] == pytest.approx(100.0)
+    assert quality["duration_quality_degraded"]["end"]["rows"] == 0
+    assert any("duration_quality_flag" in warning for warning in quality["warnings"])
+
+
 def test_input_quality_reports_missing_credit_spread_curve_coverage():
     rows_start = [
         _bond_row(code="BOND_AA_PLUS", rating="AA+", asset_class="credit", market_value=Decimal("100")),
@@ -260,7 +534,63 @@ def test_input_quality_reports_missing_credit_spread_curve_coverage():
     assert missing[0]["field"] == "credit_spread_aa_plus_3y"
     assert missing[0]["missing_sides"] == ["start", "end"]
     assert missing[1]["field"] == "credit_spread_aa_3y"
-    assert "AA+, AA" in quality["warnings"][-1]
+    assert any("AA+, AA" in warning for warning in quality["warnings"])
+
+
+def test_input_quality_reports_treasury_tenor_coverage_gaps():
+    rows_start = [
+        _bond_row(code="BOND_AAA", rating="AAA", asset_class="credit", market_value=Decimal("100")),
+    ]
+    rows_end = [
+        _bond_row(code="BOND_AAA", rating="AAA", asset_class="credit", market_value=Decimal("110")),
+    ]
+    positions = _merge_positions(rows_start, rows_end)
+    quality = _build_input_quality(rows_start=rows_start, rows_end=rows_end, positions=positions)
+    full_curve = {
+        "treasury_1y": 2.0,
+        "treasury_3y": 2.5,
+        "treasury_5y": 3.0,
+        "treasury_7y": 3.2,
+        "treasury_10y": 3.5,
+        "treasury_30y": 4.5,
+        "credit_spread_aaa_3y": 60.0,
+    }
+    end_missing_30y = {key: value for key, value in full_curve.items() if key != "treasury_30y"}
+
+    _add_market_curve_quality(
+        quality,
+        positions=positions,
+        market_start=full_curve,
+        market_end=end_missing_30y,
+    )
+
+    tenors = quality["market_curve_coverage"]["treasury_tenors"]
+    assert tenors["start_missing"] == []
+    assert tenors["end_missing"] == ["treasury_30y"]
+    assert tenors["shared_positive_tenors"] == 5
+    assert any("shared-tenor subset" in warning for warning in quality["warnings"])
+
+
+def test_input_quality_flags_degraded_treasury_period_below_two_shared_tenors():
+    rows_start = [
+        _bond_row(code="BOND_AAA", rating="AAA", asset_class="credit", market_value=Decimal("100")),
+    ]
+    rows_end = [
+        _bond_row(code="BOND_AAA", rating="AAA", asset_class="credit", market_value=Decimal("110")),
+    ]
+    positions = _merge_positions(rows_start, rows_end)
+    quality = _build_input_quality(rows_start=rows_start, rows_end=rows_end, positions=positions)
+
+    _add_market_curve_quality(
+        quality,
+        positions=positions,
+        market_start={"treasury_1y": 2.0, "credit_spread_aaa_3y": 60.0},
+        market_end={"treasury_30y": 4.5, "credit_spread_aaa_3y": 61.0},
+    )
+
+    tenors = quality["market_curve_coverage"]["treasury_tenors"]
+    assert tenors["shared_positive_tenors"] == 0
+    assert any("degrade to 0" in warning for warning in quality["warnings"])
 
 
 def test_four_effects_envelope_anchors_dates_aggregates_and_surfaces_warnings(
@@ -363,6 +693,10 @@ def test_four_effects_envelope_anchors_dates_aggregates_and_surfaces_warnings(
     assert any("does not close to formal PnL" in warning for warning in result["warnings"])
     assert envelope["result_meta"]["quality_flag"] == "warning"
     assert envelope["result_meta"]["as_of_date"] == "2026-01-31"
+    assert envelope["result_meta"]["requested_report_date"] == "2026-02-01"
+    assert envelope["result_meta"]["resolved_report_date"] == "2026-01-31"
+    assert envelope["result_meta"]["fallback_mode"] == "latest_snapshot"
+    assert envelope["result_meta"]["fallback_date"] == "2026-01-31"
     assert envelope["result_meta"]["evidence_rows"] == 5
     assert envelope["result_meta"]["filters_applied"] == {
         "requested_start_date": "2026-01-10",
@@ -589,7 +923,7 @@ def test_four_effects_cache_does_not_hide_formal_bridge_changes_after_duckdb_fin
                         "unrealized_fv": {"raw": actual - 11.0},
                         "manual_adjustment": {"raw": 0.0},
                         "actual_pnl": {"raw": actual},
-                        "residual": {"raw": 0.0},
+                        "residual": {"raw": actual - 11.0},
                         "quality_flag": "ok",
                     }
                 ],
@@ -689,7 +1023,7 @@ def test_four_effects_cache_does_not_hide_formal_bridge_changes_after_governance
                         "unrealized_fv": {"raw": actual - 11.0},
                         "manual_adjustment": {"raw": 0.0},
                         "actual_pnl": {"raw": actual},
-                        "residual": {"raw": 0.0},
+                        "residual": {"raw": actual - 11.0},
                         "quality_flag": "ok",
                     }
                 ],
@@ -804,6 +1138,91 @@ def test_enhanced_and_maturity_bucket_envelopes_close_to_same_four_effect_totals
     )
 
 
+def test_maturity_bucket_envelope_reuses_cached_four_effects_state_without_recompute(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    _clear_four_effects_cache()
+    duckdb_path = tmp_path / "campisi-cache.duckdb"
+    duckdb_path.write_text("seed", encoding="utf-8")
+    start_rows = [
+        _bond_row(
+            code="GOV_BUCKET",
+            market_value=Decimal("1000"),
+            face_value=Decimal("1000"),
+            accrued_interest=Decimal("0"),
+            coupon_rate=Decimal("0.0000"),
+            ytm=Decimal("0.0500"),
+            rating="AAA",
+            asset_class="国债",
+        ),
+        _bond_row(
+            code="AAA_BUCKET",
+            market_value=Decimal("1000"),
+            face_value=Decimal("1000"),
+            accrued_interest=Decimal("0"),
+            coupon_rate=Decimal("0.0000"),
+            ytm=Decimal("0.0500"),
+            rating="AAA",
+            asset_class="credit",
+        ),
+    ]
+    end_rows = [
+        {**start_rows[0], "market_value": Decimal("990")},
+        {**start_rows[1], "market_value": Decimal("995")},
+    ]
+    _install_full_service_fakes(
+        monkeypatch,
+        dates=["2026-01-31", "2026-01-01"],
+        rows_by_date={
+            "2026-01-01": start_rows,
+            "2026-01-31": end_rows,
+        },
+        curves={
+            ("2026-01-01", "treasury"): _flat_treasury(Decimal("2.00")),
+            ("2026-01-31", "treasury"): _flat_treasury(Decimal("3.00")),
+            ("2026-01-01", "credit_spread_aaa"): {"3Y": 50.0},
+            ("2026-01-31", "credit_spread_aaa"): {"3Y": 100.0},
+        },
+        duckdb_path=str(duckdb_path),
+    )
+
+    cold_buckets = campisi_svc.campisi_maturity_bucket_envelope(
+        start_date="2026-01-01",
+        end_date="2026-01-31",
+    )["result"]["buckets"]
+
+    _clear_four_effects_cache()
+    campisi_svc.campisi_four_effects_envelope(
+        start_date="2026-01-01",
+        end_date="2026-01-31",
+    )
+
+    calls = {"campisi_attribution": 0, "maturity_bucket_attribution": 0}
+    real_campisi_attribution = campisi_svc.campisi_attribution
+    real_maturity_bucket_attribution = campisi_svc.maturity_bucket_attribution
+
+    def counting_campisi_attribution(**kwargs: Any) -> Any:
+        calls["campisi_attribution"] += 1
+        return real_campisi_attribution(**kwargs)
+
+    def counting_maturity_bucket_attribution(**kwargs: Any) -> Any:
+        calls["maturity_bucket_attribution"] += 1
+        return real_maturity_bucket_attribution(**kwargs)
+
+    monkeypatch.setattr(campisi_svc, "campisi_attribution", counting_campisi_attribution)
+    monkeypatch.setattr(campisi_svc, "maturity_bucket_attribution", counting_maturity_bucket_attribution)
+
+    warm_buckets = campisi_svc.campisi_maturity_bucket_envelope(
+        start_date="2026-01-01",
+        end_date="2026-01-31",
+    )["result"]["buckets"]
+
+    assert calls["campisi_attribution"] == 0
+    assert calls["maturity_bucket_attribution"] == 0
+    assert warm_buckets == cold_buckets
+
+
 def test_campisi_envelopes_close_to_formal_report_pnl_when_bridge_is_available(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -874,7 +1293,7 @@ def test_campisi_envelopes_close_to_formal_report_pnl_when_bridge_is_available(
                     "unrealized_fv": {"raw": 14.0},
                     "manual_adjustment": {"raw": 0.0},
                     "actual_pnl": {"raw": 35.0},
-                    "residual": {"raw": 0.0},
+                    "residual": {"raw": 14.0},
                     "quality_flag": "ok",
                 }
             ],
@@ -927,16 +1346,29 @@ def test_campisi_envelopes_close_to_formal_report_pnl_when_bridge_is_available(
     assert four["totals"]["income_return"] == pytest.approx(5.0)
     assert four["totals"]["treasury_effect"] == pytest.approx(3.0)
     assert four["totals"]["spread_effect"] == pytest.approx(3.0)
-    assert four["totals"]["selection_effect"] == pytest.approx(24.0)
+    assert four["totals"]["realized_trading"] == pytest.approx(6.0)
+    assert four["totals"]["fx_translation"] == pytest.approx(4.0)
+    assert four["totals"]["manual_adjustment"] == pytest.approx(0.0)
+    assert four["totals"]["selection_effect"] == pytest.approx(14.0)
+    assert four["decomposition_basis"] == campisi_svc.FORMAL_BRIDGE_DECOMPOSITION_BASIS
     assert (
         four["totals"]["income_return"]
         + four["totals"]["treasury_effect"]
         + four["totals"]["spread_effect"]
+        + four["totals"]["realized_trading"]
+        + four["totals"]["fx_translation"]
+        + four["totals"]["manual_adjustment"]
         + four["totals"]["selection_effect"]
     ) == pytest.approx(four["totals"]["total_return"])
     assert enhanced["basis"] == "formal_report_pnl_bridge"
+    assert enhanced["decomposition_basis"] == campisi_svc.FORMAL_BRIDGE_DECOMPOSITION_BASIS
     assert enhanced["totals"]["total_return"] == pytest.approx(35.0)
+    assert enhanced["totals"]["selection_effect"] == pytest.approx(14.0)
     assert sum(bucket["total_return"] for bucket in maturity["buckets"].values()) == pytest.approx(35.0)
+    bond_row = four["by_bond"][0]
+    assert bond_row["realized_trading"] == pytest.approx(6.0)
+    assert bond_row["fx_translation"] == pytest.approx(4.0)
+    assert bond_row["selection_effect"] == pytest.approx(14.0)
 
 
 def test_build_formal_closure_reports_residual_to_actual_pnl():
@@ -972,6 +1404,197 @@ def test_build_formal_closure_reports_residual_to_actual_pnl():
         + closure["residual_to_formal_pnl"]
         - closure["formal_actual_pnl"]
     ) < 0.01
+
+
+def test_formal_bridge_bond_rows_exposes_bridge_detail_fields_and_closes():
+    bridge = {
+        "result": {
+            "rows": [
+                {
+                    "instrument_code": "BOND001",
+                    "portfolio_name": "FIOA",
+                    "cost_center": "5010",
+                    "accounting_basis": "FVTPL",
+                    "beginning_dirty_mv": {"raw": 1000.0},
+                    "carry": {"raw": 5.0},
+                    "roll_down": {"raw": 1.0},
+                    "treasury_curve": {"raw": 2.0},
+                    "credit_spread": {"raw": 3.0},
+                    "fx_translation": {"raw": 4.0},
+                    "realized_trading": {"raw": 6.0},
+                    "manual_adjustment": {"raw": 1.0},
+                    "actual_pnl": {"raw": 36.0},
+                    "residual": {"raw": 14.0},
+                }
+            ]
+        }
+    }
+    rows = campisi_svc._formal_bridge_bond_rows(
+        bridge_envelope=bridge,
+        positions=[
+            {
+                "instrument_code": "BOND001",
+                "portfolio_name": "FIOA",
+                "cost_center": "5010",
+                "asset_class_start": "credit",
+                "maturity_date_start": "2031-01-01",
+                "market_value_start": 1000.0,
+            }
+        ],
+        start_date=date(2026, 1, 1),
+    )
+    row = rows[0]
+    assert row["realized_trading"] == pytest.approx(6.0)
+    assert row["fx_translation"] == pytest.approx(4.0)
+    assert row["manual_adjustment"] == pytest.approx(1.0)
+    assert row["selection_effect"] == pytest.approx(14.0)
+    assert (
+        row["income_return"]
+        + row["treasury_effect"]
+        + row["spread_effect"]
+        + row["realized_trading"]
+        + row["fx_translation"]
+        + row["manual_adjustment"]
+        + row["selection_effect"]
+    ) == pytest.approx(row["total_return"])
+
+
+def _bridge_row_with_residual(
+    *,
+    actual_pnl: float,
+    residual: float | None,
+) -> dict[str, Any]:
+    """固定分量合计 22 的桥行；residual 由调用方独立给定。
+
+    selection = actual_pnl − 22，与 pnl_bridge 的 residual = actual_pnl − explained_pnl
+    应当是同一个量；两者不一致即为桥接口径漂移。
+    """
+    row: dict[str, Any] = {
+        "instrument_code": "BOND_RESIDUAL",
+        "portfolio_name": "FIOA",
+        "cost_center": "5010",
+        "accounting_basis": "FVTPL",
+        "beginning_dirty_mv": {"raw": 1000.0},
+        "carry": {"raw": 5.0},
+        "roll_down": {"raw": 1.0},
+        "treasury_curve": {"raw": 2.0},
+        "credit_spread": {"raw": 3.0},
+        "fx_translation": {"raw": 4.0},
+        "realized_trading": {"raw": 6.0},
+        "manual_adjustment": {"raw": 1.0},
+        "unrealized_fv": {"raw": actual_pnl - 22.0},
+        "actual_pnl": {"raw": actual_pnl},
+    }
+    if residual is not None:
+        row["residual"] = {"raw": residual}
+    return row
+
+
+def _formal_bridge_row_from(row: dict[str, Any]) -> dict[str, Any]:
+    return campisi_svc._formal_bridge_bond_rows(
+        bridge_envelope={"result": {"rows": [row]}},
+        positions=[
+            {
+                "instrument_code": "BOND_RESIDUAL",
+                "portfolio_name": "FIOA",
+                "cost_center": "5010",
+                "asset_class_start": "credit",
+                "maturity_date_start": "2031-01-01",
+                "market_value_start": 1000.0,
+            }
+        ],
+        start_date=date(2026, 1, 1),
+    )[0]
+
+
+def test_formal_bridge_row_closure_raises_when_bridge_residual_disagrees_with_selection():
+    """负向：桥行自身 residual 与重算 selection 差 1000 时必须抛。
+
+    修复前断言用与 selection 完全相同的减法自证，恒为 0，本用例不会抛。
+    """
+    drifted = _bridge_row_with_residual(actual_pnl=1036.0, residual=14.0)
+
+    with pytest.raises(ValueError) as excinfo:
+        _formal_bridge_row_from(drifted)
+
+    assert "residual" in str(excinfo.value)
+
+
+def test_formal_bridge_row_closure_raises_when_bridge_residual_field_is_absent():
+    """负向：缺 residual 字段就没有独立对照，不得静默放行。"""
+    with pytest.raises(ValueError):
+        _formal_bridge_row_from(_bridge_row_with_residual(actual_pnl=36.0, residual=None))
+
+
+def test_formal_bridge_row_closure_passes_when_bridge_residual_matches_selection():
+    """正向：residual 与 selection 一致时照常通过，证明门禁不是恒失败。"""
+    row = _formal_bridge_row_from(_bridge_row_with_residual(actual_pnl=1036.0, residual=1014.0))
+
+    assert row["selection_effect"] == pytest.approx(1014.0)
+    assert row["total_return"] == pytest.approx(1036.0)
+
+
+def test_formal_bridge_row_closure_tolerates_float_round_trip_at_billion_scale():
+    """亿元级分量经 Numeric.raw(float) 往返后仍判闭合：容差不得把噪音判成漂移。"""
+    carry = Decimal("123456789.37")
+    roll_down = Decimal("2345678.91")
+    treasury_curve = Decimal("-3456789.13")
+    credit_spread = Decimal("456789.57")
+    fx_translation = Decimal("-56789.11")
+    realized_trading = Decimal("6789012.29")
+    manual_adjustment = Decimal("789.33")
+    actual_pnl = Decimal("987654321.19")
+    residual = actual_pnl - (
+        carry + roll_down + treasury_curve + credit_spread + fx_translation + realized_trading + manual_adjustment
+    )
+
+    row = _formal_bridge_row_from(
+        {
+            "instrument_code": "BOND_RESIDUAL",
+            "portfolio_name": "FIOA",
+            "cost_center": "5010",
+            "accounting_basis": "FVTPL",
+            "beginning_dirty_mv": {"raw": 1_000_000_000.0},
+            "carry": {"raw": float(carry)},
+            "roll_down": {"raw": float(roll_down)},
+            "treasury_curve": {"raw": float(treasury_curve)},
+            "credit_spread": {"raw": float(credit_spread)},
+            "fx_translation": {"raw": float(fx_translation)},
+            "realized_trading": {"raw": float(realized_trading)},
+            "manual_adjustment": {"raw": float(manual_adjustment)},
+            "actual_pnl": {"raw": float(actual_pnl)},
+            "residual": {"raw": float(residual)},
+        }
+    )
+
+    assert row["selection_effect"] == pytest.approx(float(residual))
+
+
+def test_decision_residual_ratio_is_null_when_actual_zero_and_residual_nonzero():
+    ratio = _decision_residual_ratio(
+        formal_actual_pnl=Decimal("0"),
+        residual_noise=Decimal("10"),
+    )
+
+    assert ratio is None
+
+
+def test_decision_residual_ratio_is_zero_when_actual_and_residual_zero():
+    ratio = _decision_residual_ratio(
+        formal_actual_pnl=Decimal("0"),
+        residual_noise=Decimal("0"),
+    )
+
+    assert ratio == 0.0
+
+
+def test_decision_residual_ratio_uses_absolute_actual_pnl():
+    ratio = _decision_residual_ratio(
+        formal_actual_pnl=Decimal("-100"),
+        residual_noise=Decimal("10"),
+    )
+
+    assert ratio == pytest.approx(0.1)
 
 
 def _seed_formal_curve(duckdb_path, rows: list[tuple[object, ...]]) -> None:
@@ -1073,3 +1696,324 @@ def test_fetch_spread_data_derives_aa_plus_and_aa_from_choice_macro_tables(tmp_p
 
     assert spread["credit_spread_aa_plus_3y"] == 60.0
     assert spread["credit_spread_aa_3y"] == 80.0
+
+
+# ---------------------------------------------------------------------------
+# Envelope-level runtime cache (WP-A2)
+# ---------------------------------------------------------------------------
+def _clear_all_campisi_runtime_caches() -> None:
+    campisi_svc.clear_campisi_four_effects_runtime_cache()
+    envelope_clear = getattr(
+        campisi_svc, "clear_campisi_four_effects_envelope_runtime_cache", None
+    )
+    if envelope_clear is not None:
+        envelope_clear()
+
+
+def _install_envelope_cache_scenario(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> tuple[Any, Any, dict[str, int]]:
+    duckdb_path = tmp_path / "envelope-cache.duckdb"
+    duckdb_path.write_text("seed", encoding="utf-8")
+    governance_path = tmp_path / "governance"
+    governance_path.mkdir()
+    (governance_path / "cache_manifest.jsonl").write_text("manifest v1", encoding="utf-8")
+    (governance_path / "cache_build_run.jsonl").write_text("build v1", encoding="utf-8")
+    start_rows = [
+        _bond_row(
+            code="ENV_BOND",
+            market_value=Decimal("1000"),
+            face_value=Decimal("1000"),
+            accrued_interest=Decimal("0"),
+            coupon_rate=Decimal("0.0000"),
+            ytm=Decimal("0.0500"),
+            rating="AAA",
+            asset_class="credit",
+        )
+    ]
+    end_rows = [{**start_rows[0], "market_value": Decimal("990")}]
+    _install_full_service_fakes(
+        monkeypatch,
+        dates=["2026-01-31", "2026-01-01"],
+        rows_by_date={
+            "2026-01-01": start_rows,
+            "2026-01-31": end_rows,
+        },
+        curves={
+            ("2026-01-01", "treasury"): _flat_treasury(Decimal("2.00")),
+            ("2026-01-31", "treasury"): _flat_treasury(Decimal("2.10")),
+            ("2026-01-01", "credit_spread_aaa"): {"3Y": 30.0},
+            ("2026-01-31", "credit_spread_aaa"): {"3Y": 30.0},
+        },
+        duckdb_path=str(duckdb_path),
+    )
+    monkeypatch.setattr(
+        campisi_svc,
+        "get_settings",
+        lambda: SimpleNamespace(
+            duckdb_path=str(duckdb_path),
+            governance_path=governance_path,
+        ),
+    )
+
+    fetch_counts: dict[str, int] = {
+        "list_report_dates": 0,
+        "fetch_bond_analytics_rows": 0,
+        "choice_macro_factory": 0,
+        "credit_3y_yields_on_or_before": 0,
+    }
+
+    class _NoOpChoiceMacroRepo:
+        def credit_3y_yields_on_or_before(self, _trade_date: str, **_kwargs: Any) -> dict[str, Any]:
+            fetch_counts["credit_3y_yields_on_or_before"] += 1
+            return {}
+
+    def _counting_choice_macro_repo(_path: Any) -> _NoOpChoiceMacroRepo:
+        fetch_counts["choice_macro_factory"] += 1
+        return _NoOpChoiceMacroRepo()
+
+    monkeypatch.setattr(campisi_svc, "_choice_macro_repo", _counting_choice_macro_repo)
+
+    real_factory = campisi_svc.BondAnalyticsRepository
+
+    def counting_factory(path: str):
+        repo = real_factory(path)
+        real_list = repo.list_report_dates
+        real_fetch = repo.fetch_bond_analytics_rows
+
+        def counting_list() -> list[str]:
+            fetch_counts["list_report_dates"] += 1
+            return real_list()
+
+        def counting_fetch(*args: Any, **kwargs: Any):
+            fetch_counts["fetch_bond_analytics_rows"] += 1
+            return real_fetch(*args, **kwargs)
+
+        repo.list_report_dates = counting_list
+        repo.fetch_bond_analytics_rows = counting_fetch
+        return repo
+
+    monkeypatch.setattr(campisi_svc, "BondAnalyticsRepository", counting_factory)
+    return duckdb_path, governance_path, fetch_counts
+
+
+@pytest.mark.parametrize("endpoint", [
+    campisi_svc.campisi_four_effects_envelope,
+    campisi_svc.campisi_enhanced_envelope,
+    campisi_svc.campisi_maturity_bucket_envelope,
+])
+@pytest.mark.parametrize("mixed", [False, True])
+def test_model_quantity_change_exclusion_survives_service_and_cache(monkeypatch, tmp_path, endpoint, mixed):
+    _clear_all_campisi_runtime_caches()
+    start = _bond_row(code="CHANGE", market_value=Decimal("1000"), face_value=Decimal("1000"),
+                      coupon_rate=Decimal("0"), asset_class="treasury")
+    end = {**start, "market_value": Decimal("2000"), "face_value": Decimal("2000")}
+    held = {**start, "instrument_code": "HELD"}
+    rows_start = [start, held] if mixed else [start]
+    rows_end = [end, {**held, "market_value": Decimal("1010")}] if mixed else [end]
+    db = tmp_path / "quantity-change.duckdb"
+    db.write_text("synthetic cache fingerprint", encoding="utf-8")
+    _install_full_service_fakes(
+        monkeypatch, dates=["2026-01-31", "2026-01-01"],
+        rows_by_date={"2026-01-01": rows_start, "2026-01-31": rows_end},
+        curves={
+            ("2026-01-01", "treasury"): _flat_treasury(Decimal("2")),
+            ("2026-01-31", "treasury"): _flat_treasury(Decimal("2")),
+        }, duckdb_path=str(db),
+    )
+    monkeypatch.setattr(campisi_svc, "_try_fetch_formal_bridge", lambda **_kwargs: None)
+    monkeypatch.setattr(campisi_svc, "_try_fetch_cached_formal_bridge", lambda **_kwargs: None)
+    for _ in range(2):
+        envelope = endpoint(start_date="2026-01-01", end_date="2026-01-31")
+        payload = envelope["result"]
+        total = payload["totals"]["total_return"] if "totals" in payload else sum(
+            row["total_return"] for row in payload["buckets"].values()
+        )
+        assert total == (10 if mixed else 0)
+        coverage = payload["input_quality"]["position_change"]
+        assert coverage["status"] == ("partial" if mixed else "unavailable")
+        assert coverage["unavailable_bonds"] == 1
+        assert coverage["unavailable_market_value_start"] == 1000
+        assert coverage["unavailable_market_value_end"] == 2000
+        assert any("持仓变动" in warning for warning in payload["warnings"])
+        assert envelope["result_meta"]["formal_use_allowed"] is False
+        assert envelope["result_meta"]["quality_flag"] != "ok"
+    _clear_all_campisi_runtime_caches()
+
+
+@pytest.mark.parametrize("endpoint", [
+    campisi_svc.campisi_four_effects_envelope,
+    campisi_svc.campisi_enhanced_envelope,
+    campisi_svc.campisi_maturity_bucket_envelope,
+])
+@pytest.mark.parametrize("side", ["bought", "sold", "turnover"])
+@pytest.mark.parametrize("mixed", [False, True])
+def test_model_single_sided_exclusion_reaches_service_and_cache(
+    monkeypatch, tmp_path, endpoint, side, mixed,
+):
+    _clear_all_campisi_runtime_caches()
+    sold = _bond_row(code="SOLD", market_value=Decimal("1000"), face_value=Decimal("1000"),
+                     coupon_rate=Decimal("0"), asset_class="treasury")
+    bought = {**sold, "instrument_code": "BOUGHT", "market_value": Decimal("2000"),
+              "face_value": Decimal("2000")}
+    held = {**sold, "instrument_code": "HELD"}
+    rows_start = [sold] if side in {"sold", "turnover"} else []
+    rows_end = [bought] if side in {"bought", "turnover"} else []
+    if mixed:
+        rows_start.append(held)
+        rows_end.append({**held, "market_value": Decimal("1010")})
+    db = tmp_path / "single-sided.duckdb"
+    db.write_text("synthetic cache fingerprint", encoding="utf-8")
+    _install_full_service_fakes(
+        monkeypatch, dates=["2026-01-31", "2026-01-01"],
+        rows_by_date={"2026-01-01": rows_start, "2026-01-31": rows_end},
+        curves={
+            ("2026-01-01", "treasury"): _flat_treasury(Decimal("2")),
+            ("2026-01-31", "treasury"): _flat_treasury(Decimal("2")),
+        }, duckdb_path=str(db),
+    )
+    monkeypatch.setattr(campisi_svc, "_try_fetch_formal_bridge", lambda **_kwargs: None)
+    monkeypatch.setattr(campisi_svc, "_try_fetch_cached_formal_bridge", lambda **_kwargs: None)
+    excluded_count = 2 if side == "turnover" else 1
+    for _ in range(2):
+        envelope = endpoint(start_date="2026-01-01", end_date="2026-01-31")
+        payload = envelope["result"]
+        coverage = payload["effect_availability"]["position_change"]
+        assert coverage["status"] == ("partial" if mixed else "unavailable")
+        assert coverage["covered_bonds"] == int(mixed)
+        assert coverage["unavailable_bonds"] == excluded_count
+        assert payload["effect_availability"]["bonds"] == excluded_count + int(mixed)
+        assert coverage["unavailable_market_value_start"] == (0 if side == "bought" else 1000)
+        assert coverage["unavailable_market_value_end"] == (0 if side == "sold" else 2000)
+        assert payload["input_quality"]["position_change"] == coverage
+        assert payload["input_quality"]["single_sided_positions"] == excluded_count
+        assert envelope["result_meta"]["formal_use_allowed"] is False
+        assert envelope["result_meta"]["quality_flag"] == "warning"
+        assert any("收益仅覆盖可归因持仓" in warning for warning in payload["warnings"])
+        if "totals" in payload:
+            assert payload["totals"]["total_return"] == (10 if mixed else 0)
+            assert payload["totals"]["market_value_start"] == (1000 if mixed else 0)
+            assert [row["bond_code"] for row in payload["by_bond"]] == (["HELD"] if mixed else [])
+        else:
+            assert sum(row["total_return"] for row in payload["buckets"].values()) == (10 if mixed else 0)
+            assert sum(row["market_value_start"] for row in payload["buckets"].values()) == (1000 if mixed else 0)
+    _clear_all_campisi_runtime_caches()
+
+
+def test_four_effects_envelope_runtime_cache_skips_repo_scan_on_second_call(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    _clear_all_campisi_runtime_caches()
+    _duckdb_path, _gov, fetch_counts = _install_envelope_cache_scenario(monkeypatch, tmp_path)
+
+    first = campisi_svc.campisi_four_effects_envelope(
+        start_date="2026-01-01",
+        end_date="2026-01-31",
+    )
+    baseline_list = fetch_counts["list_report_dates"]
+    baseline_fetch = fetch_counts["fetch_bond_analytics_rows"]
+    baseline_choice_factory = fetch_counts["choice_macro_factory"]
+    baseline_choice_reads = fetch_counts["credit_3y_yields_on_or_before"]
+    assert baseline_list >= 1
+    assert baseline_fetch >= 2
+
+    second = campisi_svc.campisi_four_effects_envelope(
+        start_date="2026-01-01",
+        end_date="2026-01-31",
+    )
+
+    assert fetch_counts["list_report_dates"] == baseline_list
+    assert fetch_counts["fetch_bond_analytics_rows"] == baseline_fetch
+    # A cache hit must not touch the Choice macro repo (factory or reads);
+    # this guards against the compute path re-entering Choice IO on warm hits.
+    assert fetch_counts["choice_macro_factory"] == baseline_choice_factory
+    assert fetch_counts["credit_3y_yields_on_or_before"] == baseline_choice_reads
+    assert second["result"]["totals"]["total_return"] == first["result"]["totals"]["total_return"]
+    assert second["result_meta"]["trace_id"] != first["result_meta"]["trace_id"]
+
+
+def test_four_effects_envelope_runtime_cache_invalidates_on_governance_fingerprint_change(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    _clear_all_campisi_runtime_caches()
+    _duckdb_path, governance_path, fetch_counts = _install_envelope_cache_scenario(
+        monkeypatch, tmp_path
+    )
+
+    campisi_svc.campisi_four_effects_envelope(
+        start_date="2026-01-01",
+        end_date="2026-01-31",
+    )
+    baseline_fetch = fetch_counts["fetch_bond_analytics_rows"]
+
+    (governance_path / "cache_build_run.jsonl").write_text("build v2", encoding="utf-8")
+    campisi_svc.campisi_four_effects_envelope(
+        start_date="2026-01-01",
+        end_date="2026-01-31",
+    )
+
+    assert fetch_counts["fetch_bond_analytics_rows"] > baseline_fetch
+
+
+def test_four_effects_envelope_runtime_cache_isolates_full_and_summary_details(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    _clear_all_campisi_runtime_caches()
+    _install_envelope_cache_scenario(monkeypatch, tmp_path)
+
+    full = campisi_svc.campisi_four_effects_envelope(
+        start_date="2026-01-01",
+        end_date="2026-01-31",
+    )
+    summary = campisi_svc.campisi_four_effects_summary_envelope(
+        start_date="2026-01-01",
+        end_date="2026-01-31",
+    )
+
+    assert full["result"]["by_bond"], "full envelope must retain per-bond detail"
+    assert summary["result"]["by_bond"] == []
+    full_after_summary = campisi_svc.campisi_four_effects_envelope(
+        start_date="2026-01-01",
+        end_date="2026-01-31",
+    )
+    assert full_after_summary["result"]["by_bond"], (
+        "full envelope must not lose per-bond detail after a summary hit"
+    )
+
+
+@pytest.mark.parametrize("start_mode,end_mode,expected", [
+    ("每年付息", "每季付息", "每年付息"),
+    (None, "每季付息", "每季付息"), ("", "到期付息", "到期付息"),
+    (None, None, None),
+])
+def test_merge_positions_preserves_interest_mode(start_mode, end_mode, expected):
+    start = {**_bond_row(code="MODE_MERGE"), "interest_mode": start_mode}
+    end = {**start, "interest_mode": end_mode}
+    merged = campisi_svc.merge_positions([start, start], [end])[0]
+    assert merged["interest_mode_start"] == expected
+
+
+@pytest.mark.parametrize("entry", ["campisi_four_effects_envelope", "campisi_enhanced_envelope"])
+def test_model_envelope_preserves_bullet_interest_mode(monkeypatch, entry):
+    start = {**_bond_row(code="MODE_BULLET", face_value=Decimal("1000"),
+                        market_value=Decimal("1000"), coupon_rate=Decimal("0.04"),
+                        ytm=Decimal("0.05"), maturity_date=date(2031, 7, 15)),
+             "interest_mode": "到期一次还本付息"}
+    _install_full_service_fakes(
+        monkeypatch, dates=["2026-01-31", "2026-01-01"],
+        rows_by_date={"2026-01-01": [start], "2026-01-31": [{**start, "market_value": Decimal("1005")}]},
+        curves={(day, "treasury"): _flat_treasury(Decimal(rate))
+                for day, rate in [("2026-01-01", "2"), ("2026-01-31", "3")]},
+    )
+    monkeypatch.setattr(campisi_svc, "_try_fetch_formal_bridge", lambda **_kwargs: None)
+    monkeypatch.setattr(campisi_svc, "_try_fetch_cached_formal_bridge", lambda **_kwargs: None)
+    _clear_all_campisi_runtime_caches()
+    envelope = getattr(campisi_svc, entry)(start_date="2026-01-01", end_date="2026-01-31")
+    expected_duration = (date(2031, 7, 15) - date(2026, 1, 1)).days / 365 / 1.05
+    assert envelope["result"]["by_bond"][0]["mod_duration"] == pytest.approx(expected_duration, abs=1e-10)
+    assert envelope["result_meta"]["rule_version"] == "rv_campisi_full_v11"
+    assert envelope["result_meta"]["cache_version"] == "cv_campisi_full_v11"

@@ -2,7 +2,7 @@
 
 ## Source
 
-- `docs/live_route_maturity.md` -> `GAP-AVERAGE-BALANCE-PAGE`
+- `docs/live_route_maturity.md` -> `PAGE-ADB-001`
 - `docs/metric_dictionary.md` -> `MTR-ADB-003`
 - `backend/app/api/routes/adb_analysis.py`
 - `backend/app/services/adb_analysis_service.py`
@@ -20,7 +20,8 @@
 - `result_meta.vendor_version == "vv_none"`.
 - `result_meta.fallback_mode == "none"`.
 - `result_meta.scenario_flag == false`.
-- `result_meta.tables_used == ["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"]`.
+- `result_meta.filters_applied == {"year": 2025, "accounting_basis_currency": "CNX"}`; `CNX` is the governed CNY accounting-basis code, not a source-currency conversion claim.
+- `result_meta.tables_used == ["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily", "product_category_pnl_canonical_fact"]`; the third relation supplies governed basis/calibration evidence and does not replace the two ADB balance facts.
 
 ## Frozen Values
 
@@ -30,6 +31,6 @@
 
 ## Boundary
 
-- This sample freezes the `GET /api/analysis/adb/monthly` candidate page DTO for `GAP-AVERAGE-BALANCE-PAGE`.
+- This sample freezes the `GET /api/analysis/adb/monthly` candidate page DTO for `PAGE-ADB-001`.
 - It preserves `formal_use_allowed=false`; `MTR-ADB-001` through `MTR-ADB-003` remain candidate display metrics with pending confirmation.
 - It does not replace `PAGE-BALANCE-001` formal balance truth, approve ADB metrics, approve manual audit closure, or capture business-owner approval.

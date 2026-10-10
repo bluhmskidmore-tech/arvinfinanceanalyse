@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 from pathlib import Path
@@ -251,18 +251,22 @@ def test_fx_analytical_usd_middle_rate_consumes_fx_rates_helper(tmp_path, monkey
         "backend/app/services/macro_vendor_service.py",
     )
     calls = []
+    real_get_usd_cny_rate = module.get_usd_cny_rate
 
-    def fake_get_usd_cny_rate(rows, target_date, *, allow_stale_fallback=False):
+    def spy_get_usd_cny_rate(rows, target_date, *, allow_stale_fallback=False):
         calls.append((rows, target_date, allow_stale_fallback))
-        return 7.77, target_date, ["synthetic analytical fallback"]
+        return real_get_usd_cny_rate(rows, target_date, allow_stale_fallback=allow_stale_fallback)
 
-    monkeypatch.setattr(module, "get_usd_cny_rate", fake_get_usd_cny_rate)
+    monkeypatch.setattr(module, "get_usd_cny_rate", spy_get_usd_cny_rate)
 
     analytical = module.load_fx_analytical_payload(str(duckdb_path))
 
     middle_rate = analytical.groups[0].series[0]
     assert middle_rate.series_id == "EMM00058124"
-    assert middle_rate.value_numeric == 7.77
+    assert middle_rate.value_numeric == 7.24
+    assert middle_rate.trade_date == "2026-02-27"
+    assert middle_rate.source_version == "sv_choice_fx"
+    assert middle_rate.vendor_version == "vv_choice_fx"
     assert calls
     assert calls[0][2] is True
     get_settings.cache_clear()

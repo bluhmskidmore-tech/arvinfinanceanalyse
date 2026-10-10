@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
+from backend.app.repositories.duckdb_read_context import resolve_effective_read_path
 from backend.app.repositories.research_calendar_repo import (
     SUPPLY_AUCTION_SERIES_ID,
     SUPPLY_AUCTION_VIEW,
@@ -24,9 +25,9 @@ def supply_auction_calendar_envelope(
     limit: int = 50,
     offset: int = 0,
 ) -> dict[str, object]:
-    duckdb_file = Path(duckdb_path)
+    duckdb_file = Path(resolve_effective_read_path(duckdb_path))
     if duckdb_file.exists():
-        page = ResearchCalendarRepository(path=str(duckdb_file)).fetch_supply_auction_page(
+        page = ResearchCalendarRepository(path=duckdb_path).fetch_supply_auction_page(
             start_date=start_date,
             end_date=end_date,
             limit=limit,

@@ -14,8 +14,10 @@ $root = Split-Path -Parent $PSScriptRoot
 $pythonScript = Join-Path $root "scripts\codex_page_readiness.py"
 $smokeScript = Join-Path $root "scripts\codex-page-smoke.ps1"
 $verifyScript = Join-Path $root "scripts\codex-verify-page.ps1"
+. "$root\scripts\codex-python-helper.ps1"
 
 Set-Location $root
+$pythonExe = Resolve-CodexPython
 
 function Write-PageReadinessReport {
   param(
@@ -37,12 +39,14 @@ function Write-PageReadinessReport {
     foreach ($gateName in $Report.blocking_gates) {
       Write-Output "- $gateName"
     }
-    throw "Static page readiness gates blocked."
   }
 
   Write-Output "Residual gaps surfaced:"
   foreach ($gap in $Report.residual_gaps) {
     Write-Output "- $gap"
+  }
+  if ($Report.page_slug -in @("pnl", "pnl-bridge")) {
+    Write-Output "- full data-catalog/date review required before page-level closure."
   }
 
   if ($Report.required_commands.Count -gt 0) {
@@ -567,7 +571,7 @@ function Assert-AllApprovalCaptured {
 if ($RouteScope) {
   Write-Output "MOSS page readiness gate: route-scope classification"
 
-  $json = & python $pythonScript --route-scope
+  $json = & $pythonExe $pythonScript --route-scope
   if ($LASTEXITCODE -ne 0) {
     throw "Static route-scope classification failed."
   }
@@ -581,7 +585,7 @@ if ($RouteScope) {
 if ($All) {
   Write-Output "MOSS page readiness gate: all seeded pages"
 
-  $json = & python $pythonScript --all
+  $json = & $pythonExe $pythonScript --all
   if ($LASTEXITCODE -ne 0) {
     throw "Static page readiness evaluation failed for all seeded pages."
   }
@@ -669,15 +673,24 @@ if ($All) {
 
 Write-Output "MOSS page readiness gate: $PageSlug"
 
-$json = & python $pythonScript --page-slug $PageSlug
-if ($LASTEXITCODE -ne 0) {
+$json = & $pythonExe $pythonScript --page-slug $PageSlug
+$pythonExitCode = $LASTEXITCODE
+$jsonText = $json | Out-String
+if ([string]::IsNullOrWhiteSpace($jsonText)) {
   throw "Static page readiness evaluation failed for $PageSlug."
 }
 
-$report = $json | ConvertFrom-Json
+$report = $jsonText | ConvertFrom-Json
+if ($pythonExitCode -ne 0 -and $report.blocking_gates.Count -eq 0) {
+  throw "Static page readiness evaluation failed for $PageSlug."
+}
 
 Write-PageReadinessReport -Report $report
 Assert-ApprovalCaptured -Report $report -ActionItemsAlreadyShown
+
+if ($report.blocking_gates.Count -gt 0) {
+  throw "Static page readiness gates blocked."
+}
 
 if (-not $Run) {
   Write-Output "Dry run complete. Pass -Run to execute page checks."

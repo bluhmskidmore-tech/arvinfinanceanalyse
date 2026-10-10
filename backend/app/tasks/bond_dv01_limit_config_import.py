@@ -8,7 +8,7 @@ import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, date, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 
 import duckdb
@@ -376,12 +376,23 @@ def _load_config_records(config_path: Path) -> tuple[list[dict[str, object]], li
         if config_path.suffix.lower() == ".jsonl":
             return _load_jsonl_records(config_path), []
         return _load_json_records(config_path), []
-    except (OSError, json.JSONDecodeError, csv.Error) as exc:
+    except (OSError, ValueError, csv.Error) as exc:
         return [], [f"Failed to load DV01 limit config file: {exc}"]
 
 
+def _json_object_without_duplicate_fields(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    record: dict[str, object] = {}
+    for field, value in pairs:
+        if field in record:
+            raise ValueError(f"Duplicate JSON field: {field!r}")
+        record[field] = value
+    return record
+
+
 def _load_json_records(config_path: Path) -> list[dict[str, object]]:
-    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload = json.loads(
+        config_path.read_text(encoding="utf-8"), object_pairs_hook=_json_object_without_duplicate_fields
+    )
     if isinstance(payload, dict):
         return [payload]
     if isinstance(payload, list):
@@ -394,7 +405,7 @@ def _load_jsonl_records(config_path: Path) -> list[dict[str, object]]:
     for line in config_path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
-        payload = json.loads(line)
+        payload = json.loads(line, object_pairs_hook=_json_object_without_duplicate_fields)
         if isinstance(payload, dict):
             records.append(payload)
     return records
@@ -403,6 +414,13 @@ def _load_jsonl_records(config_path: Path) -> list[dict[str, object]]:
 def _load_csv_records(config_path: Path) -> list[dict[str, object]]:
     with config_path.open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
+        columns: dict[str, int] = {}
+        for index, field in enumerate(reader.fieldnames or [], start=1):
+            if field in columns:
+                raise ValueError(
+                    f"Duplicate CSV field {field!r} in columns {columns[field]} and {index}"
+                )
+            columns[field] = index
         return [dict(row) for row in reader]
 
 
@@ -432,7 +450,7 @@ def _normalize_config_records(records: list[dict[str, object]]) -> tuple[list[di
         for field in ("limit_dv01", "warning_dv01", "hedge_target_dv01"):
             parsed = _positive_decimal(record.get(field))
             if parsed is None:
-                row_errors.append(f"{field} must be greater than 0")
+                row_errors.append(f"{field} must be finite and greater than 0")
             else:
                 limit_thresholds[field] = parsed
         if len(limit_thresholds) == 3 and not (
@@ -871,7 +889,7 @@ def _positive_decimal(value: object) -> Decimal | None:
         parsed = Decimal(str(value or "").strip())
     except (InvalidOperation, ValueError):
         return None
-    if parsed <= Decimal("0"):
+    if not parsed.is_finite() or parsed <= Decimal("0"):
         return None
     return parsed
 
@@ -894,7 +912,9 @@ def _decimal_output(value: object) -> str:
     if value is None:
         return "0"
     try:
-        return format(Decimal(str(value)).quantize(Decimal("0.00000001")), "f")
+        return format(
+            Decimal(str(value)).quantize(Decimal("0.00000001"), rounding=ROUND_HALF_UP), "f"
+        )
     except (InvalidOperation, ValueError):
         return "0"
 

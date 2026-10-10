@@ -7,10 +7,11 @@ export function CreditBondTradesTable({ model }: { model: MarketDataSourcePendin
       <h2 style={marketDataBlockTitleStyle}>信用债成交明细</h2>
       <div
         data-testid="market-data-credit-trades-source-pending"
-        className="market-data-terminal-empty"
+        className="market-data-terminal-pending-compact"
+        title={model.emptyReason}
       >
-        <span className="market-data-terminal-empty__status">{model.status}</span>
-        <span>{model.emptyReason}</span>
+        <span className="market-data-terminal-pending-compact__status">未接入</span>
+        <span>信用债成交数据源未接入</span>
       </div>
     </section>
   );

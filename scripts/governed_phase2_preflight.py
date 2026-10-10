@@ -17,6 +17,8 @@ class ProbeResult:
     detail: str | None = None
     result_kind: str | None = None
     basis: str | None = None
+    formal_use_allowed: bool | None = None
+    scenario_flag: bool | None = None
     report_dates: list[str] | None = None
 
 
@@ -55,6 +57,16 @@ def _payload_basis(payload: dict[str, Any] | None) -> str | None:
     return str(value) if value is not None else None
 
 
+def _payload_meta_bool(payload: dict[str, Any] | None, field: str) -> bool | None:
+    if not payload:
+        return None
+    meta = payload.get("result_meta")
+    if not isinstance(meta, dict):
+        return None
+    value = meta.get(field)
+    return value if isinstance(value, bool) else None
+
+
 def _payload_report_dates(payload: dict[str, Any] | None) -> list[str] | None:
     if not payload:
         return None
@@ -80,6 +92,8 @@ def _fetch_json(url: str, timeout_seconds: int = 20) -> ProbeResult:
                 detail=_payload_detail(payload),
                 result_kind=_payload_result_kind(payload),
                 basis=_payload_basis(payload),
+                formal_use_allowed=_payload_meta_bool(payload, "formal_use_allowed"),
+                scenario_flag=_payload_meta_bool(payload, "scenario_flag"),
                 report_dates=_payload_report_dates(payload),
             )
     except urllib.error.HTTPError as exc:
@@ -93,6 +107,8 @@ def _fetch_json(url: str, timeout_seconds: int = 20) -> ProbeResult:
             detail=_payload_detail(payload) or body,
             result_kind=_payload_result_kind(payload),
             basis=_payload_basis(payload),
+            formal_use_allowed=_payload_meta_bool(payload, "formal_use_allowed"),
+            scenario_flag=_payload_meta_bool(payload, "scenario_flag"),
             report_dates=_payload_report_dates(payload),
         )
     except Exception as exc:
@@ -110,13 +126,37 @@ def _named_probe(
     url: str,
     *,
     allowed_statuses: tuple[int, ...] = (200,),
+    expected_basis: str | None = None,
+    expected_formal_use_allowed: bool | None = None,
+    expected_scenario_flag: bool | None = None,
 ) -> ProbeResult:
     result = _fetch_json(url)
     result.name = name
-    if isinstance(result.status, int) and result.status in allowed_statuses:
+    boundary_errors: list[str] = []
+    if expected_basis is not None and result.basis != expected_basis:
+        boundary_errors.append(f"expected basis={expected_basis}, got {result.basis!r}")
+    if (
+        expected_formal_use_allowed is not None
+        and result.formal_use_allowed is not expected_formal_use_allowed
+    ):
+        boundary_errors.append(
+            "expected formal_use_allowed="
+            f"{expected_formal_use_allowed}, got {result.formal_use_allowed!r}"
+        )
+    if expected_scenario_flag is not None and result.scenario_flag is not expected_scenario_flag:
+        boundary_errors.append(
+            f"expected scenario_flag={expected_scenario_flag}, got {result.scenario_flag!r}"
+        )
+
+    if isinstance(result.status, int) and result.status in allowed_statuses and not boundary_errors:
         result.outcome = "pass"
     else:
         result.outcome = "blocked"
+        if boundary_errors:
+            boundary_detail = "; ".join(boundary_errors)
+            result.detail = (
+                f"{result.detail}; {boundary_detail}" if result.detail else boundary_detail
+            )
     return result
 
 
@@ -271,44 +311,52 @@ def build_preflight_report(*, api_base: str, frontend_base: str) -> dict[str, An
         )
     )
 
-    reserved_report_date = risk_report_dates[0] if risk_report_dates else "2025-12-31"
-    reserved_year = reserved_report_date[:4]
+    analytical_report_date = risk_report_dates[0] if risk_report_dates else "2025-12-31"
+    analytical_year = analytical_report_date[:4]
     probes.append(
         _named_probe(
-            "api_cube_dimensions_reserved",
+            "api_cube_dimensions_auth_guard",
             f"{api_base}/api/cube/dimensions/bond_analytics",
-            allowed_statuses=(503,),
+            allowed_statuses=(403,),
         )
     )
     probes.append(
         _named_probe(
-            "api_risk_buckets_reserved",
-            f"{api_base}/api/risk/buckets?report_date={reserved_report_date}",
-            allowed_statuses=(503,),
+            "api_risk_buckets_analytical",
+            f"{api_base}/api/risk/buckets?report_date={analytical_report_date}",
+            expected_basis="analytical",
+            expected_formal_use_allowed=False,
+            expected_scenario_flag=False,
         )
     )
     probes.append(
         _named_probe(
-            "api_yield_metrics_reserved",
-            f"{api_base}/api/analysis/yield_metrics?report_date={reserved_report_date}",
-            allowed_statuses=(503,),
+            "api_yield_metrics_analytical",
+            f"{api_base}/api/analysis/yield_metrics?report_date={analytical_report_date}",
+            expected_basis="analytical",
+            expected_formal_use_allowed=False,
+            expected_scenario_flag=False,
         )
     )
     probes.append(
         _named_probe(
-            "api_liabilities_counterparty_reserved",
+            "api_liabilities_counterparty_analytical",
             (
                 f"{api_base}/api/analysis/liabilities/counterparty"
-                f"?report_date={reserved_report_date}&top_n=10"
+                f"?report_date={analytical_report_date}&top_n=10"
             ),
-            allowed_statuses=(503,),
+            expected_basis="analytical",
+            expected_formal_use_allowed=False,
+            expected_scenario_flag=False,
         )
     )
     probes.append(
         _named_probe(
-            "api_liabilities_monthly_reserved",
-            f"{api_base}/api/liabilities/monthly?year={reserved_year}",
-            allowed_statuses=(503,),
+            "api_liabilities_monthly_analytical",
+            f"{api_base}/api/liabilities/monthly?year={analytical_year}",
+            expected_basis="analytical",
+            expected_formal_use_allowed=False,
+            expected_scenario_flag=False,
         )
     )
 

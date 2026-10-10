@@ -9,14 +9,15 @@ def test_balance_analysis_service_outward_envelopes_do_not_use_snapshot_repo_rea
     monkeypatch,
 ):
     duckdb_path, governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
-    service_mod = load_module(
-        "backend.app.services.balance_analysis_service",
-        "backend/app/services/balance_analysis_service.py",
-    )
     repo_mod = load_module(
         "backend.app.repositories.balance_analysis_repo",
         "backend/app/repositories/balance_analysis_repo.py",
     )
+    service_mod = load_module(
+        "backend.app.services.balance_analysis_service",
+        "backend/app/services/balance_analysis_service.py",
+    )
+    assert service_mod.BalanceAnalysisRepository is repo_mod.BalanceAnalysisRepository
 
     def fail_snapshot_read(*args, **kwargs):
         raise AssertionError("outward balance-analysis path must not read snapshot tables directly")
@@ -75,14 +76,15 @@ def test_balance_analysis_service_paths_do_not_call_replace_formal_balance_rows(
 ):
     """Guard: formal fact writes stay in tasks; service envelopes are read-only."""
     duckdb_path, governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
-    service_mod = load_module(
-        "backend.app.services.balance_analysis_service",
-        "backend/app/services/balance_analysis_service.py",
-    )
     repo_mod = load_module(
         "backend.app.repositories.balance_analysis_repo",
         "backend/app/repositories/balance_analysis_repo.py",
     )
+    service_mod = load_module(
+        "backend.app.services.balance_analysis_service",
+        "backend/app/services/balance_analysis_service.py",
+    )
+    assert service_mod.BalanceAnalysisRepository is repo_mod.BalanceAnalysisRepository
 
     calls: list[object] = []
 

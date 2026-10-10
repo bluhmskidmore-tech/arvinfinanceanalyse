@@ -16,6 +16,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from backend.app.governance.settings import Settings, get_settings
+from backend.app.tasks.accounting_asset_movement import refresh_accounting_asset_movement_window_sync
 from backend.app.services.pnl_service import load_latest_pnl_refresh_input
 from backend.app.services.product_category_pnl_service import run_product_category_refresh_sync
 from backend.app.tasks.bond_analytics_materialize import materialize_bond_analytics_facts
@@ -73,6 +74,7 @@ def _pnl(settings: Settings, report_date: str | None) -> None:
         governance_dir=settings.governance_path,
         data_root=resolve_pnl_data_input_root(),
         report_date=report_date,
+        archive_root=settings.local_archive_path,
     )
     run_id = f"pnl_materialize:{datetime.now(timezone.utc).isoformat()}"
     run_pnl_materialize_sync(
@@ -93,6 +95,26 @@ def _product_category(settings: Settings) -> None:
     print("5.5 done", flush=True)
 
 
+def _balance_movement(settings: Settings, report_date: str) -> None:
+    print(f"5.6 accounting_asset_movement {report_date} ...", flush=True)
+    result = refresh_accounting_asset_movement_window_sync(
+        report_dates=[report_date],
+        anchor_report_date=report_date,
+        duckdb_path=str(settings.duckdb_path),
+        governance_dir=str(settings.governance_path),
+        currency_basis="CNX",
+    )
+    payloads = result.get("payloads_by_date")
+    report_payload = payloads.get(report_date, {}) if isinstance(payloads, dict) else {}
+    row_count = int(report_payload.get("row_count") or 0)
+    if result.get("status") != "completed" or row_count <= 0:
+        raise RuntimeError(
+            "balance movement materialization did not produce usable rows: "
+            f"status={result.get('status')}, report_date={report_date}, row_count={row_count}"
+        )
+    print("5.6 done", flush=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--report-date", default="2025-12-31")
@@ -105,7 +127,7 @@ def main() -> None:
         "--skip",
         nargs="*",
         default=[],
-        choices=["source", "balance", "bond", "pnl", "product_category"],
+        choices=["source", "balance", "bond", "pnl", "product_category", "balance_movement"],
         help="Steps to skip",
     )
     args = parser.parse_args()
@@ -122,6 +144,8 @@ def main() -> None:
         _pnl(settings, args.pnl_report_date)
     if "product_category" not in skip:
         _product_category(settings)
+    if "balance_movement" not in skip:
+        _balance_movement(settings, args.report_date)
 
     print("pipeline complete", flush=True)
 

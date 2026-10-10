@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from datetime import date
 
+import duckdb
 from backend.app.schemas.advanced_attribution import AdvancedAttributionBundlePayload
+from backend.app.schemas.common_numeric import Numeric
 from backend.app.services.bond_analytics_service import get_return_decomposition
 from backend.app.services.formal_result_runtime import (
     build_analytical_result_meta,
@@ -12,9 +14,9 @@ from backend.app.services.formal_result_runtime import (
 from backend.app.services.pnl_bridge_service import pnl_bridge_envelope
 
 ADVANCED_ATTRIBUTION_RESULT_KIND = "balance-analysis.advanced_attribution_bundle"
-RULE_VERSION_ADVANCED_ATTRIBUTION = "rv_advanced_attribution_bundle_v0"
+RULE_VERSION_ADVANCED_ATTRIBUTION = "rv_advanced_attribution_bundle_v1"
 SOURCE_VERSION_NOT_READY = "sv_advanced_attribution_not_ready"
-CACHE_VERSION_ADVANCED_ATTRIBUTION = "cv_advanced_attribution_v0"
+CACHE_VERSION_ADVANCED_ATTRIBUTION = "cv_advanced_attribution_v1"
 
 # Stable machine-oriented keys; align with bond-analytics Phase 3 boundary docs.
 _NOT_READY_MISSING_INPUTS: tuple[str, ...] = (
@@ -68,9 +70,14 @@ def _build_partial_summary(
         summary["actual_pnl"] = str(bridge_summary["total_actual_pnl"])
     if str(bridge_summary.get("total_residual") or "").strip():
         summary["residual"] = str(bridge_summary["total_residual"])
-    if str(bridge_summary.get("quality_flag") or "").strip():
-        summary["quality_flag"] = str(bridge_summary["quality_flag"])
-
+    for field, components in (
+        ("roll_down_availability", ("roll_down",)),
+        ("treasury_curve_availability", ("treasury_curve", "rate_effect")),
+        ("credit_spread_availability", ("credit_spread", "spread_effect")),
+    ):
+        if bridge_summary.get(field) not in ("ok", "not_applicable"):
+            for component in components:
+                summary.pop(component, None)
     return summary, sorted(summary.keys())
 
 
@@ -127,11 +134,7 @@ def advanced_attribution_bundle_envelope(
         summary=partial_summary,
         available_components=available_components,
         missing_inputs=list(_NOT_READY_MISSING_INPUTS),
-        blocked_components=(
-            ["realized_trading", "action_attribution"]
-            if is_partial
-            else list(_NOT_READY_BLOCKED_COMPONENTS)
-        ),
+        blocked_components=sorted((set(_NOT_READY_BLOCKED_COMPONENTS) | {"credit_spread"}) - set(available_components)),
         warnings=list(
             [
                 *(
@@ -184,17 +187,15 @@ def _build_upstream_summaries(
     report_date_value = date.fromisoformat(report_date)
 
     try:
-        return_env = get_return_decomposition(report_date_value, "MoM", "all", "all")
+        return_env = get_return_decomposition(report_date_value, "MoM", "all", "all", duckdb_path=duckdb_path, governance_dir=governance_dir)
         return_result = dict(return_env.get("result", {}))
-        summaries["return_decomposition"] = {
-            "carry": str(return_result.get("carry") or ""),
-            "roll_down": str(return_result.get("roll_down") or ""),
-            "rate_effect": str(return_result.get("rate_effect") or ""),
-            "spread_effect": str(return_result.get("spread_effect") or ""),
-            "explained_pnl": str(return_result.get("explained_pnl") or ""),
+        return_summary: dict[str, str | list[str]] = {
             "warnings": [str(item) for item in list(return_result.get("warnings") or [])],
         }
-    except Exception as exc:
+        for field in ("carry", "roll_down", "rate_effect", "spread_effect", "explained_pnl"):
+            return_summary[field] = (return_result.get(field) or "") if return_result.get("bond_count") != 0 else ""
+        summaries["return_decomposition"] = return_summary
+    except (RuntimeError, ValueError, OSError, duckdb.Error) as exc:
         warnings.append(
             f"advanced_attribution_bundle: return_decomposition summary unavailable: {exc}"
         )
@@ -207,20 +208,28 @@ def _build_upstream_summaries(
         )
         bridge_result = dict(bridge_env.get("result", {}))
         bridge_summary = dict(bridge_result.get("summary", {}))
-        summaries["pnl_bridge"] = {
-            "total_carry": str(bridge_summary.get("total_carry") or ""),
-            "total_roll_down": str(bridge_summary.get("total_roll_down") or ""),
-            "total_treasury_curve": str(bridge_summary.get("total_treasury_curve") or ""),
-            "total_credit_spread": str(bridge_summary.get("total_credit_spread") or ""),
-            "total_explained_pnl": str(bridge_summary.get("total_explained_pnl") or ""),
-            "total_actual_pnl": str(bridge_summary.get("total_actual_pnl") or ""),
-            "total_residual": str(bridge_summary.get("total_residual") or ""),
+        bridge_out: dict[str, str | list[str]] = {
             "quality_flag": str(bridge_summary.get("quality_flag") or ""),
             "warnings": [str(item) for item in list(bridge_result.get("warnings") or [])],
         }
-    except Exception as exc:
+        for field in ("total_carry", "total_roll_down", "total_treasury_curve", "total_credit_spread", "total_explained_pnl", "total_actual_pnl", "total_residual"):
+            bridge_out[field] = _amount_text(bridge_summary.get(field)) if bridge_summary.get("row_count") != 0 else ""
+        for field in ("roll_down_availability", "treasury_curve_availability", "credit_spread_availability"):
+            if field in bridge_summary:
+                bridge_out[field] = bridge_summary[field]["status"]
+                if bridge_out[field] in ("partial", "unavailable"):
+                    warnings.append(f"advanced_attribution_bundle: {field}={bridge_out[field]}; component blocked")
+        summaries["pnl_bridge"] = bridge_out
+    except (RuntimeError, ValueError, OSError, duckdb.Error) as exc:
         warnings.append(
             f"advanced_attribution_bundle: pnl_bridge summary unavailable: {exc}"
         )
 
     return summaries, warnings
+
+
+def _amount_text(value: object) -> str:
+    if value is None:
+        return ""
+    numeric = Numeric.model_validate(value)
+    return "" if numeric.raw is None else numeric.raw_text or str(numeric.raw)

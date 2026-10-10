@@ -9,8 +9,14 @@ from backend.app.repositories.user_scope_repo import UserScopeRepository
 from backend.app.security.auth_context import ROLE_HEADER_TRUST_ENV
 from tests.helpers import load_module
 
-LIABILITY_ANALYTICS_READ_HEADERS = {"X-User-Id": "liability-knowledge-read-user", "X-User-Role": "viewer"}
+import pytest
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_liability_analytics,
+]
+
+LIABILITY_ANALYTICS_READ_HEADERS = {"X-User-Id": "liability-knowledge-read-user", "X-User-Role": "viewer"}
 
 def _build_client(tmp_path: Path, monkeypatch) -> TestClient:
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "liability-knowledge.duckdb"))
@@ -28,7 +34,6 @@ def _build_client(tmp_path: Path, monkeypatch) -> TestClient:
     client = TestClient(main_mod.app)
     client.headers.update(LIABILITY_ANALYTICS_READ_HEADERS)
     return client
-
 
 def test_liability_business_context_reads_obsidian_note_matches(
     tmp_path: Path, monkeypatch

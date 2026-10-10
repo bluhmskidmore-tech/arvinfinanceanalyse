@@ -16,6 +16,11 @@ from scripts.hermes_team_dispatch_server import (
     require_loopback_bind,
 )
 
+pytestmark = [
+    pytest.mark.excluded_surface_acceptance,
+    pytest.mark.surface_agent_mvp,
+]
+
 
 TOKEN = "unit-dispatch-token"
 AUTH_HEADERS = {"X-Hermes-Dispatch-Token": TOKEN}
@@ -60,7 +65,7 @@ def load_queue(team_dir: Path) -> list[dict]:
 
 
 def old_timestamp() -> str:
-    return (datetime.now() - timedelta(hours=2)).strftime("%Y-%m-%d %H:%M:%S")
+    return (datetime(2026, 6, 7, 12, 0, 0) - timedelta(hours=2)).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def test_dispatch_appends_task_to_role_inbox(tmp_path):
@@ -123,7 +128,14 @@ def test_dispatch_preserves_chinese_task_text(tmp_path):
     assert queue[0]["sender"] == "控制台"
 
 
-def test_dispatch_generates_unique_task_ids_for_fast_tasks(tmp_path):
+def test_dispatch_generates_unique_task_ids_for_fast_tasks(tmp_path, monkeypatch):
+    class MockDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 6, 7, 12, 0, 0, tzinfo=tz)
+
+    monkeypatch.setattr(dispatch_module, "datetime", MockDatetime)
+
     team_dir = make_team(tmp_path)
     dispatch = HermesTeamDispatch(team_dir)
 
@@ -142,8 +154,8 @@ def test_dispatch_generates_unique_task_ids_for_fast_tasks(tmp_path):
     task_ids = [task["task_id"] for task in queue]
     assert first["task_id"] != second["task_id"]
     assert len(task_ids) == len(set(task_ids))
-    assert first["task_id"].startswith(datetime.now().strftime("%Y%m%d-"))
-    assert second["task_id"].startswith(datetime.now().strftime("%Y%m%d-"))
+    assert first["task_id"].startswith("20260607-")
+    assert second["task_id"].startswith("20260607-")
 
 
 def test_dispatch_wakes_role_launcher_when_manifest_has_launcher(tmp_path, monkeypatch):
@@ -299,7 +311,14 @@ def test_status_reports_wake_failure_as_intervention(tmp_path):
     ]
 
 
-def test_status_reports_expired_running_task_as_intervention(tmp_path):
+def test_status_reports_expired_running_task_as_intervention(tmp_path, monkeypatch):
+    class MockDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 6, 7, 12, 0, 0, tzinfo=tz)
+
+    monkeypatch.setattr(dispatch_module, "datetime", MockDatetime)
+
     team_dir = make_team(tmp_path, with_launchers=True)
     expired = old_timestamp()
     (team_dir / "queue").mkdir()
@@ -489,7 +508,14 @@ def test_status_marks_running_when_log_is_newer_than_outbox(tmp_path):
     assert status["roles"]["developer"]["task_state"] == "running"
 
 
-def test_status_marks_completed_when_task_outbox_block_is_completed_even_if_log_is_newer(tmp_path):
+def test_status_marks_completed_when_task_outbox_block_is_completed_even_if_log_is_newer(tmp_path, monkeypatch):
+    class MockDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 6, 7, 12, 0, 0, tzinfo=tz)
+
+    monkeypatch.setattr(dispatch_module, "datetime", MockDatetime)
+
     team_dir = make_team(tmp_path, with_launchers=True)
     log_path = team_dir / "logs" / "developer-20260607-111216.log"
     log_path.parent.mkdir(parents=True)
@@ -525,7 +551,7 @@ def test_status_marks_completed_when_task_outbox_block_is_completed_even_if_log_
                     "last_error": "",
                     "claimed_by": "developer",
                     "claim_token": "claim-1",
-                    "lease_expires_at": (datetime.now() + timedelta(minutes=5)).strftime(
+                    "lease_expires_at": (datetime(2026, 6, 7, 12, 0, 0) + timedelta(minutes=5)).strftime(
                         "%Y-%m-%d %H:%M:%S"
                     ),
                     "heartbeat_at": "2026-06-07 11:12:17",
@@ -548,8 +574,15 @@ def test_status_marks_completed_when_task_outbox_block_is_completed_even_if_log_
 def test_status_reports_running_task_with_exited_process_as_intervention(
     tmp_path, monkeypatch
 ):
+    class MockDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 6, 7, 12, 0, 0, tzinfo=tz)
+
+    monkeypatch.setattr(dispatch_module, "datetime", MockDatetime)
+
     team_dir = make_team(tmp_path, with_launchers=True)
-    lease_expires_at = (datetime.now() + timedelta(minutes=5)).strftime(
+    lease_expires_at = (datetime(2026, 6, 7, 12, 0, 0) + timedelta(minutes=5)).strftime(
         "%Y-%m-%d %H:%M:%S"
     )
     (team_dir / "queue").mkdir()
