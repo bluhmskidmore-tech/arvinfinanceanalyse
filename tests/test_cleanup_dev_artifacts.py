@@ -62,17 +62,24 @@ def test_cleanup_dev_artifacts_dry_run_lists_candidates_without_deleting(tmp_pat
     recent_log = _write_file(repo_root / "recent.log", days_old=1)
 
     output = _run_cleanup(repo_root)
+    output_lines = output.replace("\\", "/").splitlines()
+    candidate_paths = {
+        line.split("\t", 2)[1] for line in output_lines if line.startswith("DRY-RUN\t")
+    }
 
     assert "DRY-RUN cleanup-dev-artifacts" in output
     assert ".codex-tmp/pytest-old" not in output
-    assert ".pytest_cache" in output
-    assert ".ruff_cache" not in output
-    assert "api.log" in output
+    assert ".pytest_cache" in candidate_paths
+    assert ".ruff_cache" not in candidate_paths
+    assert "api.log" in candidate_paths
     assert ".codex-tmp/pytest-new" not in output
-    assert "recent.log" not in output
+    assert "recent.log" not in candidate_paths
+    assert "SKIP\t.ruff_cache\trecent descendant in candidate tree" in output_lines
+    assert "SKIP\trecent.log\trecent descendant in candidate tree" in output_lines
     assert old_pytest.exists()
     assert old_cache.exists()
     assert recent_cache.exists()
+    assert (recent_cache / "artifact.txt").read_bytes() == b"scratch"
     assert recent_pytest.exists()
     assert old_log.exists()
     assert recent_log.exists()
@@ -87,22 +94,28 @@ def test_cleanup_dev_artifacts_apply_respects_protected_paths_and_extensions(tmp
     os.utime(protected_pytest, (_old_timestamp(), _old_timestamp()))
     removable_cache = _make_dir(repo_root / "backend" / "app" / "__pycache__")
     backend_mypy_cache = _make_dir(repo_root / "backend" / ".mypy_cache")
-    _write_file(backend_mypy_cache / "cache.db")
+    protected_mypy_file = _write_file(backend_mypy_cache / "cache.db")
     os.utime(backend_mypy_cache, (_old_timestamp(), _old_timestamp()))
     protected_git_cache = _make_dir(repo_root / ".git" / "__pycache__")
     protected_data_cache = _make_dir(repo_root / "data" / "__pycache__")
 
     output = _run_cleanup(repo_root, "-Apply")
+    output_lines = output.replace("\\", "/").splitlines()
+    candidate_paths = {
+        line.split("\t", 2)[1] for line in output_lines if line.startswith("APPLY\t")
+    }
 
     assert "APPLY cleanup-dev-artifacts" in output
     assert ".codex-tmp/pytest-remove" not in output
     assert ".codex-tmp/pytest-with-csv" not in output
-    assert "backend/app/__pycache__" in output.replace("\\", "/")
-    assert "backend/.mypy_cache" not in output.replace("\\", "/")
+    assert "backend/app/__pycache__" in candidate_paths
+    assert "backend/.mypy_cache" not in candidate_paths
+    assert "SKIP\tbackend/.mypy_cache\tprotected extension in candidate tree" in output_lines
     assert removable_pytest.exists()
     assert protected_pytest.exists()
     assert not removable_cache.exists()
     assert backend_mypy_cache.exists()
+    assert protected_mypy_file.read_bytes() == b"scratch"
     assert protected_git_cache.exists()
     assert protected_data_cache.exists()
     assert "Skipped protected" in output

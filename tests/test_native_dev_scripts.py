@@ -1,11 +1,13 @@
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from socketserver import TCPServer
 
 import pytest
 
@@ -44,11 +46,29 @@ def run_powershell_script_result(
     script_name: str,
     *args: str,
     env_overrides: dict[str, str] | None = None,
+    capture_exception_message: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env.setdefault("MOSS_PYTHON", sys.executable)
     if env_overrides:
         env.update(env_overrides)
+
+    invocation = ["-File", str(ROOT / "scripts" / script_name), *args]
+    if capture_exception_message:
+        # Read the exception before host ANSI/width formatting splits diagnostics.
+        tokens = [
+            argument
+            if re.fullmatch(r"-[A-Za-z][A-Za-z0-9]*", argument)
+            else "'" + argument.replace("'", "''") + "'"
+            for argument in args
+        ]
+        script_path = str(ROOT / "scripts" / script_name).replace("'", "''")
+        invocation = [
+            "-NonInteractive",
+            "-Command",
+            f"try {{ & '{script_path}' {' '.join(tokens)}; exit $LASTEXITCODE }} "
+            "catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }",
+        ]
 
     return subprocess.run(
         [
@@ -56,9 +76,7 @@ def run_powershell_script_result(
             "-NoProfile",
             "-ExecutionPolicy",
             "Bypass",
-            "-File",
-            str(ROOT / "scripts" / script_name),
-            *args,
+            *invocation,
         ],
         cwd=ROOT,
         check=False,
@@ -96,6 +114,13 @@ def readiness_env_overrides(tmp_path_factory) -> dict[str, str]:
 
 @contextmanager
 def balance_movement_smoke_server(dates_payload: dict):
+    class LoopbackHTTPServer(ThreadingHTTPServer):
+        def server_bind(self) -> None:
+            # Numeric loopback fixtures do not need an HTTP reverse-DNS lookup.
+            TCPServer.server_bind(self)
+            self.server_name = "localhost"
+            self.server_port = self.server_address[1]
+
     class Handler(BaseHTTPRequestHandler):
         def _send(self, status: int, body: str, content_type: str = "application/json") -> None:
             encoded = body.encode("utf-8")
@@ -124,7 +149,7 @@ def balance_movement_smoke_server(dates_payload: dict):
         def log_message(self, *_args: object) -> None:
             return
 
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server = LoopbackHTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -388,7 +413,10 @@ def test_codex_verify_home_feedback_can_replace_default_tests_and_add_lint():
     ],
 )
 def test_codex_verify_frontend_feedback_rejects_ambiguous_scope(args, message):
-    completed = run_powershell_script_result("codex-verify-page.ps1", "-PageSlug", "dashboard-home", *args)
+    completed = run_powershell_script_result(
+        "codex-verify-page.ps1", "-PageSlug", "dashboard-home", *args,
+        capture_exception_message=True,
+    )
     assert completed.returncode != 0
     assert message in completed.stderr
 
@@ -946,6 +974,7 @@ def test_codex_page_smoke_balance_movement_check_live_fails_when_report_dates_mi
             base_url,
             "-ApiBaseUrl",
             base_url,
+            capture_exception_message=True,
         )
 
     assert completed.returncode != 0
@@ -1465,7 +1494,7 @@ def test_codex_page_readiness_supports_liability_analytics_dry_run(readiness_env
     assert "Dry run complete. Pass -Run to execute page checks." in output
 
 
-def test_codex_page_readiness_supports_market_data_dry_run(readiness_env_overrides):
+def test_codex_page_readiness_supports_market_data_dry_run(readiness_env_overrides, tmp_path):
     output = run_powershell_script(
         "codex-page-readiness.ps1",
         "-PageSlug",
@@ -1479,11 +1508,31 @@ def test_codex_page_readiness_supports_market_data_dry_run(readiness_env_overrid
     assert "missing" in output
     assert "codex-page-smoke.ps1 -PageSlug market-data" in output
     assert "codex-verify-page.ps1 -PageSlug market-data -Run" in output
-    assert "full data-catalog/date review required" in output
+    assert "catalog_date_review_routed: pass (direct_review_required)" in output
+    assert "full data-catalog/date review required" not in output
     assert "direct page-keyed governance records" in output
     assert "Mixed-source page cannot be collapsed into full-page formal truth." in output
     assert "dedicated golden sample is missing" in output
     assert "Dry run complete. Pass -Run to execute page checks." in output
+
+    # Complete synthetic catalog samples clear only the catalog gap; missing
+    # inputs must still surface that gap without promoting mixed-source truth.
+    missing_catalog_output = run_powershell_script(
+        "codex-page-readiness.ps1",
+        "-PageSlug",
+        "market-data",
+        env_overrides={
+            **readiness_env_overrides,
+            "MOSS_DUCKDB_PATH": str(tmp_path / "missing-market-catalog.duckdb"),
+        },
+    )
+    assert "full data-catalog/date review required" in missing_catalog_output
+    assert "catalog_date_review_routed: pass (direct_review_required)" in missing_catalog_output
+    assert "formal_use_allowed=False" in missing_catalog_output
+    assert "direct page-keyed governance records" in missing_catalog_output
+    assert "Mixed-source page cannot be collapsed into full-page formal truth." in missing_catalog_output
+    assert "dedicated golden sample is missing" in missing_catalog_output
+    assert "Dry run complete. Pass -Run to execute page checks." in missing_catalog_output
 
 
 def test_codex_page_readiness_supports_macro_toolkit_dry_run(readiness_env_overrides):

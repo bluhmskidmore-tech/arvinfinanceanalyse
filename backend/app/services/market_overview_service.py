@@ -836,7 +836,7 @@ def _build_gate(
         "missing_field_count": len(refresh_receipt_health.missing_fields),
     }
     recovery_action = refresh_receipt_health.recovery_action()
-    health_warnings = refresh_receipt_health.analysis_warnings()
+    health_warnings = refresh_receipt_health.analysis_warnings(include_failure_details=False)
     receipt_reason = health_warnings[0] if health_warnings else "刷新回执未通过完整性校验"
     if not refresh_receipt_health.ready:
         # Cached core payloads can still contain raw technical exceptions. Keep

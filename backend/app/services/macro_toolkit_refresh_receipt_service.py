@@ -84,14 +84,16 @@ class MacroToolkitRefreshReceiptHealth:
             },
         }
 
-    def analysis_warnings(self) -> list[str]:
+    def analysis_warnings(self, *, include_failure_details: bool = True) -> list[str]:
         messages = list(self.warnings)
         if self.ready:
             return messages
         if self.status == "blocked" and self.failure_message:
             category = _failure_category_label(self.failure_category)
-            detail = _public_failure_message(self.failure_message)
-            reason = f"最近一次刷新未完成（{category}）：{detail}"
+            reason = f"最近一次刷新未完成（{category}）"
+            if include_failure_details:
+                detail = _public_failure_message(self.failure_message)
+                reason = f"{reason}：{detail}"
         elif self.status == "abandoned":
             generated_at = self.generated_at or "未知时间"
             age_hours = self.running_age_hours if self.running_age_hours is not None else 0.0

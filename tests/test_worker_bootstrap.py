@@ -1,5 +1,6 @@
 import ast
 import logging
+from importlib import import_module
 from pathlib import Path
 from threading import Event, Thread, current_thread
 from types import SimpleNamespace
@@ -572,7 +573,8 @@ def test_worker_ack_recovery_uses_capped_backoff_and_throttled_logs(
 
 
 def test_worker_startup_requests_intent_recovery_without_pending_dirty(monkeypatch):
-    from backend.app.tasks import data_update_center, worker_recovery
+    data_update_center = import_module("backend.app.tasks.data_update_center")
+    worker_recovery = import_module("backend.app.tasks.worker_recovery")
 
     settings = object()
     calls: list[tuple[object, bool]] = []
@@ -596,11 +598,14 @@ def test_startup_intent_recovery_keeps_adjustment_and_page_without_dirty_scan(
     tmp_path,
     monkeypatch,
 ):
-    from backend.app.repositories import pnl_repo
-    from backend.app.services import pnl_by_business_page_lifecycle, pnl_service
-    from backend.app.tasks.data_update_center import (
-        _recover_pending_pnl_by_business_precompute,
+    # Import the canonical services before patching their repository dependency;
+    # a stale package attribute can otherwise leave a fresh service with the sentinel.
+    pnl_repo = import_module("backend.app.repositories.pnl_repo")
+    pnl_service = import_module("backend.app.services.pnl_service")
+    pnl_by_business_page_lifecycle = import_module(
+        "backend.app.services.pnl_by_business_page_lifecycle"
     )
+    data_update_center = import_module("backend.app.tasks.data_update_center")
 
     calls: list[str] = []
 
@@ -632,7 +637,7 @@ def test_startup_intent_recovery_keeps_adjustment_and_page_without_dirty_scan(
     )
 
     assert (
-        _recover_pending_pnl_by_business_precompute(
+        data_update_center._recover_pending_pnl_by_business_precompute(
             settings,
             include_pending_dirty=False,
         )

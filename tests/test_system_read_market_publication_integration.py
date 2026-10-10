@@ -424,9 +424,29 @@ def test_sealed_checklist_reader_recovers_qualified_fixture_ready_and_empty(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, empty_result: bool
 ) -> None:
     """Test real sealing and API projection, not the independent producer contract."""
+    from importlib import import_module
+
     from backend.app.agent.schemas.agent_request import AgentQueryRequest
     from backend.app.governance.settings import get_settings
+    from backend.app.repositories.system_read_publication_repo import (
+        current_system_read_context as selected_pretrade_context,
+        system_read_scope as selected_pretrade_scope,
+    )
     from backend.app.services.agent_service import _pretrade_checklist_payload
+
+    pretrade_checklist_service = import_module(
+        "backend.app.services.pretrade_checklist_service"
+    )
+
+    # Other tests reload these modules separately. Use the same real context as
+    # the Agent's deferred imports, without replacing qualification or outputs.
+    monkeypatch.setattr(
+        pretrade_checklist_service,
+        "current_system_read_context",
+        selected_pretrade_context,
+    )
+    checklist_envelope = pretrade_checklist_service.pretrade_checklist_envelope
+    initial_context = selected_pretrade_context()
 
     monkeypatch.setenv("MOSS_GOVERNANCE_BACKEND", "jsonl")
     monkeypatch.setattr(
@@ -455,10 +475,14 @@ def test_sealed_checklist_reader_recovers_qualified_fixture_ready_and_empty(
             ("phase1_source_preview_summary", "report_date", 2),
         ),
     )
-    with system_read_scope(settings, first.generation):
-        unavailable = pretrade_checklist_envelope(
+    with selected_pretrade_scope(settings, first.generation):
+        first_context = selected_pretrade_context()
+        assert first_context is not None
+        assert first_context.generation == first.generation
+        unavailable = checklist_envelope(
             duckdb_path=settings.duckdb_path, as_of_date=AS_OF, today=TODAY_FRESH
         )
+    assert selected_pretrade_context() is initial_context
     assert unavailable["result"]["checklist_status"] == "unavailable"
 
     def agent_request(generation: str) -> AgentQueryRequest:
@@ -512,16 +536,31 @@ def test_sealed_checklist_reader_recovers_qualified_fixture_ready_and_empty(
         changed_source_validator=source_identity,
         pretrade_availability=evidence,
     )
-    with system_read_scope(settings, completed.generation):
-        envelope = pretrade_checklist_envelope(
+    with selected_pretrade_scope(settings, completed.generation):
+        completed_context = selected_pretrade_context()
+        assert completed_context is not None
+        assert completed_context.generation == completed.generation
+        assert completed_context.pretrade_availability["evidence_sha256"] == (
+            evidence["evidence_sha256"]
+        )
+        sealed_artifacts_before = {
+            path: path.read_bytes()
+            for path in (
+                completed_context.publication.manifest_path,
+                completed_context.publication.database_path,
+            )
+        }
+        envelope = checklist_envelope(
             duckdb_path=settings.duckdb_path, today=TODAY_FRESH
         )
+    assert selected_pretrade_context() is initial_context
     assert envelope is not None
     result = envelope["result"]
     assert result["qualification"]["status"] == (
         "ready_empty" if empty_result else "ready"
     )
     assert result["checklist_status"] == ("empty" if empty_result else "ok")
+    assert result["qualification"]["evidence_sha256"] == evidence["evidence_sha256"]
     assert bool(result["items"]) is (not empty_result)
     assert envelope["result_meta"]["formal_use_allowed"] is False
     completed_agent = _pretrade_checklist_payload(
@@ -545,6 +584,10 @@ def test_sealed_checklist_reader_recovers_qualified_fixture_ready_and_empty(
     assert "盘前操作清单不可用" in forged_agent["answer"]
     assert forged_agent["row_count"] == 0
     assert not any(card["type"] == "table" for card in forged_agent["cards"])
+    assert selected_pretrade_context() is initial_context
+    assert {
+        path: path.read_bytes() for path in sealed_artifacts_before
+    } == sealed_artifacts_before
 
 
 def _complete_weekend_aggregate(

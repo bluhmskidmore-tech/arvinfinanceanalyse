@@ -27,6 +27,7 @@ from scripts.emit_bond_analysis_governance_record import (
     emit_record as emit_bond_analysis_governance_record,
 )
 from scripts.mcp.moss_project_mcp import product_page_trace_bundles
+from tests.powershell_runtime import powershell_executable
 from tests.readiness_input_snapshot import build_readiness_input_snapshot_env
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -2284,7 +2285,7 @@ def test_page_readiness_cli_route_scope_mode_emits_classification_report() -> No
 def test_page_readiness_powershell_route_scope_mode_surfaces_classification_summary() -> None:
     completed = subprocess.run(
         [
-            "powershell",
+            powershell_executable(),
             "-NoProfile",
             "-ExecutionPolicy",
             "Bypass",
@@ -2339,7 +2340,7 @@ def test_page_readiness_powershell_route_scope_mode_surfaces_classification_summ
 def test_pnl_attribution_page_readiness_powershell_surfaces_approval_blockers() -> None:
     completed = subprocess.run(
         [
-            "powershell",
+            powershell_executable(),
             "-NoProfile",
             "-ExecutionPolicy",
             "Bypass",
@@ -2383,7 +2384,7 @@ def test_pnl_attribution_page_readiness_powershell_surfaces_approval_blockers() 
 def test_product_category_page_readiness_powershell_surfaces_packet_consistency_boundary() -> None:
     completed = subprocess.run(
         [
-            "powershell",
+            powershell_executable(),
             "-NoProfile",
             "-ExecutionPolicy",
             "Bypass",
@@ -2472,7 +2473,7 @@ def test_product_category_page_readiness_powershell_surfaces_packet_consistency_
 def test_pnl_attribution_page_readiness_powershell_can_require_captured_approval() -> None:
     completed = subprocess.run(
         [
-            "powershell",
+            powershell_executable(),
             "-NoProfile",
             "-ExecutionPolicy",
             "Bypass",
@@ -2511,7 +2512,7 @@ def test_pnl_attribution_page_readiness_powershell_can_require_captured_approval
 def test_all_page_readiness_powershell_can_require_captured_approval() -> None:
     completed = subprocess.run(
         [
-            "powershell",
+            powershell_executable(),
             "-NoProfile",
             "-ExecutionPolicy",
             "Bypass",
@@ -2594,7 +2595,7 @@ def test_all_page_readiness_powershell_can_require_captured_approval() -> None:
 def test_all_page_readiness_powershell_surfaces_pending_approval_summary() -> None:
     completed = subprocess.run(
         [
-            "powershell",
+            powershell_executable(),
             "-NoProfile",
             "-ExecutionPolicy",
             "Bypass",

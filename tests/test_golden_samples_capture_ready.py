@@ -6,6 +6,7 @@ import sys
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 import duckdb
@@ -120,6 +121,36 @@ def _clear_runtime_modules() -> None:
         "backend.app.tasks.product_category_pnl",
     ]:
         sys.modules.pop(name, None)
+        parent_name, _, child_name = name.rpartition(".")
+        parent = sys.modules.get(parent_name)
+        if parent is not None:
+            parent.__dict__.pop(child_name, None)
+
+
+@pytest.mark.parametrize("cache_binding", ("same", "different", "missing"))
+def test_runtime_module_cleanup_removes_stale_parent_binding(monkeypatch, cache_binding):
+    package = ModuleType("backend.app.services")
+    previous = ModuleType("backend.app.services.pnl_service")
+    package.__dict__["pnl_service"] = previous
+    unrelated = ModuleType("backend.app.services.unrelated_service")
+    package.__dict__["unrelated_service"] = unrelated
+    isolated_modules = {package.__name__: package, unrelated.__name__: unrelated}
+    if cache_binding != "missing":
+        isolated_modules[previous.__name__] = (
+            previous if cache_binding == "same" else ModuleType(previous.__name__)
+        )
+
+    original_modules = sys.modules
+    with monkeypatch.context() as isolated:
+        isolated.setattr(sys, "modules", isolated_modules)
+        _clear_runtime_modules()
+        assert previous.__name__ not in isolated_modules
+        assert "pnl_service" not in package.__dict__
+        assert isolated_modules[package.__name__] is package
+        assert isolated_modules[unrelated.__name__] is unrelated
+        assert package.__dict__["unrelated_service"] is unrelated
+
+    assert sys.modules is original_modules
 
 
 def _setup_balance(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

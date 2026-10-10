@@ -79,6 +79,7 @@ def test_register_script_rejects_malicious_vendor_source_ip_before_scheduler_cal
     harness = tmp_path / "harness.ps1"
     harness.write_text(
         f"""
+$ErrorActionPreference = "Stop"
 function schtasks {{
     Add-Content -Path "{sentinel}" -Value "called"
     throw "schtasks should not be called"

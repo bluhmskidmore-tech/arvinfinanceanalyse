@@ -188,12 +188,18 @@ def test_explicit_null_current_score_closes_old_triggered_risk_gate():
 ])
 def test_gate_redacts_technical_failure_including_cached_core_conclusion(category, expected):
     health = _health(category)
-    gate = service._build_gate(health, _component({"conclusion": {"summary": health.failure_message}}))
+    component = _component({"conclusion": {"summary": health.failure_message}})
+    gate = service._build_gate(health, component)
     assert gate["level"] == "blocked"
+    assert "最近一次刷新未完成" in gate["human_reason"]
+    assert "方向性结论已关闭" in gate["human_reason"]
+    assert gate["conclusion"]["summary"] == gate["human_reason"]
     assert expected in gate["recovery_action"]
     assert "192.0.2" not in str(gate)
     assert "ValueError" not in str(gate)
     assert health.failure_message in str(health.as_payload())
+    assert health.failure_message in health.analysis_warnings()[0]
+    assert component.envelope["result"]["conclusion"]["summary"] == health.failure_message
 
 
 def test_gate_recommendation_uses_business_words_without_mutating_core_payload():

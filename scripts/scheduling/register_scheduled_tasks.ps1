@@ -48,6 +48,32 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Resolve-ValidatedVendorSourceIp {
+    param([string]$Value)
+
+    if ([string]::IsNullOrEmpty($Value)) {
+        return ""
+    }
+    if ($Value -ne $Value.Trim()) {
+        throw "VendorSourceIp must be a plain IPv4 literal with no surrounding whitespace."
+    }
+    if ($Value -notmatch '^(?:\d{1,3}\.){3}\d{1,3}$') {
+        throw "VendorSourceIp must be a plain IPv4 literal like 172.16.115.248."
+    }
+
+    try {
+        $parsed = [System.Net.IPAddress]::Parse($Value)
+    } catch {
+        throw "VendorSourceIp must be a plain IPv4 literal like 172.16.115.248."
+    }
+    if ($parsed.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork) {
+        throw "VendorSourceIp must be a plain IPv4 literal like 172.16.115.248."
+    }
+    return $parsed.ToString()
+}
+
+$normalizedVendorSourceIp = Resolve-ValidatedVendorSourceIp -Value $VendorSourceIp
+
 if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
     $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 }
@@ -81,30 +107,6 @@ function ConvertTo-CommandLineString {
         return ""
     }
     return " " + ($Arguments -join " ")
-}
-
-function Resolve-ValidatedVendorSourceIp {
-    param([string]$Value)
-
-    if ([string]::IsNullOrEmpty($Value)) {
-        return ""
-    }
-    if ($Value -ne $Value.Trim()) {
-        throw "VendorSourceIp must be a plain IPv4 literal with no surrounding whitespace."
-    }
-    if ($Value -notmatch '^(?:\d{1,3}\.){3}\d{1,3}$') {
-        throw "VendorSourceIp must be a plain IPv4 literal like 172.16.115.248."
-    }
-
-    try {
-        $parsed = [System.Net.IPAddress]::Parse($Value)
-    } catch {
-        throw "VendorSourceIp must be a plain IPv4 literal like 172.16.115.248."
-    }
-    if ($parsed.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork) {
-        throw "VendorSourceIp must be a plain IPv4 literal like 172.16.115.248."
-    }
-    return $parsed.ToString()
 }
 
 function Test-TaskExists {
@@ -156,7 +158,6 @@ function Register-MossTask {
     Write-Host "Registered $TaskName ($Description)."
 }
 
-$normalizedVendorSourceIp = Resolve-ValidatedVendorSourceIp -Value $VendorSourceIp
 $dailyScriptArgs = @()
 if (-not [string]::IsNullOrWhiteSpace($normalizedVendorSourceIp)) {
     $dailyScriptArgs += @("-VendorSourceIp", $normalizedVendorSourceIp)
